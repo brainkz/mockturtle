@@ -262,6 +262,123 @@ std::tuple<TT, uint32_t, std::vector<uint8_t>> exact_npn_canonization( const TT&
   return std::make_tuple( tmin, phase, perm );
 }
 
+/*! \brief Exact NP canonization
+
+  Given a truth table, this function finds the lexicographically smallest truth
+  table in its NP class, called NP representative. Two functions are in the
+  same NP class, if one can obtain one from the other by input negation, input
+  permutation, and output negation.
+
+  The function can accept a callback as second parameter which is called for
+  every visited function when trying out all combinations.  This allows to
+  exhaustively visit the whole NPN class.
+
+  The function returns a NP configuration which contains the necessary
+  transformations to obtain the representative.  It is a tuple of
+
+  - the NP representative
+  - input negations and output negation, output negation is stored as bit *n*,
+    where *n* is the number of variables in `tt`
+  - input permutation to apply
+
+  \param tt The truth table (with at most 6 variables)
+  \param fn Callback for each visited truth table in the class (default does nothing)
+  \return NP configuration
+*/
+template<typename TT, typename Callback = decltype( detail::exact_npn_canonization_null_callback<TT> )>
+std::tuple<TT, uint32_t, std::vector<uint8_t>> exact_np_canonization( const TT& tt, Callback&& fn = detail::exact_npn_canonization_null_callback<TT> )
+{
+  static_assert( is_complete_truth_table<TT>::value, "Can only be applied on complete truth tables." );
+
+  const auto num_vars = tt.num_vars();
+
+  /* Special case for n = 0 */
+  if ( num_vars == 0 )
+  {
+    const auto bit = get_bit( tt, 0 );
+    return std::make_tuple( unary_not_if( tt, bit ), static_cast<uint32_t>( bit ), std::vector<uint8_t>{} );
+  }
+
+  /* Special case for n = 1 */
+  if ( num_vars == 1 )
+  {
+    const auto bit1 = get_bit( tt, 1 );
+    return std::make_tuple( unary_not_if( tt, bit1 ), static_cast<uint32_t>( bit1 << 1 ), std::vector<uint8_t>{ 0 } );
+  }
+
+  assert( num_vars >= 2 && num_vars <= 6 );
+
+  auto t1 = tt;
+  auto tmin = t1;
+
+  fn( t1 );
+
+  const auto& swaps = detail::swaps[num_vars - 2u];
+  const auto& flips = detail::flips[num_vars - 2u];
+
+  int best_swap = -1;
+  int best_flip = -1;
+
+  for ( std::size_t i = 0; i < swaps.size(); ++i )
+  {
+    const auto pos = swaps[i];
+    swap_adjacent_inplace( t1, pos );
+
+    fn( t1 );
+
+    if ( t1 < tmin )
+    {
+      best_swap = static_cast<int>( i );
+    }
+  }
+
+  for ( std::size_t j = 0; j < flips.size(); ++j )
+  {
+    const auto pos = flips[j];
+    swap_adjacent_inplace( t1, 0 );
+    flip_inplace( t1, pos );
+
+    fn( t1 );
+
+    if ( t1 < tmin )
+    {
+      best_swap = -1;
+      best_flip = static_cast<int>( j );
+    }
+
+    for ( std::size_t i = 0; i < swaps.size(); ++i )
+    {
+      const auto pos = swaps[i];
+      swap_adjacent_inplace( t1, pos );
+
+      fn( t1 );
+
+      if ( t1 < tmin )
+      {
+        best_swap = static_cast<int>( i );
+        best_flip = static_cast<int>( j );
+      }
+    }
+  }
+
+  std::vector<uint8_t> perm( num_vars );
+  std::iota( perm.begin(), perm.end(), 0u );
+
+  for ( auto i = 0; i <= best_swap; ++i )
+  {
+    const auto pos = swaps[i];
+    std::swap( perm[pos], perm[pos + 1] );
+  }
+
+  uint32_t phase = 0u; // uint32_t( invo ) << num_vars;
+  for ( auto i = 0; i <= best_flip; ++i )
+  {
+    phase ^= 1 << flips[i];
+  }
+
+  return std::make_tuple( tmin, phase, perm );
+}
+
 /*! \brief Exact N canonization
 
   Given a truth table, this function finds the lexicographically smallest truth

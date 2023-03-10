@@ -349,6 +349,8 @@ public:
       assert( function.num_vars() == 0u );
       return get_constant( !kitty::is_const0( function ) );
     }
+    // auto qqq = _storage->data.cache.insert( function );
+    // return _create_node( children, qqq );
     return _create_node( children, _storage->data.cache.insert( function ) );
   }
 
@@ -404,7 +406,9 @@ public:
 
   inline bool is_dead( node const& n ) const
   {
-    return false;
+    std::cout << "aaa" << std::endl;
+    return _storage->nodes[n].data[0].h1 == 0;
+    // return false;
   }
 #pragma endregion
 

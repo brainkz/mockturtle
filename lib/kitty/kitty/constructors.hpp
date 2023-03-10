@@ -364,7 +364,8 @@ void create_random( TT& tt, std::default_random_engine::result_type seed )
 template<typename TT>
 void create_random( TT& tt )
 {
-  create_random( tt, static_cast<std::default_random_engine::result_type>( std::chrono::system_clock::now().time_since_epoch().count() ) );
+  auto num = std::chrono::system_clock::now().time_since_epoch().count();
+  create_random( tt, static_cast<std::default_random_engine::result_type>( num ) );
 }
 
 /*! \brief Constructs a truth table from a range of words

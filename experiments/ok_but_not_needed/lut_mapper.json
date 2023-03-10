@@ -1,0 +1,15 @@
+[
+  {
+    "entries": [
+      {
+        "benchmark": "adder",
+        "edges": 28,
+        "equivalent": true,
+        "lut_depth": 3,
+        "luts": 9,
+        "runtime": 0.001691416
+      }
+    ],
+    "version": "da2b5e6"
+  }
+]

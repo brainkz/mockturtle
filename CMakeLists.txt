@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Options
 option(MOCKTURTLE_EXAMPLES "Build examples" ON)
 option(MOCKTURTLE_TEST "Build tests" OFF)
-option(MOCKTURTLE_EXPERIMENTS "Build experiments" OFF)
+option(MOCKTURTLE_EXPERIMENTS "Build experiments" ON)
 option(BILL_Z3 "Enable Z3 interface for bill library" OFF)
 option(ENABLE_COVERAGE "Enable coverage reporting for gcc/clang" OFF)
 option(ENABLE_MATPLOTLIB "Enable matplotlib library in experiments" OFF)

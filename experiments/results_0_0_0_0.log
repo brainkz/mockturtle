@@ -1,0 +1,579 @@
+2023-02-28 11:22:08,595 : Processing level 0
+2023-02-28 11:22:08,596 : 
+
+2023-02-28 11:22:08,596 : 
+
+2023-02-28 11:22:08,597 : 	 After merge tree :
+2023-02-28 11:22:08,597 : 		17 nodes
+2023-02-28 11:22:08,597 : 		17 truth tables
+2023-02-28 11:22:08,597 : 		6 xorable truth tables
+2023-02-28 11:22:08,598 : 
+
+2023-02-28 11:22:08,599 : 	 After AS gates :
+2023-02-28 11:22:08,599 : 		53 nodes
+2023-02-28 11:22:08,599 : 		38 truth tables
+2023-02-28 11:22:08,599 : 		38 xorable truth tables
+2023-02-28 11:22:08,609 : 	 After SA gates :
+2023-02-28 11:22:08,609 : 		440 nodes
+2023-02-28 11:22:08,609 : 		396 truth tables
+2023-02-28 11:22:08,609 : 		396 xorable truth tables
+2023-02-28 11:22:08,609 : Processing level 1
+2023-02-28 11:22:09,216 : 
+
+2023-02-28 16:26:58,459 : Processing level 0
+2023-02-28 16:26:58,460 : 
+
+2023-02-28 16:26:58,460 : 
+
+2023-02-28 16:26:58,460 : 	 After merge tree :
+2023-02-28 16:26:58,460 : 		17 nodes
+2023-02-28 16:26:58,460 : 		17 truth tables
+2023-02-28 16:26:58,460 : 		6 xorable truth tables
+2023-02-28 16:26:58,460 : 
+
+2023-02-28 16:26:58,460 : 	 After AS gates :
+2023-02-28 16:26:58,460 : 		53 nodes
+2023-02-28 16:26:58,460 : 		38 truth tables
+2023-02-28 16:26:58,460 : 		38 xorable truth tables
+2023-02-28 16:26:58,466 : 	 After SA gates :
+2023-02-28 16:26:58,466 : 		440 nodes
+2023-02-28 16:26:58,466 : 		396 truth tables
+2023-02-28 16:26:58,466 : 		396 xorable truth tables
+2023-02-28 16:26:58,466 : Processing level 1
+2023-02-28 16:26:59,041 : 
+
+2023-02-28 18:32:09,862 : diff parser start
+2023-02-28 18:32:09,863 : line_lengths old: 1; new: 1
+2023-02-28 18:32:09,863 : -> code[replace] old[1:1] new[1:1]
+2023-02-28 18:32:09,863 : parse_part from 1 to 1 (to 0 in part parser)
+2023-02-28 18:32:09,863 : diff parser end
+2023-02-28 18:32:09,875 : pickle loaded: /Users/brainkz/anaconda3/lib/python3.9/site-packages/networkx/classes/digraph.py
+2023-02-28 18:32:09,882 : pickle loaded: /Users/brainkz/anaconda3/lib/python3.9/site-packages/networkx/__init__.py
+2023-02-28 18:32:09,887 : pickle loaded: /Users/brainkz/anaconda3/lib/python3.9/site-packages/networkx/classes/__init__.py
+2023-02-28 18:32:09,896 : pickle loaded: /Users/brainkz/anaconda3/lib/python3.9/site-packages/networkx/classes/graph.py
+2023-02-28 18:32:12,517 : diff parser start
+2023-02-28 18:32:12,517 : line_lengths old: 1; new: 1
+2023-02-28 18:32:12,517 : -> code[replace] old[1:1] new[1:1]
+2023-02-28 18:32:12,518 : parse_part from 1 to 1 (to 0 in part parser)
+2023-02-28 18:32:12,518 : diff parser end
+2023-02-28 21:02:24,316 : Processing level 0
+2023-02-28 21:02:41,379 : Processing level 0
+2023-02-28 21:03:03,404 : Processing level 0
+2023-02-28 21:03:15,703 : Processing level 0
+2023-02-28 21:03:15,704 : 
+
+2023-02-28 21:03:15,704 : 
+
+2023-02-28 21:03:15,705 : 	 After merge tree :
+2023-02-28 21:03:15,705 : 		17 nodes
+2023-02-28 21:03:15,705 : 		17 truth tables
+2023-02-28 21:03:15,705 : 		6 xorable truth tables
+2023-02-28 21:03:15,706 : 
+
+2023-02-28 21:03:15,706 : 	 After AS gates :
+2023-02-28 21:03:15,706 : 		53 nodes
+2023-02-28 21:03:15,706 : 		38 truth tables
+2023-02-28 21:03:15,706 : 		38 xorable truth tables
+2023-02-28 21:03:15,717 : 	 After SA gates :
+2023-02-28 21:03:15,717 : 		440 nodes
+2023-02-28 21:03:15,717 : 		396 truth tables
+2023-02-28 21:03:15,717 : 		396 xorable truth tables
+2023-02-28 21:03:15,717 : Processing level 1
+2023-02-28 21:04:16,071 : Processing level 0
+2023-02-28 21:04:16,071 : 
+
+2023-02-28 21:04:16,071 : 
+
+2023-02-28 21:04:16,072 : 	 After merge tree :
+2023-02-28 21:04:16,072 : 		17 nodes
+2023-02-28 21:04:16,072 : 		17 truth tables
+2023-02-28 21:04:16,072 : 		6 xorable truth tables
+2023-02-28 21:04:16,072 : 
+
+2023-02-28 21:04:16,072 : 	 After AS gates :
+2023-02-28 21:04:16,072 : 		53 nodes
+2023-02-28 21:04:16,072 : 		38 truth tables
+2023-02-28 21:04:16,072 : 		38 xorable truth tables
+2023-02-28 21:04:16,081 : 	 After SA gates :
+2023-02-28 21:04:16,081 : 		440 nodes
+2023-02-28 21:04:16,082 : 		396 truth tables
+2023-02-28 21:04:16,082 : 		396 xorable truth tables
+2023-02-28 21:04:16,082 : Processing level 1
+2023-02-28 21:04:17,479 : 
+
+2023-02-28 21:04:31,337 : Processing level 0
+2023-02-28 21:04:31,337 : 
+
+2023-02-28 21:04:31,338 : 
+
+2023-02-28 21:04:31,338 : 	 After merge tree :
+2023-02-28 21:04:31,338 : 		17 nodes
+2023-02-28 21:04:31,338 : 		17 truth tables
+2023-02-28 21:04:31,338 : 		6 xorable truth tables
+2023-02-28 21:04:31,339 : 
+
+2023-02-28 21:04:31,339 : 	 After AS gates :
+2023-02-28 21:04:31,339 : 		53 nodes
+2023-02-28 21:04:31,339 : 		38 truth tables
+2023-02-28 21:04:31,339 : 		38 xorable truth tables
+2023-02-28 21:04:31,348 : 	 After SA gates :
+2023-02-28 21:04:31,348 : 		440 nodes
+2023-02-28 21:04:31,348 : 		396 truth tables
+2023-02-28 21:04:31,348 : 		396 xorable truth tables
+2023-02-28 21:04:31,348 : Processing level 1
+2023-02-28 21:04:31,887 : 
+
+2023-02-28 21:05:18,711 : Processing level 0
+2023-02-28 21:05:18,712 : 
+
+2023-02-28 21:05:18,712 : 
+
+2023-02-28 21:05:18,713 : 	 After merge tree :
+2023-02-28 21:05:18,713 : 		17 nodes
+2023-02-28 21:05:18,713 : 		17 truth tables
+2023-02-28 21:05:18,713 : 		6 xorable truth tables
+2023-02-28 21:05:18,713 : 
+
+2023-02-28 21:05:18,713 : 	 After AS gates :
+2023-02-28 21:05:18,713 : 		53 nodes
+2023-02-28 21:05:18,713 : 		38 truth tables
+2023-02-28 21:05:18,713 : 		38 xorable truth tables
+2023-02-28 21:05:18,722 : 	 After SA gates :
+2023-02-28 21:05:18,722 : 		440 nodes
+2023-02-28 21:05:18,722 : 		396 truth tables
+2023-02-28 21:05:18,722 : 		396 xorable truth tables
+2023-02-28 21:05:18,722 : Processing level 1
+2023-02-28 21:05:19,377 : 
+
+2023-02-28 21:07:58,719 : Processing level 0
+2023-02-28 21:07:58,719 : 
+
+2023-02-28 21:07:58,720 : 
+
+2023-02-28 21:07:58,720 : 	 After merge tree :
+2023-02-28 21:07:58,720 : 		17 nodes
+2023-02-28 21:07:58,720 : 		17 truth tables
+2023-02-28 21:07:58,720 : 		6 xorable truth tables
+2023-02-28 21:07:58,721 : 
+
+2023-02-28 21:07:58,721 : 	 After AS gates :
+2023-02-28 21:07:58,721 : 		53 nodes
+2023-02-28 21:07:58,721 : 		38 truth tables
+2023-02-28 21:07:58,721 : 		38 xorable truth tables
+2023-02-28 21:07:58,729 : 	 After SA gates :
+2023-02-28 21:07:58,729 : 		440 nodes
+2023-02-28 21:07:58,729 : 		396 truth tables
+2023-02-28 21:07:58,729 : 		396 xorable truth tables
+2023-02-28 21:07:58,729 : Processing level 1
+2023-02-28 21:08:43,290 : Processing level 0
+2023-02-28 21:08:43,290 : 
+
+2023-02-28 21:08:43,290 : 
+
+2023-02-28 21:08:43,291 : 	 After merge tree :
+2023-02-28 21:08:43,291 : 		17 nodes
+2023-02-28 21:08:43,291 : 		17 truth tables
+2023-02-28 21:08:43,291 : 		6 xorable truth tables
+2023-02-28 21:08:43,292 : 
+
+2023-02-28 21:08:43,292 : 	 After AS gates :
+2023-02-28 21:08:43,292 : 		53 nodes
+2023-02-28 21:08:43,292 : 		38 truth tables
+2023-02-28 21:08:43,292 : 		38 xorable truth tables
+2023-02-28 21:08:43,303 : 	 After SA gates :
+2023-02-28 21:08:43,303 : 		440 nodes
+2023-02-28 21:08:43,303 : 		396 truth tables
+2023-02-28 21:08:43,303 : 		396 xorable truth tables
+2023-02-28 21:08:43,303 : Processing level 1
+2023-03-01 09:01:05,782 : diff parser start
+2023-03-01 09:01:05,783 : line_lengths old: 1; new: 1
+2023-03-01 09:01:05,784 : -> code[replace] old[1:1] new[1:1]
+2023-03-01 09:01:05,784 : parse_part from 1 to 1 (to 0 in part parser)
+2023-03-01 09:01:05,784 : diff parser end
+2023-03-01 09:01:08,772 : diff parser start
+2023-03-01 09:01:08,772 : line_lengths old: 1; new: 1
+2023-03-01 09:01:08,772 : -> code[replace] old[1:1] new[1:1]
+2023-03-01 09:01:08,773 : parse_part from 1 to 1 (to 0 in part parser)
+2023-03-01 09:01:08,773 : diff parser end
+2023-03-01 09:02:23,918 : Processing level 0
+2023-03-01 09:02:23,918 : 
+
+2023-03-01 09:02:23,919 : 
+
+2023-03-01 09:02:23,919 : 	 After merge tree :
+2023-03-01 09:02:23,919 : 		17 nodes
+2023-03-01 09:02:23,919 : 		17 truth tables
+2023-03-01 09:02:23,920 : 		6 xorable truth tables
+2023-03-01 09:02:23,921 : 
+
+2023-03-01 09:02:23,921 : 	 After AS gates :
+2023-03-01 09:02:23,921 : 		53 nodes
+2023-03-01 09:02:23,921 : 		38 truth tables
+2023-03-01 09:02:23,921 : 		38 xorable truth tables
+2023-03-01 09:02:23,931 : 	 After SA gates :
+2023-03-01 09:02:23,931 : 		440 nodes
+2023-03-01 09:02:23,932 : 		396 truth tables
+2023-03-01 09:02:23,932 : 		396 xorable truth tables
+2023-03-01 09:02:23,932 : Processing level 1
+2023-03-01 09:02:38,764 : Processing level 0
+2023-03-01 09:02:38,764 : 
+
+2023-03-01 09:02:38,765 : 
+
+2023-03-01 09:02:38,765 : 	 After merge tree :
+2023-03-01 09:02:38,765 : 		17 nodes
+2023-03-01 09:02:38,765 : 		17 truth tables
+2023-03-01 09:02:38,765 : 		6 xorable truth tables
+2023-03-01 09:02:38,766 : 
+
+2023-03-01 09:02:38,766 : 	 After AS gates :
+2023-03-01 09:02:38,766 : 		53 nodes
+2023-03-01 09:02:38,766 : 		38 truth tables
+2023-03-01 09:02:38,766 : 		38 xorable truth tables
+2023-03-01 09:02:38,774 : 	 After SA gates :
+2023-03-01 09:02:38,774 : 		440 nodes
+2023-03-01 09:02:38,775 : 		396 truth tables
+2023-03-01 09:02:38,775 : 		396 xorable truth tables
+2023-03-01 09:02:38,775 : Processing level 1
+2023-03-01 09:03:39,996 : Processing level 0
+2023-03-01 09:03:39,997 : 
+
+2023-03-01 09:03:39,998 : 
+
+2023-03-01 09:03:39,998 : 	 After merge tree :
+2023-03-01 09:03:39,998 : 		17 nodes
+2023-03-01 09:03:39,998 : 		17 truth tables
+2023-03-01 09:03:39,998 : 		6 xorable truth tables
+2023-03-01 09:03:39,999 : 
+
+2023-03-01 09:03:39,999 : 	 After AS gates :
+2023-03-01 09:03:39,999 : 		53 nodes
+2023-03-01 09:03:39,999 : 		38 truth tables
+2023-03-01 09:03:39,999 : 		38 xorable truth tables
+2023-03-01 09:03:40,011 : 	 After SA gates :
+2023-03-01 09:03:40,011 : 		440 nodes
+2023-03-01 09:03:40,011 : 		396 truth tables
+2023-03-01 09:03:40,011 : 		396 xorable truth tables
+2023-03-01 09:03:40,011 : Processing level 1
+2023-03-01 09:05:10,637 : diff parser start
+2023-03-01 09:05:10,637 : line_lengths old: 1; new: 1
+2023-03-01 09:05:10,637 : -> code[replace] old[1:1] new[1:1]
+2023-03-01 09:05:10,637 : parse_part from 1 to 1 (to 0 in part parser)
+2023-03-01 09:05:10,637 : diff parser end
+2023-03-01 10:08:47,032 : Processing level 0
+2023-03-01 10:08:47,033 : 
+
+2023-03-01 10:10:15,057 : Processing level 0
+2023-03-01 10:10:15,058 : 
+
+2023-03-01 10:10:15,059 : 
+
+2023-03-01 10:10:15,060 : 	 After merge tree :
+2023-03-01 10:10:15,060 : 		17 nodes
+2023-03-01 10:10:15,060 : 		17 truth tables
+2023-03-01 10:10:15,060 : 		6 xorable truth tables
+2023-03-01 10:10:15,061 : 
+
+2023-03-01 10:10:15,061 : 	 After AS gates :
+2023-03-01 10:10:15,061 : 		53 nodes
+2023-03-01 10:10:15,061 : 		38 truth tables
+2023-03-01 10:10:15,061 : 		38 xorable truth tables
+2023-03-01 10:10:15,067 : 	 After SA gates :
+2023-03-01 10:10:15,067 : 		440 nodes
+2023-03-01 10:10:15,067 : 		396 truth tables
+2023-03-01 10:10:15,067 : 		396 xorable truth tables
+2023-03-01 10:10:15,067 : Processing level 1
+2023-03-01 10:10:15,519 : 
+
+2023-03-01 10:12:10,539 : Processing level 0
+2023-03-01 10:12:10,539 : 
+
+2023-03-01 10:12:10,540 : 
+
+2023-03-01 10:12:10,541 : 	 After merge tree :
+2023-03-01 10:12:10,541 : 		17 nodes
+2023-03-01 10:12:10,541 : 		17 truth tables
+2023-03-01 10:12:10,541 : 		6 xorable truth tables
+2023-03-01 10:12:10,541 : 
+
+2023-03-01 10:12:10,541 : 	 After AS gates :
+2023-03-01 10:12:10,541 : 		53 nodes
+2023-03-01 10:12:10,541 : 		38 truth tables
+2023-03-01 10:12:10,541 : 		38 xorable truth tables
+2023-03-01 10:12:10,549 : 	 After SA gates :
+2023-03-01 10:12:10,549 : 		440 nodes
+2023-03-01 10:12:10,549 : 		396 truth tables
+2023-03-01 10:12:10,549 : 		396 xorable truth tables
+2023-03-01 10:12:10,549 : Processing level 1
+2023-03-01 10:12:11,004 : 
+
+2023-03-01 10:13:51,951 : 
+
+2023-03-01 10:51:04,833 : Processing level 0
+2023-03-01 10:51:04,834 : 
+
+2023-03-01 10:51:04,835 : 
+
+2023-03-01 10:51:04,836 : 	 After merge tree :
+2023-03-01 10:51:04,836 : 		17 nodes
+2023-03-01 10:51:04,836 : 		17 truth tables
+2023-03-01 10:51:04,836 : 		6 xorable truth tables
+2023-03-01 10:51:04,837 : 
+
+2023-03-01 10:51:04,837 : 	 After AS gates :
+2023-03-01 10:51:04,837 : 		53 nodes
+2023-03-01 10:51:04,837 : 		38 truth tables
+2023-03-01 10:51:04,837 : 		38 xorable truth tables
+2023-03-01 10:51:04,846 : 	 After SA gates :
+2023-03-01 10:51:04,846 : 		440 nodes
+2023-03-01 10:51:04,846 : 		396 truth tables
+2023-03-01 10:51:04,846 : 		396 xorable truth tables
+2023-03-01 10:51:04,846 : Processing level 1
+2023-03-01 10:51:05,307 : 
+
+2023-03-01 10:52:35,799 : Processing level 0
+2023-03-01 10:52:35,799 : 
+
+2023-03-01 10:52:35,800 : 
+
+2023-03-01 10:52:35,801 : 	 After merge tree :
+2023-03-01 10:52:35,801 : 		17 nodes
+2023-03-01 10:52:35,801 : 		17 truth tables
+2023-03-01 10:52:35,801 : 		6 xorable truth tables
+2023-03-01 10:52:35,801 : 
+
+2023-03-01 10:52:35,801 : 	 After AS gates :
+2023-03-01 10:52:35,801 : 		53 nodes
+2023-03-01 10:52:35,801 : 		38 truth tables
+2023-03-01 10:52:35,801 : 		38 xorable truth tables
+2023-03-01 10:52:35,807 : 	 After SA gates :
+2023-03-01 10:52:35,807 : 		440 nodes
+2023-03-01 10:52:35,807 : 		396 truth tables
+2023-03-01 10:52:35,807 : 		396 xorable truth tables
+2023-03-01 10:52:35,807 : Processing level 1
+2023-03-01 10:52:36,277 : 
+
+2023-03-01 10:53:27,261 : 
+
+2023-03-01 10:58:59,654 : 
+
+2023-03-01 11:05:06,322 : 	 After merge tree :
+2023-03-01 11:05:06,322 : 		51424 nodes
+2023-03-01 11:05:06,322 : 		24267 truth tables
+2023-03-01 11:05:06,322 : 		21603 xorable truth tables
+2023-03-01 11:26:41,020 : Processing level 0
+2023-03-01 11:27:11,302 : Processing level 0
+2023-03-01 11:28:49,057 : Using selector: KqueueSelector
+2023-03-01 11:28:49,062 : Using selector: KqueueSelector
+2023-03-01 11:28:53,567 : Using selector: KqueueSelector
+2023-03-01 11:28:55,082 : Processing level 0
+2023-03-01 11:28:55,084 : 
+
+2023-03-01 11:29:02,378 : Processing level 0
+2023-03-01 11:29:02,946 : 
+
+2023-03-01 11:29:03,559 : Using selector: KqueueSelector
+2023-03-01 11:29:03,564 : Using selector: KqueueSelector
+2023-03-01 11:29:37,360 : Using selector: KqueueSelector
+2023-03-01 11:29:38,746 : Processing level 0
+2023-03-01 11:29:39,122 : 
+
+2023-03-01 11:29:39,133 : 
+
+2023-03-01 11:29:39,142 : 	 After merge tree :
+2023-03-01 11:29:39,142 : 		17 nodes
+2023-03-01 11:29:39,142 : 		17 truth tables
+2023-03-01 11:29:39,142 : 		6 xorable truth tables
+2023-03-01 11:29:39,143 : 
+
+2023-03-01 11:29:39,143 : 	 After AS gates :
+2023-03-01 11:29:39,143 : 		53 nodes
+2023-03-01 11:29:39,143 : 		38 truth tables
+2023-03-01 11:29:39,143 : 		38 xorable truth tables
+2023-03-01 11:29:39,149 : 	 After SA gates :
+2023-03-01 11:29:39,149 : 		440 nodes
+2023-03-01 11:29:39,149 : 		396 truth tables
+2023-03-01 11:29:39,149 : 		396 xorable truth tables
+2023-03-01 11:29:39,149 : Processing level 1
+2023-03-01 11:29:39,868 : 
+
+2023-03-01 11:30:24,193 : Processing level 0
+2023-03-01 11:30:24,602 : 
+
+2023-03-01 11:30:24,609 : 
+
+2023-03-01 11:30:24,617 : 	 After merge tree :
+2023-03-01 11:30:24,617 : 		17 nodes
+2023-03-01 11:30:24,617 : 		17 truth tables
+2023-03-01 11:30:24,617 : 		6 xorable truth tables
+2023-03-01 11:30:24,618 : 
+
+2023-03-01 11:30:24,618 : 	 After AS gates :
+2023-03-01 11:30:24,618 : 		53 nodes
+2023-03-01 11:30:24,618 : 		38 truth tables
+2023-03-01 11:30:24,618 : 		38 xorable truth tables
+2023-03-01 11:30:24,625 : 	 After SA gates :
+2023-03-01 11:30:24,625 : 		440 nodes
+2023-03-01 11:30:24,625 : 		396 truth tables
+2023-03-01 11:30:24,625 : 		396 xorable truth tables
+2023-03-01 11:30:24,625 : Processing level 1
+2023-03-01 11:30:25,252 : 
+
+2023-03-01 11:30:48,418 : Processing level 0
+2023-03-01 11:30:48,793 : 
+
+2023-03-01 11:30:48,801 : 
+
+2023-03-01 11:30:48,808 : 	 After merge tree :
+2023-03-01 11:30:48,808 : 		17 nodes
+2023-03-01 11:30:48,808 : 		17 truth tables
+2023-03-01 11:30:48,808 : 		6 xorable truth tables
+2023-03-01 11:30:48,808 : 
+
+2023-03-01 11:30:48,809 : 	 After AS gates :
+2023-03-01 11:30:48,809 : 		53 nodes
+2023-03-01 11:30:48,809 : 		38 truth tables
+2023-03-01 11:30:48,809 : 		38 xorable truth tables
+2023-03-01 11:30:48,816 : 	 After SA gates :
+2023-03-01 11:30:48,817 : 		440 nodes
+2023-03-01 11:30:48,817 : 		396 truth tables
+2023-03-01 11:30:48,817 : 		396 xorable truth tables
+2023-03-01 11:30:48,817 : Processing level 1
+2023-03-01 11:30:51,099 : 
+
+2023-03-01 11:31:19,327 : Processing level 0
+2023-03-01 11:31:19,672 : 
+
+2023-03-01 11:31:19,693 : 
+
+2023-03-01 11:31:19,714 : 	 After merge tree :
+2023-03-01 11:31:19,714 : 		17 nodes
+2023-03-01 11:31:19,714 : 		17 truth tables
+2023-03-01 11:31:19,714 : 		6 xorable truth tables
+2023-03-01 11:31:19,718 : 
+
+2023-03-01 11:31:19,718 : 	 After AS gates :
+2023-03-01 11:31:19,718 : 		53 nodes
+2023-03-01 11:31:19,718 : 		38 truth tables
+2023-03-01 11:31:19,718 : 		38 xorable truth tables
+2023-03-01 11:31:19,728 : 	 After SA gates :
+2023-03-01 11:31:19,728 : 		440 nodes
+2023-03-01 11:31:19,728 : 		396 truth tables
+2023-03-01 11:31:19,728 : 		396 xorable truth tables
+2023-03-01 11:31:19,728 : Processing level 1
+2023-03-01 11:31:21,893 : 
+
+2023-03-01 11:36:28,757 : 
+
+2023-03-01 11:39:11,699 : Processing level 0
+2023-03-01 11:39:12,338 : 
+
+2023-03-01 11:39:12,349 : 
+
+2023-03-01 11:39:12,382 : 	 After merge tree :
+2023-03-01 11:39:12,382 : 		17 nodes
+2023-03-01 11:39:12,382 : 		17 truth tables
+2023-03-01 11:39:12,382 : 		6 xorable truth tables
+2023-03-01 11:39:12,382 : 
+
+2023-03-01 11:39:12,382 : 	 After AS gates :
+2023-03-01 11:39:12,382 : 		53 nodes
+2023-03-01 11:39:12,382 : 		38 truth tables
+2023-03-01 11:39:12,382 : 		38 xorable truth tables
+2023-03-01 11:39:12,397 : 	 After SA gates :
+2023-03-01 11:39:12,397 : 		440 nodes
+2023-03-01 11:39:12,397 : 		396 truth tables
+2023-03-01 11:39:12,397 : 		396 xorable truth tables
+2023-03-01 11:39:12,397 : Processing level 1
+2023-03-01 11:39:16,949 : 
+
+2023-03-01 11:42:34,842 : 
+
+2023-03-01 11:58:53,291 : Processing level 0
+2023-03-01 11:58:53,293 : 	 After merge tree :
+2023-03-01 11:58:53,293 : 		6 nodes
+2023-03-01 11:58:53,293 : 		6 truth tables
+2023-03-01 11:58:53,293 : 		6 xorable truth tables
+2023-03-01 11:58:53,293 : 
+
+2023-03-01 11:58:53,293 : 	 After AS gates :
+2023-03-01 11:58:53,293 : 		20 nodes
+2023-03-01 11:58:53,293 : 		16 truth tables
+2023-03-01 11:58:53,293 : 		16 xorable truth tables
+2023-03-01 11:58:53,295 : 	 After SA gates :
+2023-03-01 11:58:53,295 : 		162 nodes
+2023-03-01 11:58:53,295 : 		134 truth tables
+2023-03-01 11:58:53,295 : 		134 xorable truth tables
+2023-03-01 11:58:53,295 : Processing level 1
+2023-03-01 11:58:53,295 : 	 After merge tree :
+2023-03-01 11:58:53,295 : 		162 nodes
+2023-03-01 11:58:53,295 : 		134 truth tables
+2023-03-01 11:58:53,295 : 		134 xorable truth tables
+2023-03-01 11:58:53,368 : 
+
+2023-03-01 11:58:53,368 : 	 After AS gates :
+2023-03-01 11:58:53,368 : 		3212 nodes
+2023-03-01 11:58:53,368 : 		1829 truth tables
+2023-03-01 11:58:53,368 : 		1829 xorable truth tables
+2023-03-01 12:03:01,806 : Processing level 0
+2023-03-01 12:06:34,001 : Processing level 0
+2023-03-01 12:07:07,188 : Processing level 0
+2023-03-01 12:07:32,342 : Processing level 0
+2023-03-01 12:07:36,298 : 
+
+2023-03-01 12:07:36,303 : 
+
+2023-03-01 12:07:36,308 : 	 After merge tree :
+2023-03-01 12:07:36,308 : 		17 nodes
+2023-03-01 12:07:36,308 : 		17 truth tables
+2023-03-01 12:07:36,308 : 		6 xorable truth tables
+2023-03-01 12:07:36,309 : 
+
+2023-03-01 12:07:36,309 : 	 After AS gates :
+2023-03-01 12:07:36,309 : 		53 nodes
+2023-03-01 12:07:36,309 : 		38 truth tables
+2023-03-01 12:07:36,309 : 		38 xorable truth tables
+2023-03-01 12:07:36,320 : 	 After SA gates :
+2023-03-01 12:07:36,320 : 		440 nodes
+2023-03-01 12:07:36,320 : 		396 truth tables
+2023-03-01 12:07:36,320 : 		396 xorable truth tables
+2023-03-01 12:07:36,321 : Processing level 1
+2023-03-01 12:07:37,171 : 
+
+2023-03-01 13:41:55,253 : 
+
+2023-03-01 13:51:27,287 : Using selector: KqueueSelector
+2023-03-01 13:59:31,694 : Processing level 0
+2023-03-01 13:59:31,867 : Using selector: KqueueSelector
+2023-03-01 13:59:31,874 : Using selector: KqueueSelector
+2023-03-01 14:01:04,847 : Processing level 0
+2023-03-01 14:12:25,795 : Processing level 0
+2023-03-01 14:12:25,795 : Using selector: KqueueSelector
+2023-03-01 14:12:26,226 : Using selector: KqueueSelector
+2023-03-01 14:12:26,231 : Using selector: KqueueSelector
+2023-03-01 14:23:32,529 : Using selector: KqueueSelector
+2023-03-01 14:28:41,622 : pickle loaded: /Users/brainkz/anaconda3/lib/python3.9/site-packages/jedi/third_party/typeshed/stdlib/3/builtins.pyi
+2023-03-01 14:28:43,375 : diff parser start
+2023-03-01 14:28:43,375 : line_lengths old: 1; new: 1
+2023-03-01 14:28:43,375 : -> code[replace] old[1:1] new[1:1]
+2023-03-01 14:28:43,375 : parse_part from 1 to 1 (to 0 in part parser)
+2023-03-01 14:28:43,375 : diff parser end
+2023-03-01 14:28:45,348 : diff parser start
+2023-03-01 14:28:45,348 : line_lengths old: 1; new: 1
+2023-03-01 14:28:45,348 : -> code[replace] old[1:1] new[1:1]
+2023-03-01 14:28:45,348 : parse_part from 1 to 1 (to 0 in part parser)
+2023-03-01 14:28:45,348 : diff parser end
+2023-03-01 15:15:43,376 : 
+
+2023-03-01 16:37:49,869 : Using selector: KqueueSelector
+2023-03-01 16:37:50,440 : Using selector: KqueueSelector
+2023-03-01 16:37:50,452 : Using selector: KqueueSelector
+2023-03-01 16:38:08,344 : diff parser start
+2023-03-01 16:38:08,344 : line_lengths old: 1; new: 1
+2023-03-01 16:38:08,344 : -> code[replace] old[1:1] new[1:1]
+2023-03-01 16:38:08,345 : parse_part from 1 to 1 (to 0 in part parser)
+2023-03-01 16:38:08,345 : diff parser end
+2023-03-01 16:55:49,344 : Using selector: KqueueSelector
+2023-03-01 16:55:49,874 : Using selector: KqueueSelector
+2023-03-01 16:55:49,879 : Using selector: KqueueSelector
+2023-03-01 16:55:53,875 : Using selector: KqueueSelector
