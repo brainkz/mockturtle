@@ -319,9 +319,9 @@ std::tuple<ULL, bool> create_node(TT _func, US _last_func, UI _cost, UI _depth, 
 
         if (_xorable)
         {
-            fmt::print("\t\t\t\tFunction is xorable\n");
             // Node& best_xor = GEX[_func];
             Node& best_xor = get_gex(_func);    
+            fmt::print("\t\t\t\tBest X      {}: {}, {}\n", _func, best_xor.lvl, best_xor.cost);
             if (std::tie(lvl, _cost ) <= std::tie(best_any.lvl, best_any.cost))
             {
                 hash_map[_hash] = Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
@@ -603,10 +603,11 @@ std::tuple<UI, std::unordered_map<ULL, UI>, std::unordered_set<ULL>> node_cost_s
 }
 
 // assumes precomputed gate_cost, ct_spl, and non_splittable_nodes
-UI node_cost(ULL h2, UI gate_cost, std::unordered_map<ULL, UI> ct_spl, std::unordered_set<ULL> non_splittable_nodes)
+std::tuple<UI, bool> node_cost(ULL h2, UI gate_cost, std::unordered_map<ULL, UI> ct_spl, std::unordered_set<ULL> non_splittable_nodes, UI limit)
 {
     std::stack<ULL> stack;
     stack.push(h2);
+    if (gate_cost > limit) return std::make_tuple(INF, false);
     while (!stack.empty())
     {
         ULL n_hash = stack.top();
@@ -617,6 +618,7 @@ UI node_cost(ULL h2, UI gate_cost, std::unordered_map<ULL, UI> ct_spl, std::unor
         if (ct_spl[n_hash] == 1)
         {
             gate_cost += COSTS[n.last_func];
+            if (gate_cost > limit) return std::make_tuple(INF, false);      
             // fmt::print("\t\t\tFirst time, adding the cost of {} ({}). Total cost is {}\n", F2STR[n.last_func], COSTS[n.last_func], gate_cost);
             for (const auto& p_hash : n.parent_hashes)
             {
@@ -628,6 +630,7 @@ UI node_cost(ULL h2, UI gate_cost, std::unordered_map<ULL, UI> ct_spl, std::unor
         else
         {
             gate_cost += COSTS[fSPL];
+            if (gate_cost > limit) return std::make_tuple(INF, false);
             // fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[n.last_func], gate_cost);
         }
         if (n.last_func == fAND || n.last_func == fOR)
@@ -647,13 +650,15 @@ UI node_cost(ULL h2, UI gate_cost, std::unordered_map<ULL, UI> ct_spl, std::unor
             Node& n = GNM[n_hash];
             auto last_func = n.last_func;
             gate_cost += COSTS[last_func] * (count - 1); // duplicate a gate
+            if (gate_cost > limit) return std::make_tuple(INF, false);
             if (last_func == fXOR)
             {
                 gate_cost += (count - 1) * COSTS[fSPL]; // need to do twice more splittings for duplicating an XOR gate
+                if (gate_cost > limit) return std::make_tuple(INF, false);
             }
         }
     }
-    return gate_cost;
+    return std::make_tuple(gate_cost, true);
 }
 
 std::tuple<ULL, bool> check_cb(Node& ni, Node& nj, std::vector<ULL>& fresh_nodes)
@@ -835,10 +840,12 @@ void cb_generation(US lvl)
                 Node& nj =  GNM[hj];
                 TT func = ni.func | nj.func;
                 if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
+                // if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
                 bool xorable = (func == (ni.func ^ nj.func));
-
-                UI cost = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes);
-                
+                //if inputs are already more expensive, skip
+                UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
+                auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit);
+                if (~status) continue;
                 auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
                 if (added)
                 {
@@ -864,7 +871,10 @@ void cb_generation(US lvl)
                 if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
                 bool xorable = (func == (ni.func ^ nj.func));
 
-                UI cost = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes);
+                UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
+                auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit);
+                if (~status) continue;
+                // UI cost = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes);
                 
                 auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
                 if (added)
