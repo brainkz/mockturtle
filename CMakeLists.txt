@@ -14,6 +14,8 @@ option(ENABLE_COVERAGE "Enable coverage reporting for gcc/clang" OFF)
 option(ENABLE_MATPLOTLIB "Enable matplotlib library in experiments" OFF)
 option(ENABLE_NAUTY "Enable the Nauty library for percy" OFF)
 
+add_compile_options(-I /opt/homebrew/Cellar/tbb/2021.8.0/include -L /opt/homebrew/Cellar/tbb/2021.8.0/lib -ltbb)
+
 if(UNIX)
   # show quite some warnings (but remove some intentionally)
   include(CheckCXXCompilerFlag)

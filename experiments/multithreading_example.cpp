@@ -1,5 +1,37 @@
+/*
+#include <iostream>
+#include <vector>
+#include <tbb/tbb.h>
+
+void parallel_loop(std::vector<int>& v) {
+  tbb::parallel_for(
+    tbb::blocked_range<int>(0, v.size()),
+    [&](const tbb::blocked_range<int>& r) {
+      for (int i = r.begin(); i < r.end(); i++) {
+        v[i] *= 2;
+      }
+    }
+  );
+}
+
+int main() {
+  std::vector<int> v = {1, 2, 3, 4, 5};
+
+  parallel_loop(v);
+
+  for (int i : v) {
+    std::cout << i << " ";
+  }
+  std::cout << std::endl;
+
+  return 0;
+}
+*/
+
+
 #include <algorithm>
-// #include <execution>
+#include <execution>
+#include <tbb/tbb.h>
 #include <vector>
 
 int main() {

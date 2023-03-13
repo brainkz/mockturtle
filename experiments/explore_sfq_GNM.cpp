@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <tuple>
 #include <functional>
@@ -9,8 +10,8 @@
 #include <array>
 #include <fmt/format.h>
 #include <thread>
-#include <algorithm>
-#include <execution>
+// #include <algorithm>
+// #include <execution>
 
 typedef unsigned short US;
 typedef unsigned int   UI;
@@ -95,6 +96,7 @@ public:
     std::vector<ULL> parent_hashes;
     UI lvl = INF;
     ULL hash = 0;
+
     #if accel_cost
     std::unordered_map<ULL, UI> predecessor_count;
     std::unordered_set<ULL> non_splittable_pred;
@@ -882,6 +884,71 @@ void sa_generation(US lvl)
     remove_dominated();
 }
 
+#pragma region write_output
+
+void write_csv_gnm(const std::unordered_map<ULL, Node>& gnm, const std::string& filename) {
+    // Open output file
+    std::ofstream outfile(filename);
+
+    // Write header row to CSV file
+    outfile << "Hash,Func,Last Func,Cost,Depth,Xorable,Parent Hashes,Lvl" << std::endl;
+
+    // Write data to CSV file
+    for (const auto& [hash, node] : gnm) {
+        outfile << hash << ",";
+        outfile << node.func << ",";
+        outfile << node.last_func << ",";
+        outfile << node.cost << ",";
+        outfile << node.depth << ",";
+        outfile << node.xorable << ",";
+        for (const auto& parent_hash : node.parent_hashes) {
+            outfile << parent_hash << "|";
+        }
+        outfile << ",";
+        outfile << node.lvl << std::endl;
+    }
+
+    // Close output file
+    outfile.close();
+}
+
+void write_csv_arr(const std::array<Node, NUM_TT>& arr_hashes, const std::string& filename) {
+    // Open output file
+    std::ofstream outfile(filename);
+
+    // Write header row to CSV file
+    outfile << "Hash,Func,Last Func,Cost,Depth,Xorable,Lvl" << std::endl;
+
+    // Write data to CSV file
+    for (const auto& node : arr_hashes) {
+        outfile << node.hash << ",";
+        outfile << node.func << ",";
+        outfile << node.last_func << ",";
+        outfile << node.cost << ",";
+        outfile << node.depth << ",";
+        outfile << node.xorable << ",";
+        outfile << node.lvl << std::endl;
+    }
+
+    // Close output file
+    outfile.close();
+}
+
+#pragma endregion
+
+bool is_done()
+{
+    #pragma vector
+    for (auto i = 0u; i < NUM_TT; i++)
+    {
+        if (GEX[i].cost == INF || GEX[i].depth == INF)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 int main() {
 
     for (TT func : gen_pi_func(NUM_VARS))
@@ -891,23 +958,79 @@ int main() {
     create_node(   0, fPI, 0, 0, true);
     create_node(ONES, fPI, 0, 0, true);
     
-
-    std::for_each(
-        std::execution::par,
-        foo.begin(),
-        foo.end(),
-        [](auto&& item)
-        {
-            //do stuff with item
-        }
-    );
-    
-    US depth = 1;
-    for (US lvl = 0; lvl < 3; lvl ++)
+    for (US lvl = 0; lvl < 1; lvl ++)
     {
         cb_generation(lvl);
+        if (is_done()) break;
         as_generation(lvl);
+        if (is_done()) break;
         sa_generation(lvl);
+        if (is_done()) break;
     }
+
+    // Open output file for GNM variable
+    std::ofstream outfile_gnm("output_gnm.csv");
+
+    // Write header row to CSV file
+    outfile_gnm << "Hash,Func,Last Func,Cost,Depth,Xorable,Parent Hashes,Lvl" << std::endl;
+
+    // Write data to CSV file for GNM variable
+    for (const auto& [hash, node] : GNM) {
+        outfile_gnm << hash << ",";
+        outfile_gnm << node.func << ",";
+        outfile_gnm << node.last_func << ",";
+        outfile_gnm << node.cost << ",";
+        outfile_gnm << node.depth << ",";
+        outfile_gnm << node.xorable << ",";
+        for (const auto& parent_hash : node.parent_hashes) {
+            outfile_gnm << parent_hash << "|";
+        }
+        outfile_gnm << ",";
+        outfile_gnm << node.lvl << std::endl;
+    }
+
+    // Close output file for GNM variable
+    outfile_gnm.close();
+
+    // Open output file for GEA variable
+    std::ofstream outfile_gea("output_gea.csv");
+
+    // Write header row to CSV file
+    outfile_gea << "Hash,Func,Last Func,Cost,Depth,Xorable,Lvl" << std::endl;
+
+    // Write data to CSV file for GEA variable
+    for (const auto& node : GEA) {
+        outfile_gea << node.hash << ",";
+        outfile_gea << node.func << ",";
+        outfile_gea << node.last_func << ",";
+        outfile_gea << node.cost << ",";
+        outfile_gea << node.depth << ",";
+        outfile_gea << node.xorable << ",";
+        outfile_gea << node.lvl << std::endl;
+    }
+
+    // Close output file for GEA variable
+    outfile_gea.close();
+
+    // Open output file for GEX variable
+    std::ofstream outfile_gex("output_gex.csv");
+
+    // Write header row to CSV file
+    outfile_gex << "Hash,Func,Last Func,Cost,Depth,Xorable,Lvl" << std::endl;
+
+    // Write data to CSV file for GEX variable
+    for (const auto& node : GEX) {
+        outfile_gex << node.hash << ",";
+        outfile_gex << node.func << ",";
+        outfile_gex << node.last_func << ",";
+        outfile_gex << node.cost << ",";
+        outfile_gex << node.depth << ",";
+        outfile_gex << node.xorable << ",";
+        outfile_gex << node.lvl << std::endl;
+    }
+
+    // Close output file for GEX variable
+    outfile_gex.close();
+
     return 0;
 }
