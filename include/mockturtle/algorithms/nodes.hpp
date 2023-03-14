@@ -153,7 +153,13 @@ public:
 
     std::string to_str() const
     {
-        return fmt::format("{:016b}{} | {} | c{}, d{}, l{} |  ", func, (xorable?'x':' '), F2STR[(US)last_func], cost, depth, lvl);
+        // std::string s;
+        // for (auto & ph : parent_hashes)
+        // {
+        //     Node & ref = GNM[ph];
+        //     s += fmt::format(" {} ", ref.func);
+        // }
+        return fmt::format("{:016b}{} | {} | c{}, d{}, l{} |", func, (xorable?'x':' '), F2STR[(US)last_func], cost, depth, lvl);
         // return fmt::format("{:04x}{} | {} | {}, {} | ", func, (xorable?'x':' '), F2STR[(US)last_func], cost, depth);
         // return "Func: " + std::to_string(func) + "|Last: " + std::to_string(last_func) + "|Cost: " + std::to_string(cost) + "|Depth: " + std::to_string(depth) + "|X: " + std::to_string(xorable);
     }
