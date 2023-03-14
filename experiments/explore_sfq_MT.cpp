@@ -491,7 +491,10 @@ void threaded_cb_old_new(const std::vector<ULL>& old_nodes, const std::vector<UL
             TT func = funcs[i][j];
             bool xorable = xorables[i][j];
             UI cost = costs[i][j];
+            // std::tuple<ULL, bool> tup = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
             auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
+            // ULL nhash = ;// auto [nhash, added]
+            // bool added = std::get<1>(tup);// auto [nhash, added]
             if (added)
             {
                 fresh_nodes.push_back(nhash);
@@ -911,7 +914,7 @@ void cb_generation(US lvl)
                 }
             }
         }
-    #endif batch
+    #endif
         old_nodes.insert(old_nodes.end(), new_nodes.begin(), new_nodes.end());
         new_nodes.clear();
         new_nodes.insert(new_nodes.end(), fresh_nodes.begin(), fresh_nodes.end());
@@ -1149,7 +1152,7 @@ void sa_generation(US lvl)
     // US tgt_depth = lvl * 3 + 3;
     // xor-combine the nodes
     fmt::print("\t{}: AND/OR {} nodes\n", lvl, nodes.size());
-    #ifndef batch
+    #if (THREADING_MODE == 2)
         #pragma omp parallel for num_threads(10)
         for (UL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
         {
@@ -1161,6 +1164,7 @@ void sa_generation(US lvl)
             if (!ni.xorable || !nj.xorable) continue;
             auto [hash_and, added_and, hash_or, added_or] = check_and_or(ni, nj);
         }
+    // #elif (THREADING_MODE == 1)
     #else
         // ULL total_combs = nodes.size() * (nodes.size() - 1) / 2;
         for (auto i = 0u; i < nodes.size(); i++)
