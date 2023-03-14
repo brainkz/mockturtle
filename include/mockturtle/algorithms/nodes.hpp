@@ -169,3 +169,115 @@ namespace std {
         }
     };
 }
+
+
+#pragma region write_output
+
+void write_csv_gnm(const std::unordered_map<ULL, Node>& gnm, const std::string& filename) {
+    // Open output file
+    std::ofstream outfile(filename);
+
+    // Write header row to CSV file
+    outfile << "Hash,Func,Last Func,Cost,Depth,Xorable,Parent Hashes,Lvl" << std::endl;
+
+    // Write data to CSV file
+    for (const auto& [hash, node] : gnm) {
+        outfile << hash << ",";
+        outfile << node.func << ",";
+        outfile << node.last_func << ",";
+        outfile << node.cost << ",";
+        outfile << node.depth << ",";
+        outfile << node.xorable << ",";
+        for (const auto& parent_hash : node.parent_hashes) {
+            outfile << parent_hash << "|";
+        }
+        outfile << ",";
+        outfile << node.lvl << std::endl;
+    }
+
+    // Close output file
+    outfile.close();
+}
+
+void write_csv_arr(const std::array<ULL, NUM_TT>& arr_hashes, const std::string& filename) {
+    // Open output file
+    std::ofstream outfile(filename);
+
+    // Write header row to CSV file
+    outfile << "Hash" << std::endl;
+
+    // Write data to CSV file
+    for (const auto& hash : arr_hashes) {
+        outfile << hash << std::endl;
+    }
+
+    // Close output file
+    outfile.close();
+}
+
+std::unordered_map<ULL, Node> read_csv_gnm(const std::string& filename) {
+    // Open input file
+    std::ifstream infile(filename);
+    
+    std::unordered_map<ULL, Node> gnm;
+
+    // Parse CSV file and populate GNM variable
+    std::string line;
+    std::getline(infile, line);  // skip header row
+    while (std::getline(infile, line)) {
+        std::stringstream ss;
+        ss.str(line);
+        std::string field;
+        ULL hash;
+        Node node;
+        std::getline(ss, field, ',');
+        std::stringstream(field) >> hash;
+        std::getline(ss, field, ',');
+        std::stringstream(field) >> node.func;
+        std::getline(ss, field, ',');
+        std::stringstream(field) >> node.last_func;
+        std::getline(ss, field, ',');
+        std::stringstream(field) >> node.cost;
+        std::getline(ss, field, ',');
+        std::stringstream(field) >> node.depth;
+        std::getline(ss, field, ',');
+        std::stringstream(field) >> node.xorable;
+        std::getline(ss, field, ',');
+        std::stringstream parent_hashes_ss(field);
+        while (std::getline(parent_hashes_ss, field, '|')) {
+            ULL parent_hash;
+            std::stringstream(field) >> parent_hash;
+            node.parent_hashes.push_back(parent_hash);
+        }
+        std::getline(ss, field, ',');
+        std::stringstream(field) >> node.lvl;
+        gnm[hash] = node;
+    }
+
+    // Close input file
+    infile.close();
+    return gnm;
+}
+
+std::array<ULL, NUM_TT> read_csv_arr(const std::string& filename) {
+    // Open input file
+    std::ifstream infile(filename);
+    std::array<ULL, NUM_TT> arr_hashes;
+
+    // Parse CSV file and populate array
+    std::string line;
+    std::getline(infile, line);  // skip header row
+    UI index = 0;
+    while (std::getline(infile, line) && index < NUM_TT) {
+        std::stringstream ss(line);
+        std::string field;
+        std::getline(ss, field, ',');
+        std::stringstream(field) >> arr_hashes[index++];
+    }
+
+    // Close input file
+    infile.close();
+    return arr_hashes;
+}
+
+#pragma endregion
