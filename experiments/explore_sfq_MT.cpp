@@ -457,17 +457,27 @@ void threaded_old_new_or(const std::vector<ULL>& hashes_i, const std::vector<ULL
     }
 }
 
-void threaded_cb_old_new(const std::vector<ULL>& old_nodes, const std::vector<ULL>& new_nodes, const UI depth, const std::vector<ULL>& fresh_nodes, const UI num_threads = NUM_THREADS)
+void threaded_cb_old_new(const std::vector<ULL>& old_nodes, const std::vector<ULL>& new_nodes, const UI depth, std::vector<ULL>& fresh_nodes, UI num_threads = NUM_THREADS)
 {
     const UI M = old_nodes.size();
+    if (M == 0)
+    {
+        return;
+    }
     const UI N = new_nodes.size();
-    const UI chunk_size = M / num_threads;
-    
-    std::vector<std::vector<UI>> funcs;
-    std::vector<std::vector<bool>> xorables;
-    std::vector<std::vector<UI>> costs;
+    UI chunk_size = M / num_threads;
+    if (chunk_size == 0)
+    {
+        num_threads = 1;
+        chunk_size = M;
+    }
+    std::vector<std::vector<int>> vec(M, std::vector<int>(N, 0));
 
-    fmt::print("\t\tCalculating func, xorable, and cost for {} old nodes and {} new nodes using {} threads\n", M, N, num_threads);
+    std::vector<std::vector<UI>> funcs(M, std::vector<UI>(N, 0));
+    std::vector<std::vector<bool>> xorables(M, std::vector<bool>(N, false));
+    std::vector<std::vector<UI>> costs(M, std::vector<UI>(N, INF));
+
+    fmt::print("\t\tCalculating func, xorable, and cost for {} old nodes and {} new nodes. Threads: {}; Chunk size: {} \n", M, N, num_threads, chunk_size);
     std::vector<std::thread> threads(num_threads);
     for (UI i = 0; i < num_threads; i++) {
         const UI start_row = i * chunk_size;
@@ -480,7 +490,7 @@ void threaded_cb_old_new(const std::vector<ULL>& old_nodes, const std::vector<UL
 
     for (auto i = 0u; i < M; i++)
     {
-        fmt::print("\nCombining {} out of {} ({:f}\%) \r", i++, old_nodes.size(), 100 * (float)i / (float)old_nodes.size());
+        fmt::print("Combining {} out of {} ({:f}\%) \n", (i+1), old_nodes.size(), 100 * (float)(i+1) / (float)old_nodes.size());
         ULL hi = old_nodes[i];
         Node& ni =  GNM[hi];
         for (auto j = 0u; j < N; j++)
@@ -505,41 +515,55 @@ void threaded_cb_old_new(const std::vector<ULL>& old_nodes, const std::vector<UL
 
 void threaded_new_new_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::vector<bool>& xorables, std::vector<UI>& costs, const UI start_k, const UI end_k, const UI gate_cost) 
 {
+    // fmt::print("\t\tFunction is called\n");
     const UI N = hashes.size();
+    // fmt::print("\t\tIterating between {} and {}\n", start_k, end_k);
     for (UL k = start_k; k < end_k; k++)
-    {
+    {   
         UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);
-        UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2;
-        ULL hi = hashes[i];
-        Node & ni = GNM[hi];
-        ULL hj = hashes[j];
-        Node & nj = GNM[hj];
-        funcs[k] = ni.func | nj.func;
-        xorables[k] = (ni.func ^ nj.func) == funcs[k];
-        costs[k] = node_cost(ni, nj, gate_cost);
+        UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
+        ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
+        Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+        ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
+        Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+        funcs[k] = ni.func | nj.func; // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
+        xorables[k] = (ni.func ^ nj.func) == funcs[k]; // fmt::print("\t\t Xorable status = {}\n", xorables[k]);
+        costs[k] = node_cost(ni, nj, gate_cost); // fmt::print("\t\t Cost = {}\n", costs[k]);
     }
 }
 
-void threaded_cb_new_new(const std::vector<ULL>& new_nodes, const UI depth, const std::vector<ULL>& fresh_nodes, const UI num_threads = NUM_THREADS)
+void threaded_cb_new_new(const std::vector<ULL>& new_nodes, const UI depth, std::vector<ULL>& fresh_nodes, UI num_threads = NUM_THREADS)
 {
     const UI N = new_nodes.size();
+    if (N <= 1)
+    {
+        return;
+    }
     const UI Ncombs = N * (N - 1) / 2;
-    const UI chunk_size = N / num_threads;
+    UI chunk_size = Ncombs / num_threads;
+    if (chunk_size == 0)
+    {
+        num_threads = 1;
+        chunk_size = Ncombs;
+    }
     
-    std::vector<UI> funcs;
-    std::vector<bool> xorables;
-    std::vector<UI> costs;
+    std::vector<UI> funcs(Ncombs);
+    std::vector<bool> xorables(Ncombs);
+    std::vector<UI> costs(Ncombs);
 
-    fmt::print("\t\tCalculating func, xorable, and cost for {} new nodes using {} threads\n", N, num_threads);
+    // fmt::print("\t\tCalculating func, xorable, and cost for {} new nodes. Threads: {}; Chunk size: {} \n", N, num_threads, chunk_size);
     std::vector<std::thread> threads(num_threads);
     // Launch threads to square elements of the vector
     for (int i = 0; i < num_threads; ++i) {
         const int start_k = i * chunk_size;
-        const int end_k = (i == num_threads - 1) ? N : (i + 1) * chunk_size;
+        const int end_k = (i == num_threads - 1) ? Ncombs : (i + 1) * chunk_size;
+        // fmt::print("\t\tChunk #{}: Iterating k from {} to {} \n", i, start_k, end_k);
         threads[i] = std::thread(threaded_new_new_or, std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_k, end_k, COSTS[fCB]);
     }
     for (int i = 0; i < num_threads; ++i) {
+        // fmt::print("\t\tJoining chunk #{} out of {}\n", i, threads.size());
         threads[i].join();
+        // fmt::print("\t\tSuccessfully joined the chunk #{} out of {}\n", i, threads.size());
     }
 
     for (UL k = 0u; k < Ncombs; k++)
@@ -560,127 +584,6 @@ void threaded_cb_new_new(const std::vector<ULL>& new_nodes, const UI depth, cons
         }
     }
 }
-
-void cb_generation(US lvl)
-{
-    std::vector<ULL> new_nodes = select_depth(lvl * 3, lvl * 3 + 1);
-    US depth = lvl * 3 + 1;
-    std::vector<ULL> old_nodes;
-    bool go_on;
-    std::vector<ULL> fresh_nodes;
-    do {
-    #if (THREADING_MODE == 0)
-        // first, combine new nodes with old nodes
-        fmt::print("\tProcessing {} old nodes with {} new nodes\n", old_nodes.size(), new_nodes.size());
-        threaded_cb_old_new(old_nodes, new_nodes, depth, fresh_nodes);
-        // next, combine new nodes 
-        fmt::print("\tProcessing pairs among {} new nodes\n", old_nodes.size(), new_nodes.size());
-        threaded_cb_new_new(new_nodes, depth, fresh_nodes);
-
-    #elif (THREADING_MODE == 1)
-            // first, combine new nodes with old nodes
-            fmt::print("\tProcessing old {} nodes with new {} nodes\n", old_nodes.size(), new_nodes.size());
-            #pragma omp parallel for num_threads(10)
-            for (UL k = 0u; k < new_nodes.size() * old_nodes.size(); k++)
-            {
-                UL i = k / old_nodes.size();
-                UL j = k % old_nodes.size();
-                fmt::print("\tCB ({}, {}, {}):\n", i, j, k);
-                Node& ni =  GNM[new_nodes[i]];
-                Node& nj =  GNM[old_nodes[j]];
-                auto [nhash, added] = check_cb(ni, nj, fresh_nodes);
-                go_on |= added;
-            }
-            // next, combine new nodes 
-            fmt::print("\tProcessing new {} nodes\n", new_nodes.size());
-            #pragma omp parallel for num_threads(10)
-            for (UL k = 0u, n = new_nodes.size(); k < n * (n - 1) / 2; k++)
-            {
-                UL i = n - 2 - UL(sqrt(4*n*(n-1) - 8*k - 7)/2.0 - 0.5);
-                UL j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
-                fmt::print("\tCB ({}, {}, {}):\n", i, j, k);
-                Node& ni =  GNM[new_nodes[i]];
-                Node& nj =  GNM[new_nodes[j]];
-                auto [nhash, added] = check_cb(ni, nj, fresh_nodes);
-                go_on |= added;
-            }
-    #else
-        // first, combine new nodes with old nodes
-        fmt::print("\tProcessing {} old nodes with {} new nodes\n", old_nodes.size(), new_nodes.size());
-        auto i = 0u;
-        for (auto hi : old_nodes)
-        {
-            fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i++, old_nodes.size(), 100 * (float)i / (float)old_nodes.size());
-            Node& ni =  GNM[hi];
-            auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fCB]);
-            for (auto hj : new_nodes)
-            {
-                Node& nj =  GNM[hj];
-                TT func = ni.func | nj.func;
-                if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
-                // if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
-                bool xorable = (func == (ni.func ^ nj.func));
-                //if inputs are already more expensive, skip
-                UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
-                // fmt::print("calculating cb cost for {} and {} up to limit {}\n", ni.to_str(), nj.to_str(), limit);
-                auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit);
-                // fmt::print("final cost is {} and status is {}\n", cost, status);
-                if (!status) continue;
-                auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
-                if (added)
-                {
-                    Node& n =  GNM[nhash];
-                    fresh_nodes.push_back(nhash);
-                    // fmt::print("\t\tC: {}\n", n .to_str());
-                    go_on = true;
-                }
-            }
-        }
-
-        // next, combine new nodes 
-        for (auto i = 0u; i < new_nodes.size(); i++)
-        {
-            fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i, new_nodes.size(), 100 * (float)i / (float)new_nodes.size());
-            ULL hi = new_nodes[i];
-            Node& ni =  GNM[hi];
-            auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fCB]);
-            for (auto j = i+1; j < new_nodes.size(); j++)
-            {
-                ULL hj = new_nodes[j];
-                Node& nj =  GNM[hj];
-                TT func = ni.func | nj.func;
-                if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
-                bool xorable = (func == (ni.func ^ nj.func));
-
-                UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
-                // fmt::print("calculating cb cost for {} and {} up to limit {}\n", ni.to_str(), nj.to_str(), limit);
-                auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit);
-                // fmt::print("1 final cost is {} and status is {}\n", cost, status);
-                if (!status) continue;
-                // fmt::print("2 final cost is {} and status is {}\n", cost, status);
-                // UI cost = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes);
-                
-                auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
-                if (added)
-                {
-                    Node& n =  GNM[nhash];
-                    fresh_nodes.push_back(nhash);
-                    // fmt::print("\t\tC: {}\n", n .to_str());
-                }
-            }
-        }
-    #endif
-        old_nodes.insert(old_nodes.end(), new_nodes.begin(), new_nodes.end());
-        new_nodes.clear();
-        new_nodes.insert(new_nodes.end(), fresh_nodes.begin(), fresh_nodes.end());
-        go_on = fresh_nodes.size() > 0;
-        fresh_nodes.clear(); 
-        remove_dominated();
-        // fmt::print("GOON VAR IS {}", go_on);
-    } while(go_on);
-}
-
-
 
 // #endif
 
@@ -819,10 +722,17 @@ void cb_generation(US lvl)
     US depth = lvl * 3 + 1;
     std::vector<ULL> old_nodes;
     bool go_on;
+    std::vector<ULL> fresh_nodes;
     do {
-        std::vector<ULL> fresh_nodes;
+    #if (THREADING_MODE == 0)
+        // first, combine new nodes with old nodes
+        fmt::print("\tProcessing {} old nodes with {} new nodes\n", old_nodes.size(), new_nodes.size());
+        threaded_cb_old_new(old_nodes, new_nodes, depth, fresh_nodes);
+        // next, combine new nodes 
+        fmt::print("\tProcessing pairs among {} new nodes\n", new_nodes.size());
+        threaded_cb_new_new(new_nodes, depth, fresh_nodes);
 
-    #ifndef batch 
+    #elif (THREADING_MODE == 1)
             // first, combine new nodes with old nodes
             fmt::print("\tProcessing old {} nodes with new {} nodes\n", old_nodes.size(), new_nodes.size());
             #pragma omp parallel for num_threads(10)
