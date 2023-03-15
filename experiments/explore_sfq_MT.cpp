@@ -16,7 +16,7 @@
 // #include <execution>
 
 constexpr US THREADING_MODE = 0; //0 threading, 1 batch processing, 2 serial
-constexpr UL MAX_SIZE = 20'000'000;
+constexpr UL MAX_SIZE = 200'000'000;
 constexpr UI NUM_THREADS = 100;
 
 inline void join_threads(std::vector<std::thread>& threads, UL maxthreads = INF)
@@ -41,6 +41,13 @@ std::unordered_map<ULL, Node> GNM;
 std::array<ULL, NUM_TT> GEA;
 std::array<ULL, NUM_TT> GEX;
 
+template<typename dtype_x, typename dtype_y>
+inline dtype_y ceil(dtype_x x, dtype_y y)
+{
+    return 1 + ((x - 1) / y);
+}
+
+
 inline Node& get_gea(UI func) 
 {
     ULL hash = GEA[func];
@@ -55,7 +62,7 @@ inline Node& get_gex(UI func)
 inline void check_node(ULL hash)
 {
     Node & n = GNM[hash];
-    fmt::print("Checking node {} | num_parents = {} | {}\n", n.to_str(), n.parent_hashes.size(), hash);
+    fmt::print("Checking node {} | num_parents = {} | {:L}\n", n.to_str(), n.parent_hashes.size(), hash);
     if (n.last_func == fNOFUNC)
     {
         assert(n.parent_hashes.empty());
@@ -490,13 +497,12 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::unordered_map<ULL, UI>
     return std::make_tuple(init_cost, true);
 }
 
-void thread_old_new(const std::vector<ULL>& hashes_i, const std::vector<ULL>& hashes_j, std::vector<std::vector<UI>>& funcs, std::vector<std::vector<bool>>& xorables, std::vector<std::vector<UI>>& costs, const UI start_row, const UI end_row, const UI gate_cost, const UI offset) 
+void thread_old_new(const std::vector<ULL>& hashes_i, const std::vector<ULL>& hashes_j, std::vector<std::vector<UI>>& funcs, std::vector<std::vector<bool>>& xorables, std::vector<std::vector<UI>>& costs, const ULL start_row, const ULL end_row, const UI gate_cost, const ULL offset, const UI tgt_lvl) 
 {
     // const int M = hashes_A.size();
     const int N = hashes_j.size();
-
-    for (UI i = start_row; i < end_row; ++i) {
-        fmt::print("\t\tProcessing old - new combinations row #{} (out of total {})\n", i, hashes_i.size());
+    fmt::print("\t\tProcessing old - new pairs between #{:L} and #{:L} (out of total {:L})\n", start_row, end_row, hashes_i.size());
+    for (ULL i = start_row; i < end_row; ++i) {
         ULL hi = hashes_i[i];
         Node & ni = GNM[hi];
         auto [init_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, gate_cost);
@@ -509,26 +515,30 @@ void thread_old_new(const std::vector<ULL>& hashes_i, const std::vector<ULL>& ha
             // fmt::print("\tCost calculation: ni = {}, nj = {}\n", ni.to_str(), nj.to_str());
 
             TT func = ni.func | nj.func;
-            funcs[i-offset][j] = func;
             bool xorable = (ni.func ^ nj.func) == func;
-            xorables[i-offset][j] = xorable;
-            UI limit = (xorable ? get_gex(func).cost : get_gea(func).cost);
-            auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, limit); // costs[i][j] = node_cost(ni, nj, gate_cost);
-            // fmt::print("\tFinal calculation: cost = {}, status = {}\n", cost, status);
-            costs[i-offset][j] = cost;
+            Node & best_n = xorable ? get_gex(func) : get_gea(func);
+            if (best_n.lvl >= tgt_lvl)
+            {
+                auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_n.cost); // costs[i][j] = node_cost(ni, nj, gate_cost);
+                // fmt::print("\tFinal calculation: cost = {}, status = {}\n", cost, status);
+                funcs[i-offset][j] = func;
+                xorables[i-offset][j] = xorable;
+                costs[i-offset][j] = cost;
+            }
         }
     }
 }
 
 void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector<ULL>& new_nodes, const UI depth, std::vector<ULL>& fresh_nodes, UI num_threads = NUM_THREADS)
 {
-    const UI M = old_nodes.size();
+    const ULL M = old_nodes.size();
     if (M == 0)
     {
         return;
     }
-    const UI N = new_nodes.size();
-    UI chunk_size = M / num_threads;
+    const ULL N = new_nodes.size();
+    const UI tgt_lvl = depth / 3;
+    ULL chunk_size = M / num_threads;
     if (chunk_size == 0)
     {
         num_threads = 1;
@@ -543,11 +553,14 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
         std::vector<std::vector<UI>> costs(M, std::vector<UI>(N, INF));
 
         // fmt::print("\t\tCalculating func, xorable, and cost for {} old nodes and {} new nodes. Threads: {}; Chunk size: {} \n", M, N, num_threads, chunk_size);
-        std::vector<std::thread> threads(num_threads);
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
         for (UI i = 0; i < num_threads; i++) {
-            const UI start_row = i * chunk_size;
-            const UI end_row = (i == num_threads - 1) ? M : (i + 1) * chunk_size;
-            threads[i] = std::thread(thread_old_new, std::ref(old_nodes), std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_row, end_row, COSTS[fCB], 0);
+            const ULL start_row = i * chunk_size;
+            const ULL end_row = (i == num_threads - 1) ? M : (i + 1) * chunk_size;
+            threads.push_back(
+                std::thread(thread_old_new, std::ref(old_nodes), std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_row, end_row, COSTS[fCB], 0, tgt_lvl)
+            );
         }
         join_threads(threads);
         for (auto i = 0u; i < M; i++)
@@ -571,12 +584,12 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
     {
         // case 1 - row size is not too large - should in principle always be the case for 4-input TT-s
         // In this case, divide the combinations in one dimension - split by rows
-        fmt::print("\t\tToo many combinations between {} old nodes and {} new nodes to fit into memory. Splitting... \n", M, N);
+        fmt::print("\t\tToo many combinations between {:L} old nodes and {:L} new nodes to fit into memory (total {:L}). Splitting... \n", M, N, M*N);
         if (N < MAX_SIZE / NUM_THREADS)
         {
-            UI nrows_per_thread = MAX_SIZE / N / NUM_THREADS;
+            ULL nrows_per_thread = MAX_SIZE / N / NUM_THREADS;
             // fmt::print("\t\tProcessing {} rows per thread with {} threads... \n", nrows_per_thread, NUM_THREADS);
-            UI Mlocal = nrows_per_thread * NUM_THREADS;
+            ULL Mlocal = nrows_per_thread * NUM_THREADS;
 
             // std::vector<UI> end_indices;
             for (auto start = 0u; start < M; start += Mlocal)
@@ -586,11 +599,14 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
                 std::vector<std::vector<bool>> xorables(Mlocal, std::vector<bool>(N, false));
                 std::vector<std::vector<UI>> costs(Mlocal, std::vector<UI>(N, INF));
 
-                std::vector<std::thread> threads(num_threads);
+                std::vector<std::thread> threads;
+                threads.reserve(num_threads);
                 for (auto i = 0u, start_row = start; start_row < end; i++, start_row += nrows_per_thread)
                 {
                     auto end_row = std::min(start_row + nrows_per_thread, end);
-                    threads[i] = std::thread(thread_old_new, std::ref(old_nodes), std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_row, end_row, COSTS[fCB], start);
+                    threads.push_back(
+                        std::thread(thread_old_new, std::ref(old_nodes), std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_row, end_row, COSTS[fCB], start, tgt_lvl)
+                    );
                 }
                 join_threads(threads);
                 for (auto row = start; row < end; row++)
@@ -617,29 +633,19 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
     }
 }
 
-void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::vector<bool>& xorables, std::vector<UI>& costs, const UI start_k, const UI end_k, const UI gate_cost, const UI offset) 
+void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::vector<bool>& xorables, std::vector<UI>& costs, const ULL start_k, const ULL end_k, const UI gate_cost, const ULL offset, const UI tgt_lvl) 
 {
     // fmt::print("\t\tFunction is called\n");
-    const UI N = hashes.size();
-    // fmt::print("\t\tIterating between {} and {}\n", start_k, end_k);
-    // UL old_i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*start_k - 7)/2.0 - 0.5);
-    // ULL hi = hashes[old_i]; // fmt::print("\t\t hash_i={}\n", hi);
-    // Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
-    // auto [init_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, gate_cost);
-    // fmt::print("Preliminary calculations: init_cost = {}, #predecessors = {}, #non-spllittables = {}\n", init_cost, ct_spl.size(), non_splittable_nodes.size());
-    UL old_i;
+    const ULL N = hashes.size();
+    fmt::print("\t\tCB: Iterating between {:L} and {:L}\n", start_k, end_k);
+    ULL old_i;
     UI init_cost;
     std::unordered_map<ULL, UI> ct_spl;
     std::unordered_set<ULL> non_splittable_nodes;
-    fmt::print("\t\tProcessing new - new combinations between #{} and #{}\n", start_k, end_k);
-    for (UL k = start_k; k < end_k; k++)
+    // fmt::print("\t\tProcessing new - new combinations between #{} and #{}\n", start_k, end_k);
+    for (ULL k = start_k; k < end_k; k++)
     {   
-        // for (auto hash : hashes)
-        // {
-        //     fmt::print("INSIDE NEW NEW {}: {} {}\n", k, GNM[hash].to_str(), hash);
-        // }
-
-        UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);
+        ULL i = N - 2 - ULL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);
         ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
         Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
         if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
@@ -651,21 +657,26 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, st
             non_splittable_nodes = non_splittable_nodes_tmp;
         }
 
-        UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
+        ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
         ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
         Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
 
         // fmt::print("\t\t\tCalculating cost for k {}:\n\t\t\t\t#{}: {}\n\t\t\t\t#{}: {}\n", k, i, ni.to_str(), j, nj.to_str());
 
         TT func = ni.func | nj.func;
-        funcs[k - offset] = func; // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
         bool xorable = (ni.func ^ nj.func) == func; // fmt::print("\t\t Xorable status = {}\n", xorables[k]);
-        xorables[k - offset] = xorable;
-        // costs[k] = node_cost(ni, nj, gate_cost); // fmt::print("\t\t Cost = {}\n", costs[k]);
-        UI limit = (xorable ? get_gex(func).cost : get_gea(func).cost);
-        auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, limit); // costs[i][j] = node_cost(ni, nj, gate_cost);
-        // fmt::print("\t\t\t\t Result: cost {}, success {}\n", cost, status);
-        costs[k - offset] = cost;
+        Node & best_n = xorable ? get_gex(func) : get_gea(func);
+        if (best_n.lvl >= tgt_lvl)
+        {
+            auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_n.cost); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            // fmt::print("\t\t\t\t Result: cost {}, success {}\n", cost, status);
+            if (status)
+            {
+                costs[k - offset] = cost;
+                xorables[k - offset] = xorable;
+                funcs[k - offset] = func; // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
+            }
+        }
         old_i = i;
     }
 }
@@ -673,18 +684,19 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, st
 
 void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth, std::vector<ULL>& fresh_nodes, UI num_threads = NUM_THREADS)
 {
-    const UI N = new_nodes.size();
+    const ULL N = new_nodes.size();
     // check_nodes(new_nodes);
 
     if (N <= 1)
     {
         return;
     }
-    const UL Ncombs = N * (N - 1) / 2;
+    const ULL Ncombs = N * (N - 1) / 2;
+    const UI tgt_lvl = depth / 3;
 
     if (Ncombs < MAX_SIZE)
     {
-        UL chunk_size = Ncombs / (num_threads - 1);
+        ULL chunk_size = Ncombs / (num_threads - 1);
         if (chunk_size == 0)
         {
             num_threads = 1;
@@ -703,12 +715,15 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
         //     fmt::print("BEFORE THREADS {}: {} {}\n", ++ibefore, GNM[hash].to_str(), hash);
         // }
         
-        std::vector<std::thread> threads(num_threads);
-        for (UL start_k = 0u, i = 0u; start_k < Ncombs; start_k += chunk_size, i++)
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
+        for (ULL start_k = 0u, i = 0u; start_k < Ncombs; start_k += chunk_size, i++)
         {
-            UL end_k = std::min(start_k + chunk_size, Ncombs);
+            ULL end_k = std::min(start_k + chunk_size, Ncombs);
             // fmt::print("\t\t\tcreating thread from {} to {} (out of {}) \n", start_k, end_k, Ncombs);
-            threads[i] = std::thread(threaded_new_new, std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_k, end_k, COSTS[fCB], 0);
+            threads.push_back(
+                std::thread(threaded_new_new, std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_k, end_k, COSTS[fCB], 0, tgt_lvl)
+            );
         }
         join_threads(threads);
 
@@ -718,13 +733,13 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
         //     fmt::print("AFTER THREADS {}: {} {}\n", ++iafter, GNM[hash].to_str(), hash);
         // }
 
-        fmt::print("\t\tCombining new - new combinations\n");
+        fmt::print("\t\tCombining new - new pairs\n");
 
 
-        for (UL k = 0u; k < Ncombs; k++)
+        for (ULL k = 0u; k < Ncombs; k++)
         {
-            UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);       // ULL hi = new_nodes[i]; // Node & ni = GNM[hi];
-            UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // ULL hj = new_nodes[j]; // Node & nj = GNM[hj];
+            ULL i = N - 2 - ULL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);       // ULL hi = new_nodes[i]; // Node & ni = GNM[hi];
+            ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // ULL hj = new_nodes[j]; // Node & nj = GNM[hj];
             UI cost = costs[k];
             // fmt::print("\tCombining: {} (#{}) and {} (#{}), cost {}, func {:016b}, xorable {}\n", GNM[new_nodes[i]].to_str(), i, GNM[new_nodes[j]].to_str(), j, cost, funcs[k], xorables[k]);
             // fmt::print("\tBest any l-{}, c-{}, best xorable l-{}, c-{}\n", get_gea(funcs[k]).lvl, get_gea(funcs[k]).cost, get_gex(funcs[k]).lvl, get_gex(funcs[k]).cost);
@@ -739,30 +754,32 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
     }
     else //too many combinations to fit into memory
     {
-        fmt::print("\t\tToo many pairs among {} new nodes to fit into memory (total {}). Splitting... \n", N, Ncombs);
-        UL k_per_thread = Ncombs / MAX_SIZE / NUM_THREADS; 
+        fmt::print("\t\tToo many pairs among {:L} new nodes to fit into memory (total {:L}). Splitting... \n", N, Ncombs);
+        ULL Nchunks = ceil(Ncombs, MAX_SIZE);
+        ULL k_per_thread = Ncombs / Nchunks / NUM_THREADS; 
         k_per_thread += (k_per_thread == 0);
-        UL Ncombs_chunk = k_per_thread * NUM_THREADS;
+        ULL Ncombs_chunk = k_per_thread * NUM_THREADS;
         std::vector<UI> funcs(Ncombs_chunk, 0);
         std::vector<bool> xorables(Ncombs_chunk, false);
         std::vector<UI> costs(Ncombs_chunk, INF);
 
-        std::vector<std::thread> threads(num_threads);
-        UL i = 0u;
-        UL offset = 0u;
-        for (UL start_k = 0u; start_k < Ncombs; start_k += k_per_thread)
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
+        ULL offset = 0u;
+        for (ULL start_k = 0u; start_k < Ncombs; start_k += k_per_thread)
         {
-            UL end_k = std::min(start_k + k_per_thread, Ncombs);
-            threads[i] = std::thread(threaded_new_new, std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_k, end_k, COSTS[fCB], offset);
-            i++;
-            if (i == num_threads || end_k == Ncombs)
+            ULL end_k = std::min(start_k + k_per_thread, Ncombs);
+            threads.push_back(
+                std::thread(threaded_new_new, std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_k, end_k, COSTS[fCB], offset, tgt_lvl)
+            );
+            if (threads.size() == num_threads || end_k == Ncombs)
             {
-                join_threads(threads, i);
+                join_threads(threads);
                 fmt::print("\t\tCombining new - new combinations\n");
-                for (UL k = offset; k < end_k; k++)
+                for (ULL k = offset; k < end_k; k++)
                 {
-                    UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);       // ULL hi = new_nodes[i]; // Node & ni = GNM[hi];
-                    UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // ULL hj = new_nodes[j]; // Node & nj = GNM[hj];
+                    ULL i = N - 2 - ULL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);       // ULL hi = new_nodes[i]; // Node & ni = GNM[hi];
+                    ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // ULL hj = new_nodes[j]; // Node & nj = GNM[hj];
                     UI cost = costs[k - offset];
                     if (cost >= INF) continue;
                     auto [nhash, added] = create_node(funcs[k - offset], fCB, costs[k - offset], depth, xorables[k - offset], {new_nodes[i], new_nodes[j]});
@@ -774,8 +791,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
                 }
 
                 // Reset the variables for the next set of threads
-                // threads.clear();
-                i = 0u;
+                threads.clear();
                 offset = end_k;
                 std::fill(funcs.begin(), funcs.end(), 0u);
                 std::fill(xorables.begin(), xorables.end(), false);
@@ -785,21 +801,46 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
     }
 }
 
-void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::vector<UI>& costs, const UI start_k, const UI end_k, const UI gate_cost, const UL offset) 
+void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::vector<UI>& costs, const ULL start_k, const ULL end_k, const UI gate_cost, const ULL offset, const UI tgt_lvl) 
 {
     // fmt::print("\t\tFunction is called\n");
-    const UI N = hashes.size();
-    // fmt::print("\t\tIterating between {} and {}\n", start_k, end_k);
-    for (UL k = start_k; k < end_k; k++)
+    const ULL N = hashes.size();
+    fmt::print("\t\tXOR: Iterating between {:L} and {:L}\n", start_k, end_k);
+    ULL old_i;
+    UI init_cost;
+    std::unordered_map<ULL, UI> ct_spl;
+    std::unordered_set<ULL> non_splittable_nodes;
+    for (ULL k = start_k; k < end_k; k++)
     {   
-        UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);
-        UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
-        ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
-        Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
-        ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
-        Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
-        funcs[k - offset] = ni.func ^ nj.func; // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
-        costs[k - offset] = node_cost(ni, nj, gate_cost); // fmt::print("\t\t Cost = {}\n", costs[k]);
+        ULL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);
+        ULL hi = hashes[i];     // fmt::print("\t\t hash_i={}\n", hi);
+        Node & ni = GNM[hi];    // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+
+        if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
+        {
+            // fmt::print("\tUpdating\n");
+            auto [init_cost_tmp, ct_spl_tmp, non_splittable_nodes_tmp] = node_cost_single(hi, gate_cost);
+            init_cost = init_cost_tmp;
+            ct_spl = ct_spl_tmp;
+            non_splittable_nodes = non_splittable_nodes_tmp;
+        }
+
+        ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2;    // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
+        ULL hj = hashes[j];     // fmt::print("\t\t hash_j={}\n", hj);
+        Node & nj = GNM[hj];    // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+
+        TT func = ni.func ^ nj.func;
+        Node & best_n = get_gex(func);
+        if (best_n.lvl >= tgt_lvl) 
+        {
+            auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_n.cost); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            if (status)
+            {
+                funcs[k - offset] = func;  // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
+                costs[k - offset] = cost;   // fmt::print("\t\t Cost = {}\n", costs[k]);
+            }
+        }
+        old_i = i;
     }
 }
 
@@ -815,15 +856,15 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
         }
     }
     
-    const UI N = valid_nodes.size();
+    const ULL N = valid_nodes.size();
     if (N <= 1) return;
 
-    const UL Ncombs = N * (N - 1) / 2;
-    
+    const ULL Ncombs = N * (N - 1) / 2;
+    const UI tgt_lvl = depth / 3;
     // TODO : bring splitting to XOR and AND/OR
     if (Ncombs < MAX_SIZE)
     {
-        UI chunk_size = Ncombs / num_threads;
+        ULL chunk_size = Ncombs / num_threads;
         if (chunk_size == 0)
         {
             num_threads = 1;
@@ -834,51 +875,54 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
         std::vector<UI> costs(Ncombs);
 
         // fmt::print("\t\tCalculating func and cost for {} nodes. Threads: {}; Chunk size: {} \n", N, num_threads, chunk_size);
-        // std::vector<std::thread> threads(num_threads);
-        std::vector<std::thread> threads(num_threads);
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
         // Launch threads to square elements of the vector
         for (UI i = 0; i < num_threads; ++i) {
             const int start_k = i * chunk_size;
             const int end_k = (i == num_threads - 1) ? Ncombs : (i + 1) * chunk_size;
             // fmt::print("\t\tChunk #{}: Iterating k from {} to {} \n", i, start_k, end_k);
-            threads[i] = std::thread(threaded_xor, std::ref(valid_nodes), std::ref(funcs), std::ref(costs), start_k, end_k, COSTS[fXOR], 0);
+            threads.push_back(
+                std::thread(threaded_xor, std::ref(valid_nodes), std::ref(funcs), std::ref(costs), start_k, end_k, COSTS[fXOR], 0, tgt_lvl)
+            );
         }
         join_threads(threads);
 
-        for (UL k = 0u; k < Ncombs; k++)
+        for (ULL k = 0u; k < Ncombs; k++)
         {
-            UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);           // ULL hi = new_nodes[i];  // Node & ni = GNM[hi];
-            UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2;     // ULL hj = new_nodes[j];  // Node & nj = GNM[hj];
+            ULL i = N - 2 - ULL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);           // ULL hi = new_nodes[i];  // Node & ni = GNM[hi];
+            ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2;     // ULL hj = new_nodes[j];  // Node & nj = GNM[hj];
             if (costs[k] >= INF) continue;
             create_node(funcs[k], fXOR, costs[k], depth, true, {valid_nodes[i], valid_nodes[j]}); //auto [nhash, added] = 
         }
     }
     else //too many combinations to fit into memory
     {
-        fmt::print("\t\tToo many pairs among {} xorable nodes to fit into memory (total {}). Splitting... \n", N, Ncombs);
-        UL k_per_thread = Ncombs / MAX_SIZE / NUM_THREADS; 
+        fmt::print("\t\tToo many pairs among {:L} xorable nodes to fit into memory (total {:L}). Splitting... \n", N, Ncombs);
+        ULL Nchunks = ceil(Ncombs, MAX_SIZE);
+        ULL k_per_thread = Ncombs / Nchunks / NUM_THREADS; 
         k_per_thread += (k_per_thread == 0);
-        UL Ncombs_chunk = k_per_thread * NUM_THREADS;
+        ULL Ncombs_chunk = k_per_thread * NUM_THREADS;
         std::vector<UI> funcs(Ncombs_chunk, 0);
         std::vector<UI> costs(Ncombs_chunk, INF);
 
-        std::vector<std::thread> threads(num_threads);
-        UL i = 0u;
-        UL offset = 0u;
-        for (UL start_k = 0u; start_k < Ncombs; start_k += k_per_thread)
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
+        ULL offset = 0u;
+        for (ULL start_k = 0u; start_k < Ncombs; start_k += k_per_thread)
         {
-            UL end_k = std::min(start_k + k_per_thread, Ncombs);
-            threads[i] = std::thread(threaded_xor, std::ref(valid_nodes), std::ref(funcs), std::ref(costs), start_k, end_k, COSTS[fXOR], offset);
-            // threads[i] = std::thread(threaded_new_new, std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_k, end_k, COSTS[fCB], offset);
-            i++;
-            if (i == num_threads || end_k == Ncombs)
+            ULL end_k = std::min(start_k + k_per_thread, Ncombs);
+            threads.push_back(
+                std::thread(threaded_xor, std::ref(valid_nodes), std::ref(funcs), std::ref(costs), start_k, end_k, COSTS[fXOR], offset, tgt_lvl)
+            );
+            if (threads.size() == num_threads || end_k == Ncombs)
             {
-                join_threads(threads, i);
+                join_threads(threads);
                 fmt::print("\t\tCombining XOR results\n");
-                for (UL k = offset; k < end_k; k++)
+                for (ULL k = offset; k < end_k; k++)
                 {
-                    UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);       // ULL hi = new_nodes[i]; // Node & ni = GNM[hi];
-                    UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // ULL hj = new_nodes[j]; // Node & nj = GNM[hj];
+                    ULL i = N - 2 - ULL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);       // ULL hi = new_nodes[i]; // Node & ni = GNM[hi];
+                    ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // ULL hj = new_nodes[j]; // Node & nj = GNM[hj];
                     UI cost = costs[k - offset];
                     if (cost >= INF) continue;
                     create_node(funcs[k - offset], fXOR, costs[k - offset], depth, true, {valid_nodes[i], valid_nodes[j]});
@@ -886,8 +930,7 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
 
                 // Reset the variables for the next set of threads
                 // std::vector<std::thread> threads(num_threads);
-                // threads.clear();
-                i = 0u;
+                threads.clear();
                 offset = end_k;
                 std::fill(funcs.begin(), funcs.end(), 0u);
                 std::fill(costs.begin(), costs.end(), INF);
@@ -896,35 +939,84 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
     }
 }
 
-void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and, std::vector<UI>& costs_and, std::vector<UI>& funcs_or, const UI start_k, const UI end_k, const UI gate_cost_and, UL offset) 
+void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and, std::vector<UI>& costs_and, std::vector<UI>& funcs_or, std::vector<UI>& costs_or, const ULL start_k, const ULL end_k, const UI gate_cost_and, const ULL offset, const UI tgt_lvl) 
 {
     // fmt::print("\t\tFunction is called\n");
-    const UI N = hashes.size();
-    // fmt::print("\t\tIterating between {} and {}\n", start_k, end_k);
-    for (UL k = start_k; k < end_k; k++)
+    const ULL N = hashes.size();
+    fmt::print("\t\tAND/OR: Iterating between {:L} and {:L}\n", start_k, end_k);
+    ULL old_i;
+    UI init_cost;
+    std::unordered_map<ULL, UI> ct_spl;
+    std::unordered_set<ULL> non_splittable_nodes;
+    for (ULL k = start_k; k < end_k; k++)
     {   
-        UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);
-        UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
+        ULL i = N - 2 - ULL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);
         ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
         Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+        if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
+        {
+            // fmt::print("\tUpdating\n");
+            auto [init_cost_tmp, ct_spl_tmp, non_splittable_nodes_tmp] = node_cost_single(hi, gate_cost_and);
+            init_cost = init_cost_tmp;
+            ct_spl = ct_spl_tmp;
+            non_splittable_nodes = non_splittable_nodes_tmp;
+        }
+
+        ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
         ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
         Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
-        funcs_and[k - offset] = ni.func & nj.func; 
-        funcs_or[k - offset] = ni.func | nj.func; 
-        costs_and[k - offset] = node_cost(ni, nj, gate_cost_and); // fmt::print("\t\t Cost = {}\n", costs[k]);
+
+        TT func_and = ni.func & nj.func;
+        TT func_or  = ni.func | nj.func;
+
+        Node & best_and = get_gex(func_and);
+        Node & best_or  = get_gex(func_or );
+        if (best_and.lvl >= tgt_lvl && best_or.lvl >= tgt_lvl) 
+        {
+            UI limit = std::max(best_and.cost, best_or.cost);
+            auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, limit); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            if (status)
+            {
+                UI cost_or = cost_and - COSTS[fAND] + COSTS[fOR];
+                funcs_and[k - offset] = func_and;  // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
+                costs_and[k - offset] = cost_and;   // fmt::print("\t\t Cost = {}\n", costs[k]);
+                funcs_or[k - offset] = func_or;  // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
+                costs_or[k - offset] = cost_or;   // fmt::print("\t\t Cost = {}\n", costs[k]);
+            }
+        }
+        else if (best_and.lvl >= tgt_lvl)
+        {
+            auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_and.cost); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            if (status)
+            {
+                funcs_and[k - offset] = func_and;  // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
+                costs_and[k - offset] = cost_and;   // fmt::print("\t\t Cost = {}\n", costs[k]);
+            }
+        }
+        else if (best_or.lvl >= tgt_lvl) 
+        {
+            auto [cost_or, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_or.cost); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            if (status)
+            {
+                funcs_or[k - offset] = func_or;  // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
+                costs_or[k - offset] = cost_or;   // fmt::print("\t\t Cost = {}\n", costs[k]);
+            }
+        }
+        old_i = i;
     }
 }
 
 void threaded_and_or_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_threads = NUM_THREADS)
 {
-    const UI N = nodes.size();
+    const ULL N = nodes.size();
     if (N <= 1) return;
 
-    const UL Ncombs = N * (N - 1) / 2;
+    const ULL Ncombs = N * (N - 1) / 2;
+    const UI tgt_lvl = depth / 3;
     // TODO : bring splitting to XOR and AND/OR
     if (Ncombs < MAX_SIZE)
     {
-        UI chunk_size = Ncombs / num_threads;
+        ULL chunk_size = Ncombs / num_threads;
         if (chunk_size == 0)
         {
             num_threads = 1;
@@ -934,79 +1026,84 @@ void threaded_and_or_wrapper(const std::vector<ULL>& nodes, const UI depth, UI n
         std::vector<UI> funcs_and(Ncombs);
         std::vector<UI> costs_and(Ncombs);
         std::vector<UI> funcs_or(Ncombs);
+        std::vector<UI> costs_or(Ncombs);
 
         // fmt::print("\t\tCalculating func, xorable, and cost for {} new nodes. Threads: {}; Chunk size: {} \n", N, num_threads, chunk_size);
-        std::vector<std::thread> threads(num_threads);
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
         // Launch threads to square elements of the vector
         for (UI i = 0; i < num_threads; ++i) {
             const int start_k = i * chunk_size;
             const int end_k = (i == num_threads - 1) ? Ncombs : (i + 1) * chunk_size;
             // fmt::print("\t\tChunk #{}: Iterating k from {} to {} \n", i, start_k, end_k);
-            threads[i] = std::thread(threaded_and_or, std::ref(nodes), std::ref(funcs_and), std::ref(costs_and), std::ref(funcs_or), start_k, end_k, COSTS[fAND], 0);
+            threads.push_back(
+                std::thread(threaded_and_or, std::ref(nodes), std::ref(funcs_and), std::ref(costs_and), std::ref(funcs_or), std::ref(costs_or), start_k, end_k, COSTS[fAND], 0, tgt_lvl)
+            );
         }
         join_threads(threads);
 
-        for (UL k = 0u; k < Ncombs; k++)
+        for (ULL k = 0u; k < Ncombs; k++)
         {
-            UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);           // ULL hi = new_nodes[i];  // Node & ni = GNM[hi];
-            UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2;     // ULL hj = new_nodes[j];  // Node & nj = GNM[hj];
+            ULL i = N - 2 - ULL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);           // ULL hi = new_nodes[i];  // Node & ni = GNM[hi];
+            ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2;     // ULL hj = new_nodes[j];  // Node & nj = GNM[hj];
             if (costs_and[k] <= INF)
             {
                 auto [nhash_and, added_and] = create_node(funcs_and[k], fAND, costs_and[k], depth, true, {nodes[i], nodes[j]});//
-                if (added_and)  
-                {
-                    // check_node(nhash_and);
-                }
-                auto [nhash_or , added_or ] = create_node(funcs_or[k], fOR, costs_and[k] - COSTS[fAND] + COSTS[fOR], depth, true, {nodes[i], nodes[j]});//
-                if (added_or)   
-                {
-                    // check_node(nhash_or );
-                }
+            }
+            if (costs_or[k] <= INF)
+            {
+                auto [nhash_or , added_or ] = create_node(funcs_or[k],   fOR, costs_or[k] , depth, true, {nodes[i], nodes[j]});//
             }
         }
     }
     else
     {
-        fmt::print("\t\tToo many pairs among {} AS nodes to fit into memory (total {}). Splitting... \n", N, Ncombs);
-        UL k_per_thread = Ncombs / MAX_SIZE / NUM_THREADS; 
+        fmt::print("\t\tToo many pairs among {:L} AS nodes to fit into memory (total {:L}). Splitting... \n", N, Ncombs);
+        ULL Nchunks = ceil(Ncombs, MAX_SIZE);
+        ULL k_per_thread = Ncombs / Nchunks / NUM_THREADS; 
         k_per_thread += (k_per_thread == 0);
-        UL Ncombs_chunk = k_per_thread * NUM_THREADS;
+        ULL Ncombs_chunk = k_per_thread * NUM_THREADS;
         std::vector<UI> funcs_and(Ncombs_chunk, 0);
         std::vector<UI> costs_and(Ncombs_chunk, INF);
         std::vector<UI> funcs_or(Ncombs_chunk, INF);
+        std::vector<UI> costs_or(Ncombs_chunk, INF);
 
         std::vector<std::thread> threads(num_threads);
-        UL i = 0u;
-        UL offset = 0u;
-        for (UL start_k = 0u; start_k < Ncombs; start_k += k_per_thread)
+        threads.reserve(num_threads);
+        ULL offset = 0u;
+        for (ULL start_k = 0u; start_k < Ncombs; start_k += k_per_thread)
         {
-            UL end_k = std::min(start_k + k_per_thread, Ncombs);
-            threads[i] = std::thread(threaded_and_or, std::ref(nodes), std::ref(funcs_and), std::ref(costs_and), std::ref(funcs_or), start_k, end_k, COSTS[fAND], offset);
-            i++;
-            if (i == num_threads || end_k == Ncombs)
+            ULL end_k = std::min(start_k + k_per_thread, Ncombs);
+            threads.push_back(
+                std::thread(threaded_and_or, std::ref(nodes), std::ref(funcs_and), std::ref(costs_and), std::ref(funcs_or), std::ref(costs_or), start_k, end_k, COSTS[fAND], offset, tgt_lvl)
+            );
+            if (threads.size() == num_threads || end_k == Ncombs)
             {
-                join_threads(threads, i);
+                join_threads(threads);
                 fmt::print("\t\tCombining AND/OR results\n");
-                for (UL k = offset; k < end_k; k++)
+                for (ULL k = offset; k < end_k; k++)
                 {
-                    UL i = N - 2 - UL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);       // ULL hi = new_nodes[i]; // Node & ni = GNM[hi];
-                    UL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // ULL hj = new_nodes[j]; // Node & nj = GNM[hj];
+                    ULL i = N - 2 - ULL(sqrt(4*N*(N - 1) - 8*k - 7)/2.0 - 0.5);       // ULL hi = new_nodes[i]; // Node & ni = GNM[hi];
+                    ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // ULL hj = new_nodes[j]; // Node & nj = GNM[hj];
                     // create_node(funcs[k - offset], fXOR, costs[k - offset], depth, true, {valid_nodes[i], valid_nodes[j]});
                     if (costs_and[k] <= INF)
                     {
                         create_node(funcs_and[k-offset], fAND, costs_and[k-offset], depth, true, {nodes[i], nodes[j]});//auto [nhash_and, added_and]
-                        create_node(funcs_or[k-offset], fOR, costs_and[k-offset] - COSTS[fAND] + COSTS[fOR], depth, true, {nodes[i], nodes[j]});//auto [nhash_or , added_or ]
+                    }
+                    if (costs_or[k] <= INF)
+                    {
+                        create_node(funcs_or[k-offset],  fOR , costs_or[k-offset] , depth, true, {nodes[i], nodes[j]});//auto [nhash_or , added_or ]
                     }
                 }
 
                 // Reset the variables for the next set of threads
                 // std::vector<std::thread> threads(num_threads);
-                // threads.clear();
-                i = 0u;
+                threads.clear();
                 offset = end_k;
                 std::fill(funcs_and.begin(), funcs_and.end(), 0u);
                 std::fill(costs_and.begin(), costs_and.end(), INF);
                 std::fill(funcs_or.begin(), funcs_or.end(), 0u);
+                std::fill(costs_or.begin(), costs_or.end(), INF);
             }
         }
     }
@@ -1023,9 +1120,8 @@ std::tuple<ULL, bool> check_cb(Node& ni, Node& nj, std::vector<ULL>& fresh_nodes
         return std::make_tuple(GEX[func], false);
     }
     bool xorable = (func == (ni.func ^ nj.func));
-    US last_func = fCB;
     US depth = ni.lvl * 3 + 1;
-    UI cost = node_cost(ni, nj, COSTS[last_func]);
+    UI cost = node_cost(ni, nj, COSTS[fCB]);
     auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
     if (added)
     {
@@ -1145,7 +1241,7 @@ std::unordered_set<ULL> remove_dominated()
 void cb_generation(US lvl)
 {
     std::vector<ULL> new_nodes = select_depth(lvl * 3, lvl * 3 + 1);
-    fmt::print("\tChecking new nodes after selection between levels {} and {}...\n", lvl * 3, lvl * 3 + 1);
+    fmt::print("\tChecking new nodes after selection between levels {:L} and {:L}...\n", lvl * 3, lvl * 3 + 1);
     // check_nodes(new_nodes);
 
     US depth = lvl * 3 + 1;
@@ -1156,7 +1252,7 @@ void cb_generation(US lvl)
     do {
     #if (THREADING_MODE == 0)
         // first, combine new nodes with old nodes
-        fmt::print("\tProcessing {} old nodes with {} new nodes\n", old_nodes.size(), new_nodes.size());
+        fmt::print("\tProcessing {:L} old nodes with {:L} new nodes\n", old_nodes.size(), new_nodes.size());
         thread_old_new_wrapper(old_nodes, new_nodes, depth, fresh_nodes);
         
         // fmt::print("\t{}: Checking old nodes after old-new...\n", iteration);
@@ -1188,10 +1284,10 @@ void cb_generation(US lvl)
             // first, combine new nodes with old nodes
             fmt::print("\tProcessing old {} nodes with new {} nodes\n", old_nodes.size(), new_nodes.size());
             #pragma omp parallel for num_threads(10)
-            for (UL k = 0u; k < new_nodes.size() * old_nodes.size(); k++)
+            for (ULL k = 0u; k < new_nodes.size() * old_nodes.size(); k++)
             {
-                UL i = k / old_nodes.size();
-                UL j = k % old_nodes.size();
+                ULL i = k / old_nodes.size();
+                ULL j = k % old_nodes.size();
                 fmt::print("\tCB ({}, {}, {}):\n", i, j, k);
                 Node& ni =  GNM[new_nodes[i]];
                 Node& nj =  GNM[old_nodes[j]];
@@ -1201,10 +1297,10 @@ void cb_generation(US lvl)
             // next, combine new nodes 
             fmt::print("\tProcessing new {} nodes\n", new_nodes.size());
             #pragma omp parallel for num_threads(10)
-            for (UL k = 0u, n = new_nodes.size(); k < n * (n - 1) / 2; k++)
+            for (ULL k = 0u, n = new_nodes.size(); k < n * (n - 1) / 2; k++)
             {
-                UL i = n - 2 - UL(sqrt(4*n*(n-1) - 8*k - 7)/2.0 - 0.5);
-                UL j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
+                ULL i = n - 2 - ULL(sqrt(4*n*(n-1) - 8*k - 7)/2.0 - 0.5);
+                ULL j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
                 fmt::print("\tCB ({}, {}, {}):\n", i, j, k);
                 Node& ni =  GNM[new_nodes[i]];
                 Node& nj =  GNM[new_nodes[j]];
@@ -1317,7 +1413,7 @@ void as_generation(US lvl)
     std::vector<ULL> nodes = select_depth(lvl * 3, lvl * 3 + 1);
 
     US tgt_depth = lvl * 3 + 2;
-    fmt::print("\t{} : DFF/NOT {} nodes\n", lvl, nodes.size());
+    fmt::print("\t{} : DFF/NOT {:L} nodes\n", lvl, nodes.size());
     for (ULL hash : nodes)
     {
         Node& ni =  GNM[hash];
@@ -1326,15 +1422,15 @@ void as_generation(US lvl)
     }
     // xor-combine the nodes
     
-    fmt::print("\t{}: XOR {} nodes\n", lvl, nodes.size());
+    fmt::print("\t{}: XOR {:L} nodes\n", lvl, nodes.size());
     #if (THREADING_MODE == 0)   
         threaded_xor_wrapper(nodes, tgt_depth);
     #elif (THREADING_MODE == 2)
         #pragma omp parallel for num_threads(10)
-        for (UL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
+        for (ULL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
         {
-            UL i = n - 2 - UL(sqrt(4*n*(n-1) - 8*k - 7)/2.0 - 0.5);
-            UL j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
+            ULL i = n - 2 - ULL(sqrt(4*n*(n-1) - 8*k - 7)/2.0 - 0.5);
+            ULL j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
             fmt::print("\tXOR ({}, {}, {}):\n", i, j, k);
             Node& ni =  GNM[nodes[i]];
             Node& nj =  GNM[nodes[j]];
@@ -1380,15 +1476,15 @@ void sa_generation(US lvl)
 
     // US tgt_depth = lvl * 3 + 3;
     // xor-combine the nodes
-    fmt::print("\t{}: AND/OR {} nodes\n", lvl, nodes.size());
+    fmt::print("\t{}: AND/OR {:L} nodes\n", lvl, nodes.size());
     #if (THREADING_MODE == 0)
         threaded_and_or_wrapper(nodes, tgt_depth);
     #elif (THREADING_MODE == 2)
         #pragma omp parallel for num_threads(10)
-        for (UL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
+        for (ULL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
         {
-            UL i = n - 2 - UL(sqrt(4*n*(n-1) - 8*k - 7)/2.0 - 0.5);
-            UL j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
+            ULL i = n - 2 - ULL(sqrt(4*n*(n-1) - 8*k - 7)/2.0 - 0.5);
+            ULL j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2;
             fmt::print("\tAND/OR ({}, {}, {}):\n", i, j, k);
             Node& ni =  GNM[nodes[i]];
             Node& nj =  GNM[nodes[j]];
@@ -1498,7 +1594,7 @@ int main() {
     write_csv_gnm(GNM, fmt::format("output_gnm_cb_{}.csv", lvl));
     write_csv_arr(GEA, fmt::format("output_gea_cb_{}.csv", lvl));
     write_csv_arr(GEX, fmt::format("output_gex_cb_{}.csv", lvl));
-        if (is_done()) break;
+    //     if (is_done()) break;
         fmt::print("Processing lvl {}: AS\n", lvl);
         // fmt::print("Checking integrity of GNM before AS\n");
         // check_GNM();
