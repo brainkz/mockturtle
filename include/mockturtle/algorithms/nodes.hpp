@@ -177,6 +177,22 @@ namespace std {
 }
 
 
+std::vector<TT> gen_pi_func(UI nvars)
+{
+    if (nvars == 1)
+    {
+        return {1};
+    }
+    TT power = (1 << (1 << (nvars - 1)));
+    TT factor = power + 1;
+    std::vector<TT> out = {power - 1};
+    for (auto n : gen_pi_func(nvars - 1))
+    {
+        out.push_back(factor * n);
+    }
+    return out;
+}
+
 #pragma region write_output
 
 void write_csv_gnm(const std::unordered_map<ULL, Node>& gnm, const std::string& filename) {
@@ -221,7 +237,8 @@ void write_csv_arr(const std::array<ULL, NUM_TT>& arr_hashes, const std::string&
     outfile.close();
 }
 
-std::unordered_map<ULL, Node> read_csv_gnm(const std::string& filename) {
+std::unordered_map<ULL, Node> read_csv_gnm(const std::string& filename) 
+{
     // Open input file
     std::ifstream infile(filename);
     
@@ -284,6 +301,38 @@ std::array<ULL, NUM_TT> read_csv_arr(const std::string& filename) {
     // Close input file
     infile.close();
     return arr_hashes;
+}
+
+
+bool is_good(ULL hash, Node & node, std::unordered_map<ULL, bool> & status, std::unordered_map<ULL, Node>& all_hashes)
+{
+    bool good = true;
+    for (auto & p_hash : node.parent_hashes)
+    {
+        Node & p_node = all_hashes[p_hash];
+        if (status.find(p_hash) == status.end()) // if a parent status is unknown
+        {
+            status[p_hash] = is_good(p_hash, p_node, status, all_hashes);
+        }
+        good &= status[p_hash];
+    }
+    return good;
+}
+
+
+std::unordered_map<ULL, bool> subset_of_pi(std::vector<ULL>& pi, std::unordered_map<ULL, Node>& all_hashes)
+{
+    std::unordered_map<ULL, bool> status;
+    for (ULL hash : pi)
+    {
+        status[hash] = true;
+    }
+
+    for (auto & [hash, node] : all_hashes)
+    {
+        status[hash] = is_good(hash, node, status, all_hashes);
+    }
+    return status;
 }
 
 #pragma endregion
