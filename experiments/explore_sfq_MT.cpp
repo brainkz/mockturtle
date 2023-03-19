@@ -18,6 +18,9 @@
 #include <iomanip>
 #include <ctime>
 
+#define continue_if(condition) if (condition) continue
+#define break_if(condition) if (condition) break
+
 #define COMPUTE_IJ(k, N, i, j) \
     unsigned long long i = N - 2 - static_cast<unsigned long long>(std::sqrt(4*N*(N - 1) - 8*k - 7) / 2.0 - 0.5); \
     unsigned long long j = k + i + 1 - N * (N - 1) / 2 + (N - i) * ((N - i) - 1) / 2;
@@ -544,6 +547,7 @@ void thread_old_new(const std::vector<ULL>& hashes_i, const std::vector<ULL>& ha
             // fmt::print("\tCost calculation: ni = {}, nj = {}\n", ni.to_str(), nj.to_str());
 
             TT func = ni.func | nj.func;
+            continue_if (func == 0 || func == ONES || func == ni.func || func == nj.func);
             bool xorable = (ni.func ^ nj.func) == func;
             Node & best_n = xorable ? get_gex(func) : get_gea(func);
             if (best_n.lvl >= tgt_lvl)
@@ -601,7 +605,7 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
             {
                 ULL hj = new_nodes[j];
                 UI cost = costs[i][j];
-                if (cost >= INF) continue;
+                continue_if (cost >= INF);
                 auto [nhash, added] = create_node(funcs[i][j], fCB, cost, depth, xorables[i][j], {hi, hj});
                 if (added)
                 {
@@ -650,7 +654,7 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
                     {
                         ULL hj = new_nodes[j];
                         UI cost = costs[i][j];
-                        if (cost >= INF) continue;
+                        continue_if (cost >= INF) ;
                         // Node& nj =  GNM[hj];
                         auto [nhash, added] = create_node(funcs[i][j], fCB, costs[i][j], depth, xorables[i][j], {hi, hj});
                         if (added)
@@ -695,7 +699,9 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, st
         // fmt::print("\t\t\tCalculating cost for k {}:\n\t\t\t\t#{}: {}\n\t\t\t\t#{}: {}\n", k, i, ni.to_str(), j, nj.to_str());
 
         TT func = ni.func | nj.func;
+        continue_if (func == 0 || func == ONES || func == ni.func || func == nj.func);
         bool xorable = (ni.func ^ nj.func) == func; // fmt::print("\t\t Xorable status = {}\n", xorables[k]);
+        
         Node & best_n = xorable ? get_gex(func) : get_gea(func);
         if (best_n.lvl >= tgt_lvl)
         {
@@ -759,7 +765,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
             UI cost = costs[k];
             // fmt::print("\tCombining: {} (#{}) and {} (#{}), cost {}, func {:016b}, xorable {}\n", GNM[new_nodes[i]].to_str(), i, GNM[new_nodes[j]].to_str(), j, cost, funcs[k], xorables[k]);
             // fmt::print("\tBest any l-{}, c-{}, best xorable l-{}, c-{}\n", get_gea(funcs[k]).lvl, get_gea(funcs[k]).cost, get_gex(funcs[k]).lvl, get_gex(funcs[k]).cost);
-            if (cost >= INF) continue;
+            continue_if(cost >= INF);
             auto [nhash, added] = create_node(funcs[k], fCB, costs[k], depth, xorables[k], {new_nodes[i], new_nodes[j]});
             if (added)
             {
@@ -798,7 +804,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
             {
                 COMPUTE_IJ(k, N, i, j);
                 UI cost = costs[k - START];
-                if (cost >= INF) continue;
+                continue_if (cost >= INF);
                 auto [nhash, added] = create_node(funcs[k-START], fCB, cost, depth, xorables[k-START], {new_nodes[i], new_nodes[j]});
                 if (added)
                 {
@@ -900,7 +906,7 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
         for (ULL k = 0u; k < Ncombs; k++)
         {
             COMPUTE_IJ(k, N, i, j);
-            if (costs[k] >= INF) continue;
+            continue_if (costs[k] >= INF);
             create_node(funcs[k], fXOR, costs[k], depth, true, {valid_nodes[i], valid_nodes[j]}); //auto [nhash, added] = 
         }
     }
@@ -931,7 +937,7 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
             {
                 COMPUTE_IJ(k, N, i, j);
                 UI cost = costs[k - START];
-                if (cost >= INF) continue;
+                continue_if (cost >= INF);
                 create_node(funcs[k-START], fXOR, cost, depth, true, {valid_nodes[i], valid_nodes[j]});
             }
         }
@@ -940,7 +946,7 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
 
 void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and, std::vector<UI>& costs_and, std::vector<UI>& funcs_or, std::vector<UI>& costs_or, const ULL start_k, const ULL end_k, const UI gate_cost_and, const ULL offset, const UI tgt_lvl) 
 {
-    fmt::print("\t\tFunction is called\n");
+    // fmt::print("\t\tFunction is called\n");
     const ULL N = hashes.size();
     fmt::print("\t\tAND/OR: Iterating between {:L} and {:L}\n", start_k, end_k);
     ULL old_i;
@@ -952,37 +958,36 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and,
     {   
         COMPUTE_IJ(k, N, i, j);
         ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
-        Node & ni = GNM[hi]; //
-fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+        Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
         if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
         {
-            //
-fmt::print("\tUpdating\n");
+            // fmt::print("\tUpdating\n");
             auto [init_cost_tmp, ct_spl_tmp, non_splittable_nodes_tmp] = node_cost_single(hi, gate_cost_and);
             init_cost = init_cost_tmp;
             ct_spl = ct_spl_tmp;
             non_splittable_nodes = non_splittable_nodes_tmp;
         }
 
-        // ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; //
-fmt::print("\t\tk={}, i={}, j={}, start_k={}, end_k={}, #hashes={}\n", k, i, j, start_k, end_k, hashes.size());
-        ULL hj = hashes[j]; //
-fmt::print("\t\t hash_j={}\n", hj);
-        Node & nj = GNM[hj]; //
-fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+        // ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}, start_k={}, end_k={}, #hashes={}\n", k, i, j, start_k, end_k, hashes.size());
+        ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
+        Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
 
         TT func_and = ni.func & nj.func;
         ULL best_and_hash = GEX[func_and];
         UL best_and_lvl;
         UL best_and_cost;
-        if (best_and_hash == 0 || func_and == 0 || func_and == ONES || func_and == ni.func || func_and == nj.func)
+        if (func_and == 0 || func_and == ONES || func_and == ni.func || func_and == nj.func)
         {
-            best_and_lvl = INF;
-            best_and_cost = INF;
+            best_and_lvl = 0;
+            best_and_cost = 0;
         }
         else
         {
-            assert(GNM.find(best_and_hash) != GNM.end());
+            if (GNM.find(best_and_hash) == GNM.end())
+            {
+                fmt::print("best_and_hash : {}\nni : {}\nnj : {}\nfunc_and : {}\nnode in GNM : {}", 
+                best_and_hash, ni.to_str(), nj.to_str(), func_and, GNM[best_and_hash].to_str());
+            };
             Node & best_and = GNM[best_and_hash];
             best_and_lvl = best_and.lvl;
             best_and_cost = best_and.cost;
@@ -991,14 +996,18 @@ fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
         ULL best_or_hash  = GEX[func_or ];
         UL best_or_lvl;
         UL best_or_cost;
-        if (best_or_hash == 0 || func_or == 0 || func_or == ONES || func_or == ni.func || func_or == nj.func)
+        if (func_or == 0 || func_or == ONES || func_or == ni.func || func_or == nj.func)
         {
-            best_or_lvl = INF;
-            best_or_cost = INF;
+            best_or_lvl = 0;
+            best_or_cost = 0;
         }
         else
         {
-            assert(GNM.find(best_or_hash) != GNM.end());
+            if (GNM.find(best_or_hash) == GNM.end())
+            {
+                fmt::print("best_or_hash : {}\nni : {}\nnj : {}\nfunc_or : {}\nnode in GNM : {}", 
+                best_or_hash, ni.to_str(), nj.to_str(), func_or, GNM[best_or_hash].to_str());
+            };
             Node & best_or = GNM[best_or_hash];
             best_or_lvl = best_or.lvl;
             best_or_cost = best_or.cost;
@@ -1007,51 +1016,42 @@ fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
         if (best_and_lvl >= tgt_lvl && best_or_lvl >= tgt_lvl) 
         {
             UI limit = std::max(best_and_cost, best_or_cost);
-            auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, limit, tgt_lvl == 2); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, limit); // costs[i][j] = node_cost(ni, nj, gate_cost);
             if (status)
             {
-                UI cost_or = cost_and - COSTS[fAND] + COSTS[fOR];
-fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
-                assert(funcs_and.size() > k-offset);
-                funcs_and[k - offset] = func_and;  //
-fmt::print("\t\t Wrote func AND = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_and[k], k-offset, funcs_and.size());
-                assert(costs_and.size() > k-offset);
-                costs_and[k - offset] = cost_and;   //
-fmt::print("\t\t Cost AND = {}\n", costs_and[k]);
-                assert(funcs_or.size() > k-offset);
-                funcs_or[k - offset] = func_or;  //
-fmt::print("\t\t Wrote func OR = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_or[k], k-offset, funcs_and.size());
-                assert(costs_or.size() > k-offset);
-                costs_or[k - offset] = cost_or;   //
-fmt::print("\t\t Cost OR = {}\n", costs_or[k]);
+                UI cost_or = cost_and - COSTS[fAND] + COSTS[fOR]; // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
+                // assert(funcs_and.size() > k-offset);
+                funcs_and[k - offset] = func_and;  // fmt::print("\t\t Wrote func AND = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_and[k], k-offset, funcs_and.size());
+                // assert(costs_and.size() > k-offset);
+                costs_and[k - offset] = cost_and;   // fmt::print("\t\t Cost AND = {}\n", costs_and[k]);
+                // assert(funcs_or.size() > k-offset);
+                funcs_or[k - offset] = func_or;  // fmt::print("\t\t Wrote func OR = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_or[k], k-offset, funcs_and.size());
+                // assert(costs_or.size() > k-offset);
+                costs_or[k - offset] = cost_or;   // fmt::print("\t\t Cost OR = {}\n", costs_or[k]);
             }
         }
         else if (best_and_lvl >= tgt_lvl)
         {
-            auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_and_cost, tgt_lvl == 2); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_and_cost); // costs[i][j] = node_cost(ni, nj, gate_cost);
             if (status)
             {
-fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
-                assert(funcs_and.size() > k-offset);
-                funcs_and[k - offset] = func_and;  //
-fmt::print("\t\t Wrote func AND = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_and[k], k-offset, funcs_and.size());
-                assert(costs_and.size() > k-offset);
-                costs_and[k - offset] = cost_and;   //
-fmt::print("\t\t Cost AND = {}\n", costs_and[k]);
+                // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
+                // assert(funcs_and.size() > k-offset);
+                funcs_and[k - offset] = func_and;  // fmt::print("\t\t Wrote func AND = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_and[k], k-offset, funcs_and.size());
+                // assert(costs_and.size() > k-offset);
+                costs_and[k - offset] = cost_and;   // fmt::print("\t\t Cost AND = {}\n", costs_and[k]);
             }
         }
         else if (best_or_lvl >= tgt_lvl) 
         {
-            auto [cost_or, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_or_cost, tgt_lvl == 2); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            auto [cost_or, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_or_cost); // costs[i][j] = node_cost(ni, nj, gate_cost);
             if (status)
             {
-fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
-                assert(funcs_or.size() > k-offset);
-                funcs_or[k - offset] = func_or;  //
-fmt::print("\t\t Wrote func OR = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_or[k], k-offset, funcs_and.size());
-                assert(costs_or.size() > k-offset);
-                costs_or[k - offset] = cost_or;   //
-fmt::print("\t\t Cost OR = {}\n", costs_or[k]);
+                // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
+                // assert(funcs_or.size() > k-offset);
+                funcs_or[k - offset] = func_or;  // fmt::print("\t\t Wrote func OR = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_or[k], k-offset, funcs_and.size());
+                // assert(costs_or.size() > k-offset);
+                costs_or[k - offset] = cost_or;   // fmt::print("\t\t Cost OR = {}\n", costs_or[k]);
             }
         }
         old_i = i;
@@ -1136,6 +1136,7 @@ void threaded_and_or_wrapper(const std::vector<ULL>& nodes, const UI depth, UI n
             for (ULL k = START; k < END; k++)
             {
                 COMPUTE_IJ(k, N, i, j);
+                // fmt::print("{} {} {} {} {} {}\n", i, j, k ,N, START, END);
                 if (costs_and[k-START] <= INF)
                 {
                     create_node(funcs_and[k-START], fAND, costs_and[k-START], depth, true, {nodes[i], nodes[j]});//auto [nhash_and, added_and]
@@ -1230,7 +1231,7 @@ std::unordered_set<ULL> remove_dominated()
     std::stack<ULL> stack;
     for (auto & [hash, node] : GNM)
     {
-        if (node.last_func == fDFF) continue;
+        continue_if (node.last_func == fDFF);
         Node& best = node.xorable? get_gex(node.func) : get_gea(node.func); //GEX[node.func] : GEA[node.func];
         if (node.lvl < best.lvl || (node.lvl == best.lvl && node.cost <= best.cost) )
         {
@@ -1260,8 +1261,8 @@ std::unordered_set<ULL> remove_dominated()
 
     for (auto & [hash, node] : GNM)
     {
-        if (node.last_func == fDFF) continue;
-        if (protected_nodes.find(hash) != protected_nodes.end()) continue;
+        continue_if (node.last_func == fDFF);
+        continue_if (protected_nodes.find(hash) != protected_nodes.end());
         // Node& best = node.xorable? GEX[node.func] : GEA[node.func];
         Node& best = node.xorable? get_gex(node.func) : get_gea(node.func); //GEX[node.func] : GEA[node.func];
         if (node.lvl > best.lvl || (node.lvl == best.lvl && node.cost > best.cost) )
@@ -1359,15 +1360,15 @@ void cb_generation(US lvl, std::string level_prefix)
             {
                 Node& nj =  GNM[hj];
                 TT func = ni.func | nj.func;
-                if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
-                // if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
+                continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
+                // continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
                 bool xorable = (func == (ni.func ^ nj.func));
                 //if inputs are already more expensive, skip
                 UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
                 // fmt::print("calculating cb cost for {} and {} up to limit {}\n", ni.to_str(), nj.to_str(), INF);
                 auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit);
                 // fmt::print("final cost is {} and status is {}\n", cost, status);
-                if (!status) continue;
+                continue_if (!status);
                 auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
                 if (added)
                 {
@@ -1391,14 +1392,14 @@ void cb_generation(US lvl, std::string level_prefix)
                 ULL hj = new_nodes[j];
                 Node& nj =  GNM[hj];
                 TT func = ni.func | nj.func;
-                if (func == ni.func || func == nj.func || func == 0 || func == ONES) continue;
+                continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
                 bool xorable = (func == (ni.func ^ nj.func));
 
                 UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
                 // fmt::print("calculating cb cost for {} and {} up to limit {}\n", ni.to_str(), nj.to_str(), INF);
                 auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit);
                 // fmt::print("1 final cost is {} and status is {}\n", cost, status);
-                if (!status) continue;
+                continue_if (!status) ;
                 // fmt::print("2 final cost is {} and status is {}\n", cost, status);
                 // UI cost = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes);
                 
@@ -1472,7 +1473,7 @@ void as_generation(US lvl)
             fmt::print("\tXOR ({}, {}, {}):\n", i, j, k);
             Node& ni =  GNM[nodes[i]];
             Node& nj =  GNM[nodes[j]];
-            if (!ni.xorable || !nj.xorable) continue;
+            continue_if (!ni.xorable || !nj.xorable);
             auto [nhash, added] = check_xor(ni, nj);
         }
     #elif (THREADING_MODE == 1)
@@ -1481,20 +1482,20 @@ void as_generation(US lvl)
             fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i, nodes.size(), 100 * (float)i / (float)nodes.size());
             ULL hi = nodes[i];
             Node& ni =  GNM[hi];
-            if (!ni.xorable) continue;
+            continue_if (!ni.xorable);
             auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fXOR]);
             for (auto j = i+1; j < nodes.size(); j++)
             {
                 ULL hj = nodes[j];
                 Node& nj =  GNM[hj];
-                if (!nj.xorable) continue;
+                continue_if (!nj.xorable);
 
                 // fmt::print("\t\tA: {}\n", ni.to_str());
                 // fmt::print("\t\tB: {}\n", nj.to_str());
                 TT func = ni.func ^ nj.func;
                 // UI limit = std::min(GNM[GEX[func]].cost);
                 auto [cost,status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, GNM[GEX[func]].cost);
-                if (!status) continue;
+                continue_if (!status);
                 auto [nhash, added] = create_node(func, fXOR, cost, tgt_depth, true, {ni.hash, nj.hash});
                 if (added)
                 {
@@ -1525,7 +1526,7 @@ void sa_generation(US lvl)
             fmt::print("\tAND/OR ({}, {}, {}):\n", i, j, k);
             Node& ni =  GNM[nodes[i]];
             Node& nj =  GNM[nodes[j]];
-            if (!ni.xorable || !nj.xorable) continue;
+            continue_if (!ni.xorable || !nj.xorable);
             auto [hash_and, added_and, hash_or, added_or] = check_and_or(ni, nj);
         }
     #elif (THREADING_MODE == 1)
@@ -1548,7 +1549,7 @@ void sa_generation(US lvl)
 
                 auto [cost_and, status] = node_cost(hj, gate_cost_and, ct_spl, non_splittable_nodes, INF);
                 UI cost_or = cost_and - COSTS[fAND] + COSTS[fOR];
-                if (!status) continue;
+                continue_if (!status) ;
 
                 auto [hash_and, added_and] = create_node(func_and, fAND, cost_and, tgt_depth, true, {ni.hash, nj.hash});
                 auto [hash_or , added_or ] = create_node(func_or , fOR , cost_or , tgt_depth, true, {ni.hash, nj.hash});
@@ -1610,7 +1611,11 @@ int main() {
     // fmt::print("Start:\n");
     // print_GNM();
     // {0,0,0,0}, {0,0,0,1},  {0,0,1,1}, 
-    std::vector<std::vector<UI>> sets_of_levels { {  {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4} } };
+    // {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, 
+    // std::vector<std::vector<UI>> sets_of_levels { { {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4},
+    // {0,0,0,0}, {0,0,0,1}, {0,0,1,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, 
+    // } };
+    std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4}, } };
 
     // std::vector<UI> levels {0, 0, 0, 1};
 
@@ -1622,10 +1627,10 @@ int main() {
         auto i = 0u;
         for (TT func : gen_pi_func(NUM_VARS))
         {
-            create_node(func, fPI, 0, levels[i++], true);
+            create_node(func, fPI, 0, levels[i++]*3, true);
         }
 
-        std::string level_prefix = fmt::format("TEST{}_{}_{}_{}", levels[0], levels[1], levels[2], levels[3]);
+        std::string level_prefix = fmt::format("20230309_Results/x3_{}{}{}{}", levels[0], levels[1], levels[2], levels[3]);
         // fmt::print("After PI:\n");
         // print_GNM();
         create_node(   0, fPI, 0, 0, true);
@@ -1646,7 +1651,8 @@ int main() {
             write_csv_gnm(GNM, fmt::format("{}_output_gnm_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             write_csv_arr(GEA, fmt::format("{}_output_gea_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             write_csv_arr(GEX, fmt::format("{}_output_gex_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
-            //     if (is_done(GEX)) break;
+            break_if (is_done(GEX) && lvl > levels.back()) ;
+
             fmt::print("Processing lvl {}: AS\n", lvl);
             // fmt::print("Checking integrity of GNM before AS\n");
             // check_GNM();
@@ -1657,7 +1663,8 @@ int main() {
             write_csv_gnm(GNM, fmt::format("{}_output_gnm_as_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             write_csv_arr(GEA, fmt::format("{}_output_gea_as_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             write_csv_arr(GEX, fmt::format("{}_output_gex_as_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
-            if (is_done(GEX)) break;
+            break_if (is_done(GEX) && lvl > levels.back()) ;
+
             fmt::print("Processing lvl {}: SA\n", lvl);
             // fmt::print("Checking integrity of GNM before SA\n");
             // check_GNM();
@@ -1668,12 +1675,10 @@ int main() {
             write_csv_gnm(GNM, fmt::format("{}_output_gnm_sa_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             write_csv_arr(GEA, fmt::format("{}_output_gea_sa_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             write_csv_arr(GEX, fmt::format("{}_output_gex_sa_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
-            if (is_done(GEX)) break;
+            break_if (is_done(GEX) && lvl > levels.back()) ;
+
             UL end_n_TT = count_done();
-            if (start_n_TT == end_n_TT)
-            {
-                break;
-            }
+            break_if (start_n_TT == end_n_TT);
         }
 
         // Write data to CSV files
@@ -1732,6 +1737,6 @@ int main() {
     return 0;
 }
 
-// "nohup ./experiments/explore_sfq_MT > combined.log 2>&1 &"
+// "nohup ./experiments/explore_sfq_MT > combined_March19x3.log 2>&1 &"
 
 // ''
