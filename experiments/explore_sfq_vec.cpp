@@ -386,19 +386,22 @@ UI node_cost(const Node& n1, const Node& n2, UI gate_cost)
             // fmt::print("\t\t\tFirst time, adding the cost of {} ({}). Total cost is {}\n", F2STR[n.last_func], COSTS[n.last_func], gate_cost);
             for (const auto& p_hash : n.parent_hashes)
             {
-                stack.push_back(p_hash); // Node& p = GNM[p_hash]; fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
-            }
-            if (n.last_func == fAND || n.last_func == fOR)
-            {
-                for (const auto& p_hash : n.parent_hashes)
-                {
-                    non_splittable_nodes.emplace(p_hash);
-                }
+                // Node& p = GNM[p_hash];
+                stack.push_back(p_hash);
+                // fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
             }
         }
         else
         {
-            gate_cost += COSTS[fSPL]; // fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[n.last_func], gate_cost);
+            gate_cost += COSTS[fSPL];
+            // fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[n.last_func], gate_cost);
+        }
+        if (n.last_func == fAND || n.last_func == fOR)
+        {
+            for (const auto& p_hash : n.parent_hashes)
+            {
+                non_splittable_nodes.emplace(p_hash);
+            }
         }
     }
 
@@ -425,6 +428,13 @@ std::tuple<UI, std::unordered_map<ULL, UI>, std::unordered_set<ULL>> node_cost_s
     stack.reserve(2 * depth);
     // stack.push_back(h1);
 
+    std::vector<ULL> seen;
+    seen.reserve(2 * depth);
+    std::vector<US> ct;
+    ct.reserve(2 * depth);
+    std::vector<bool> non_splittable;
+    ct.reserve(2 * depth);
+
     std::unordered_map<ULL, UI> ct_spl;
     std::unordered_set<ULL> non_splittable_nodes;
 
@@ -436,27 +446,47 @@ std::tuple<UI, std::unordered_map<ULL, UI>, std::unordered_set<ULL>> node_cost_s
         stack.pop_back();
         Node& n = GNM[n_hash];
         // fmt::print("\t\t\tProcessing node {}\n", n.to_str());
+        seen_it = std::find(seen.begin(), seen.end(), n_hash);
+        if (seen_it == seen.end())
+        {
+            gate_cost += COSTS[n.last_func];
+            for (const auto& p_hash : n.parent_hashes)
+            {
+                stack.push_back(p_hash);
+            }
+            seen.push_back(n_hash);
+            ct.push_back(1u);
+        }
+        else
+        {
+            gate_cost += COSTS[fSPL];
+            ct[seen_it - seen.begin()]++;
+        }
+
         ct_spl[n_hash]++;
         if (ct_spl[n_hash] == 1)
+        if (std::find(seen))
         {
             gate_cost += COSTS[n.last_func];
             // fmt::print("\t\t\tFirst time, adding the cost of {} ({}). Total cost is {}\n", F2STR[n.last_func], COSTS[n.last_func], gate_cost);
             for (const auto& p_hash : n.parent_hashes)
             {
-                
-                stack.push_back(p_hash); // Node& p = GNM[p_hash]; // fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
-            }
-            if (n.last_func == fAND || n.last_func == fOR)
-            {
-                for (const auto& p_hash : n.parent_hashes)
-                {
-                    non_splittable_nodes.emplace(p_hash);
-                }
+                // Node& p = GNM[p_hash];
+                stack.push_back(p_hash);
+                // fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
             }
         }
         else
         {
-            gate_cost += COSTS[fSPL]; // fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[fSPL], gate_cost);
+            gate_cost += COSTS[fSPL];
+            // fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[fSPL], gate_cost);
+        }
+        if (n.last_func == fAND || n.last_func == fOR)
+        {
+            for (const auto& p_hash : n.parent_hashes)
+            {
+                non_splittable_nodes.emplace(p_hash);
+            }
         }
     }
     // fmt::print("\t\tFinished precalculating for {} : cost = {}\n", GNM[h1].to_str(), gate_cost);
@@ -490,19 +520,19 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::unordered_map<ULL, UI>
                 stack.push_back(p_hash);
                 if (verbose) fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
             }
-            if (n.last_func == fAND || n.last_func == fOR)
-            {
-                for (const auto& p_hash : n.parent_hashes)
-                {
-                    non_splittable_nodes.emplace(p_hash);
-                }
-            }
         }
         else
         {
             init_cost += COSTS[fSPL];
             if (init_cost > limit) return std::make_tuple(INF, false);
             if (verbose) fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[fSPL], init_cost);
+        }
+        if (n.last_func == fAND || n.last_func == fOR)
+        {
+            for (const auto& p_hash : n.parent_hashes)
+            {
+                non_splittable_nodes.emplace(p_hash);
+            }
         }
     }
 
