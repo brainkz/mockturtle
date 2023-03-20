@@ -473,12 +473,12 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::unordered_map<ULL, UI>
     {
         ULL n_hash = stack.back();
         stack.pop_back();
-        Node& n = GNM[n_hash];
-        if (verbose) fmt::print("\t\t\tProcessing node {}\n", n.to_str());
+        // if (verbose) fmt::print("\t\t\tProcessing node {}\n", n.to_str());
         ct_spl[n_hash]++;
         if (verbose) fmt::print("\t\t\tIncremented the ct_spl for {}\n", n_hash);
         if (ct_spl[n_hash] == 1)
         {
+            Node& n = GNM[n_hash];
             if (verbose) fmt::print("\t\t\tAccessing the cost of {}\n", n.last_func);
             init_cost += COSTS[n.last_func];
             if (init_cost > limit) return std::make_tuple(INF, false);      
@@ -640,7 +640,7 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
                 }
                 join_threads(threads);
                 check_threads(threads);
-                for (auto row = start; row < end; row++)
+                for (ULL row = start; row < end; row++)
                 {
                     // fmt::print("Combining {} out of {} ({:f}\%) \n", (i+1), old_nodes.size(), 100 * (float)(i+1) / (float)old_nodes.size());
                     ULL i = row - start;
@@ -1442,6 +1442,7 @@ void cb_generation(US lvl, std::string level_prefix)
         fresh_nodes.clear(); 
         iteration++;
         // fmt::print("GOON VAR IS {}", go_on);
+        // break_if (iteration > 1 && lvl == 1);
     } while(go_on);
 }
 
@@ -1615,9 +1616,8 @@ int main() {
     // {0,0,0,0}, {0,0,0,1}, {0,0,1,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, 
     // } };
     // successfully done: {0,0,0,0}, 
-    std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4}, } };
-
-    // std::vector<UI> levels {0, 0, 0, 1};
+    // { { {0,0,0,0}, {0,0,0,1} } } ; //
+    std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4}, {0,0,0,1} } };
 
     for (std::vector<UI> levels : sets_of_levels) 
     {
@@ -1630,16 +1630,16 @@ int main() {
             create_node(func, fPI, 0, levels[i++]*3 + 1, true);
         }
 
-        std::string level_prefix = fmt::format("20230320_Results/x3_{}{}{}{}", levels[0], levels[1], levels[2], levels[3]);
+        // std::string level_prefix = fmt::format("20230320_Results/x3_{}{}{}{}", levels[0], levels[1], levels[2], levels[3]);
+        std::string level_prefix = fmt::format("Profile_set", levels[0], levels[1], levels[2], levels[3]);
         fmt::print("Analyzing levels: {}\n", level_prefix);
         fmt::print("After PI:\n");
         print_GNM();
         create_node(   0, fPI, 0, 0, true);
         create_node(ONES, fPI, 0, 0, true);
-        // fmt::print("After const:\n");
-        // print_GNM();
         
-        for (US lvl = 0; lvl < 50; lvl ++)
+        // for (US lvl = 0; lvl < 50; lvl ++)
+        for (US lvl = 0; lvl < 2; lvl ++)
         {
             UL start_n_TT = count_done();
             fmt::print("Processing lvl {}: CB\n", lvl);
@@ -1653,6 +1653,8 @@ int main() {
             write_csv_arr(GEA, fmt::format("{}_gea_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             write_csv_arr(GEX, fmt::format("{}_gex_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             break_if (is_done(GEX) && lvl >= levels.back()) ;
+
+            // break_if (lvl == 1);
 
             fmt::print("Processing lvl {}: AS\n", lvl);
             // fmt::print("Checking integrity of GNM before AS\n");

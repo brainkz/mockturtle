@@ -21,6 +21,7 @@
 
 #define continue_if(condition) if (condition) continue
 #define break_if(condition) if (condition) break
+#define shortcut_cost(init_cost) if (init_cost > limit) return std::make_tuple(INF, false)
 
 #define COMPUTE_IJ(k, N, i, j) \
     unsigned long long i = N - 2 - static_cast<unsigned long long>(std::sqrt(4*N*(N - 1) - 8*k - 7) / 2.0 - 0.5); \
@@ -37,8 +38,8 @@ std::string get_current_time_formatted() {
 }
 
 constexpr US THREADING_MODE = 0; //0 threading, 1 batch processing, 2 serial
-constexpr UL MAX_SIZE = 200'000'000;
-constexpr UI NUM_THREADS = 100;
+constexpr ULL MAX_SIZE = 200'000'000;
+constexpr ULL NUM_THREADS = 100;
 
 inline void join_threads(std::vector<std::thread>& threads) //, UL maxthreads = INF
 {
@@ -68,8 +69,7 @@ std::unordered_map<ULL, Node> GNM;
 std::array<ULL, NUM_TT> GEA;
 std::array<ULL, NUM_TT> GEX;
 
-template<typename dtype_x, typename dtype_y>
-inline dtype_y ceil(dtype_x x, dtype_y y)
+inline ULL ceil(ULL x, ULL y)
 {
     return 1 + ((x - 1) / y);
 }
@@ -343,15 +343,15 @@ std::vector<ULL> select_depth(short min_depth, short max_depth)
     return out;
 }
 
-std::vector<std::pair<UI, UI>> divide_range(UI N, UI k) 
+std::vector<std::pair<ULL, ULL>> divide_range(ULL N, ULL k) 
 {
-    std::vector<std::pair<UI, UI>> ranges(k);
-    UI base_length = N / k;
-    UI extra = N % k;
+    std::vector<std::pair<ULL, ULL>> ranges(k);
+    ULL base_length = N / k;
+    ULL extra = N % k;
 
-    UI start = 0;
-    for (UI i = 0; i < k; ++i) {
-        UI end = start + base_length - 1;
+    ULL start = 0;
+    for (ULL i = 0; i < k; ++i) {
+        ULL end = start + base_length - 1;
         if (extra > 0) {
             end += 1;
             extra -= 1;
@@ -386,22 +386,19 @@ UI node_cost(const Node& n1, const Node& n2, UI gate_cost)
             // fmt::print("\t\t\tFirst time, adding the cost of {} ({}). Total cost is {}\n", F2STR[n.last_func], COSTS[n.last_func], gate_cost);
             for (const auto& p_hash : n.parent_hashes)
             {
-                // Node& p = GNM[p_hash];
-                stack.push_back(p_hash);
-                // fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
+                stack.push_back(p_hash); // Node& p = GNM[p_hash]; fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
+            }
+            if (n.last_func == fAND || n.last_func == fOR)
+            {
+                for (const auto& p_hash : n.parent_hashes)
+                {
+                    non_splittable_nodes.emplace(p_hash);
+                }
             }
         }
         else
         {
-            gate_cost += COSTS[fSPL];
-            // fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[n.last_func], gate_cost);
-        }
-        if (n.last_func == fAND || n.last_func == fOR)
-        {
-            for (const auto& p_hash : n.parent_hashes)
-            {
-                non_splittable_nodes.emplace(p_hash);
-            }
+            gate_cost += COSTS[fSPL]; // fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[n.last_func], gate_cost);
         }
     }
 
@@ -422,97 +419,83 @@ UI node_cost(const Node& n1, const Node& n2, UI gate_cost)
     return gate_cost;
 }
 
-std::tuple<UI, std::unordered_map<ULL, UI>, std::unordered_set<ULL>> node_cost_single(const ULL h1, UI gate_cost, const UI depth)
+std::tuple<UI, std::vector<std::pair<ULL, UI>>, std::vector<ULL>> node_cost_single(const ULL h1, UI gate_cost, const UI depth)
 {
-    std::vector<ULL> stack {h1};
+    std::vector<ULL> stack { h1 };
     stack.reserve(2 * depth);
-    // stack.push_back(h1);
 
-    std::vector<ULL> seen;
-    seen.reserve(2 * depth);
-    std::vector<US> ct;
-    ct.reserve(2 * depth);
-    std::vector<bool> non_splittable;
-    ct.reserve(2 * depth);
+    std::vector<std::pair<ULL, UI>> ct_spl;
+    ct_spl.reserve(2 * depth);
+    std::vector<ULL> non_splittable_nodes;
 
-    std::unordered_map<ULL, UI> ct_spl;
-    std::unordered_set<ULL> non_splittable_nodes;
-
-    // fmt::print("\t\tPrecalculating {}\n", GNM[h1].to_str());
-    // fmt::print("\t\t\tInitial cost {}\n", gate_cost);
     while (!stack.empty())
     {
         ULL n_hash = stack.back();
         stack.pop_back();
         Node& n = GNM[n_hash];
-        // fmt::print("\t\t\tProcessing node {}\n", n.to_str());
-        seen_it = std::find(seen.begin(), seen.end(), n_hash);
-        if (seen_it == seen.end())
-        {
-            gate_cost += COSTS[n.last_func];
-            for (const auto& p_hash : n.parent_hashes)
-            {
-                stack.push_back(p_hash);
-            }
-            seen.push_back(n_hash);
-            ct.push_back(1u);
-        }
-        else
-        {
-            gate_cost += COSTS[fSPL];
-            ct[seen_it - seen.begin()]++;
-        }
 
-        ct_spl[n_hash]++;
-        if (ct_spl[n_hash] == 1)
-        if (std::find(seen))
+        auto it = std::find_if(ct_spl.begin(), ct_spl.end(), [n_hash](const std::pair<ULL, UI>& p) { return p.first == n_hash; });
+        if (it == ct_spl.end())
         {
+            ct_spl.emplace_back(n_hash, 1);
             gate_cost += COSTS[n.last_func];
-            // fmt::print("\t\t\tFirst time, adding the cost of {} ({}). Total cost is {}\n", F2STR[n.last_func], COSTS[n.last_func], gate_cost);
+
             for (const auto& p_hash : n.parent_hashes)
             {
-                // Node& p = GNM[p_hash];
                 stack.push_back(p_hash);
-                // fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
+            }
+            if (n.last_func == fAND || n.last_func == fOR)
+            {
+                for (const auto& p_hash : n.parent_hashes)
+                {
+                    if (std::find(non_splittable_nodes.begin(), non_splittable_nodes.end(), p_hash) == non_splittable_nodes.end())
+                    {
+                        non_splittable_nodes.push_back(p_hash);
+                    }
+                }
             }
         }
         else
         {
+            it->second++;
             gate_cost += COSTS[fSPL];
-            // fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[fSPL], gate_cost);
-        }
-        if (n.last_func == fAND || n.last_func == fOR)
-        {
-            for (const auto& p_hash : n.parent_hashes)
-            {
-                non_splittable_nodes.emplace(p_hash);
-            }
         }
     }
-    // fmt::print("\t\tFinished precalculating for {} : cost = {}\n", GNM[h1].to_str(), gate_cost);
+
     return std::make_tuple(gate_cost, ct_spl, non_splittable_nodes);
 }
 
 // assumes precomputed gate_cost, ct_spl, and non_splittable_nodes
-std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::unordered_map<ULL, UI> ct_spl, std::unordered_set<ULL> non_splittable_nodes, const UI limit, const UI depth, bool verbose=false)
+std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, UI>> ct_spl, std::vector<ULL> non_splittable_nodes, const UI limit, const UI depth, bool verbose=false)
 {
     std::vector<ULL> stack { h2 };
     stack.reserve( 2 * depth ); 
     if (verbose) fmt::print("\t\t\tProcessing node {}, limit = {}\n", GNM[h2].to_str(), limit);
-    if (init_cost > limit) return std::make_tuple(INF, false);
+    shortcut_cost(init_cost);
     while (!stack.empty())
     {
         ULL n_hash = stack.back();
         stack.pop_back();
-        Node& n = GNM[n_hash];
-        if (verbose) fmt::print("\t\t\tProcessing node {}\n", n.to_str());
-        ct_spl[n_hash]++;
-        if (verbose) fmt::print("\t\t\tIncremented the ct_spl for {}\n", n_hash);
-        if (ct_spl[n_hash] == 1)
+        // if (verbose) fmt::print("\t\t\tProcessing node {}\n", n.to_str());
+
+        auto it = std::find_if(ct_spl.begin(), ct_spl.end(), [n_hash](const std::pair<ULL, UI>& p) { return p.first == n_hash; });
+        if (it == ct_spl.end())
         {
+            ct_spl.emplace_back(n_hash, 1);
+            it = std::prev(ct_spl.end());
+        }
+        else
+        {
+            it->second++;
+        }
+
+        if (verbose) fmt::print("\t\t\tIncremented the ct_spl for {}\n", n_hash);
+        if (it->second == 1)
+        {
+            Node& n = GNM[n_hash];
             if (verbose) fmt::print("\t\t\tAccessing the cost of {}\n", n.last_func);
             init_cost += COSTS[n.last_func];
-            if (init_cost > limit) return std::make_tuple(INF, false);      
+            shortcut_cost(init_cost);     
             if (verbose) fmt::print("\t\t\tFirst time, adding the cost of {} ({}). Total cost is {}\n", F2STR[n.last_func], COSTS[n.last_func], init_cost);
             for (const auto& p_hash : n.parent_hashes)
             {
@@ -520,36 +503,38 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::unordered_map<ULL, UI>
                 stack.push_back(p_hash);
                 if (verbose) fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
             }
+            if (n.last_func == fAND || n.last_func == fOR)
+            {
+                for (const auto& p_hash : n.parent_hashes)
+                {
+                    if (std::find(non_splittable_nodes.begin(), non_splittable_nodes.end(), p_hash) == non_splittable_nodes.end())
+                    {
+                        non_splittable_nodes.push_back(p_hash);
+                    }
+                }
+            }
         }
         else
         {
             init_cost += COSTS[fSPL];
-            if (init_cost > limit) return std::make_tuple(INF, false);
+            shortcut_cost(init_cost);  
             if (verbose) fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[fSPL], init_cost);
-        }
-        if (n.last_func == fAND || n.last_func == fOR)
-        {
-            for (const auto& p_hash : n.parent_hashes)
-            {
-                non_splittable_nodes.emplace(p_hash);
-            }
         }
     }
 
     for (const ULL & n_hash : non_splittable_nodes)
     {
-        auto count = ct_spl[n_hash];
-        if (ct_spl[n_hash] > 1)
+        auto it = std::find_if(ct_spl.begin(), ct_spl.end(), [n_hash](const std::pair<ULL, UI>& p) { return p.first == n_hash; });
+        if (it != ct_spl.end() && it->second > 1)
         {
             Node& n = GNM[n_hash];
             auto last_func = n.last_func;
-            init_cost += COSTS[last_func] * (count - 1); // duplicate a gate
-            if (init_cost > limit) return std::make_tuple(INF, false);
+            init_cost += COSTS[last_func] * (it->second - 1); // duplicate a gate
             if (last_func == fXOR)
             {
-                init_cost += (count - 1) * COSTS[fSPL]; // need to do twice more splittings for duplicating an XOR gate
-                if (init_cost > limit) return std::make_tuple(INF, false);
+                init_cost += (it->second - 1) * COSTS[fSPL]; // need to do twice more splittings for duplicating an XOR gate
             }
+            shortcut_cost(init_cost);  
         }
     }
     if (verbose) fmt::print("final cost is {} and status is {}\n", init_cost, true);
@@ -653,18 +638,18 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
             ULL Mlocal = nrows_per_thread * NUM_THREADS;
 
             // std::vector<UI> end_indices;
-            for (auto start = 0u; start < M; start += Mlocal)
+            for (ULL start = 0u; start < M; start += Mlocal)
             {
-                auto end = std::min(start + Mlocal, M);
+                ULL end = std::min(start + Mlocal, M);
                 std::vector<std::vector<UI>> funcs(Mlocal, std::vector<UI>(N, 0));
                 std::vector<std::vector<bool>> xorables(Mlocal, std::vector<bool>(N, false));
                 std::vector<std::vector<UI>> costs(Mlocal, std::vector<UI>(N, INF));
 
                 std::vector<std::thread> threads;
                 // threads.reserve(num_threads);
-                for (auto i = 0u, start_row = start; start_row < end; i++, start_row += nrows_per_thread)
+                for (ULL i = 0u, start_row = start; start_row < end; i++, start_row += nrows_per_thread)
                 {
-                    auto end_row = std::min(start_row + nrows_per_thread, end);
+                    ULL end_row = std::min(start_row + nrows_per_thread, end);
                     threads.push_back(
                         std::thread(thread_old_new, std::ref(old_nodes), std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_row, end_row, COSTS[fCB], start, tgt_lvl)
                     );
@@ -674,10 +659,10 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
                 for (auto row = start; row < end; row++)
                 {
                     // fmt::print("Combining {} out of {} ({:f}\%) \n", (i+1), old_nodes.size(), 100 * (float)(i+1) / (float)old_nodes.size());
-                    auto i = row - start;
+                    ULL i = row - start;
                     ULL hi = old_nodes[row];
                     // Node& ni =  GNM[hi];
-                    for (auto j = 0u; j < N; j++)
+                    for (ULL j = 0u; j < N; j++)
                     {
                         ULL hj = new_nodes[j];
                         UI cost = costs[i][j];
@@ -702,8 +687,8 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, st
     fmt::print("\t\tCB: Iterating between {:L} and {:L}\n", start_k, end_k);
     ULL old_i;
     UI init_cost;
-    std::unordered_map<ULL, UI> ct_spl;
-    std::unordered_set<ULL> non_splittable_nodes;
+    std::vector<std::pair<ULL, UI>> ct_spl;
+    std::vector<ULL> non_splittable_nodes;
     // fmt::print("\t\tProcessing new - new combinations between #{} and #{}\n", start_k, end_k);
     for (ULL k = start_k; k < end_k; k++)
     {   
@@ -806,6 +791,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
         fmt::print("\t\tToo many pairs among {:L} new nodes to fit into memory (total {:L}). Splitting... \n", N, Ncombs);
 
         ULL NUM_MACRO_CHUNKS = ceil(Ncombs, MAX_SIZE);
+        fmt::print("\t\tInto {} chunks \n", NUM_MACRO_CHUNKS);
         for (auto [START, END]  : divide_range(Ncombs, NUM_MACRO_CHUNKS))
         {
             ULL chunk_size = END - START;
@@ -849,8 +835,8 @@ void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::v
     fmt::print("\t\tXOR: Iterating between {:L} and {:L}\n", start_k, end_k);
     ULL old_i;
     UI init_cost;
-    std::unordered_map<ULL, UI> ct_spl;
-    std::unordered_set<ULL> non_splittable_nodes;
+    std::vector<std::pair<ULL, UI>> ct_spl;
+    std::vector<ULL> non_splittable_nodes;
     for (ULL k = start_k; k < end_k; k++)
     {   
         COMPUTE_IJ(k, N, i, j);
@@ -978,8 +964,8 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and,
     fmt::print("\t\tAND/OR: Iterating between {:L} and {:L}\n", start_k, end_k);
     ULL old_i;
     UI init_cost;
-    std::unordered_map<ULL, UI> ct_spl;
-    std::unordered_set<ULL> non_splittable_nodes;
+    std::vector<std::pair<ULL, UI>> ct_spl;
+    std::vector<ULL> non_splittable_nodes;
 
     for (ULL k = start_k; k < end_k; k++)
     {   
@@ -1472,6 +1458,7 @@ void cb_generation(US lvl, std::string level_prefix)
         fresh_nodes.clear(); 
         iteration++;
         // fmt::print("GOON VAR IS {}", go_on);
+        // break_if (iteration > 1 && lvl == 1);
     } while(go_on);
 }
 
@@ -1645,9 +1632,8 @@ int main() {
     // {0,0,0,0}, {0,0,0,1}, {0,0,1,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, 
     // } };
     // successfully done: {0,0,0,0}, 
-    std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4}, } };
-
-    // std::vector<UI> levels {0, 0, 0, 1};
+    // { { {0,0,0,0}, {0,0,0,1},  } } ; //  
+    std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4}, {0,0,0,1}, {0,0,0,0} } };
 
     for (std::vector<UI> levels : sets_of_levels) 
     {
@@ -1660,7 +1646,8 @@ int main() {
             create_node(func, fPI, 0, levels[i++]*3 + 1, true);
         }
 
-        std::string level_prefix = fmt::format("20230320_Results/x3_{}{}{}{}", levels[0], levels[1], levels[2], levels[3]);
+        std::string level_prefix = fmt::format("20230320_vec/x3_{}{}{}{}", levels[0], levels[1], levels[2], levels[3]);
+        // std::string level_prefix = fmt::format("Profile_vec", levels[0], levels[1], levels[2], levels[3]);
         fmt::print("Analyzing levels: {}\n", level_prefix);
         fmt::print("After PI:\n");
         print_GNM();
@@ -1669,6 +1656,7 @@ int main() {
         // fmt::print("After const:\n");
         // print_GNM();
         
+        // for (US lvl = 0; lvl < 50; lvl ++)
         for (US lvl = 0; lvl < 50; lvl ++)
         {
             UL start_n_TT = count_done();
@@ -1683,6 +1671,8 @@ int main() {
             write_csv_arr(GEA, fmt::format("{}_gea_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             write_csv_arr(GEX, fmt::format("{}_gex_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             break_if (is_done(GEX) && lvl >= levels.back()) ;
+
+            // break_if (lvl == 1); 
 
             fmt::print("Processing lvl {}: AS\n", lvl);
             // fmt::print("Checking integrity of GNM before AS\n");

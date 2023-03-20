@@ -1193,18 +1193,11 @@ void write_csv_gnm(const std::unordered_map<ULL, Node>& gnm, const std::string& 
     outfile << "Hash,Func,Last Func,Cost,Depth,Xorable,Parent Hashes,Lvl" << std::endl;
 
     // Write data to CSV file
-    for (const auto& [hash, node] : gnm) {
-        outfile << hash << ",";
-        outfile << node.func << ",";
-        outfile << node.last_func << ",";
-        outfile << node.cost << ",";
-        outfile << node.depth << ",";
-        outfile << node.xorable << ",";
-        for (const auto& parent_hash : node.parent_hashes) {
-            outfile << parent_hash << "|";
-        }
-        outfile << ",";
-        outfile << node.lvl << std::endl;
+    for (const auto& [hash, n] : gnm) {
+        
+        std::string str = fmt::format("{0},{1},{2},{3},{4},{5},{6},{7}\n", 
+                                        hash, n.func, n.last_func, n.cost, n.depth, n.xorable, 
+                                        fmt::join(n.parent_hashes, "|"), n.lvl);
     }
 
     // Close output file
