@@ -37,8 +37,8 @@ std::string get_current_time_formatted() {
 }
 
 constexpr US THREADING_MODE = 0; //0 threading, 1 batch processing, 2 serial
-constexpr UL MAX_SIZE = 200'000'000;
-constexpr UI NUM_THREADS = 100;
+constexpr ULL MAX_SIZE = 200'000'000;
+constexpr ULL NUM_THREADS = 100;
 
 inline void join_threads(std::vector<std::thread>& threads) //, UL maxthreads = INF
 {
@@ -68,8 +68,7 @@ std::unordered_map<ULL, Node> GNM;
 std::array<ULL, NUM_TT> GEA;
 std::array<ULL, NUM_TT> GEX;
 
-template<typename dtype_x, typename dtype_y>
-inline dtype_y ceil(dtype_x x, dtype_y y)
+inline ULL ceil(ULL x, ULL y)
 {
     return 1 + ((x - 1) / y);
 }
@@ -343,15 +342,15 @@ std::vector<ULL> select_depth(short min_depth, short max_depth)
     return out;
 }
 
-std::vector<std::pair<UI, UI>> divide_range(UI N, UI k) 
+std::vector<std::pair<ULL, ULL>> divide_range(ULL N, ULL k) 
 {
-    std::vector<std::pair<UI, UI>> ranges(k);
-    UI base_length = N / k;
-    UI extra = N % k;
+    std::vector<std::pair<ULL, ULL>> ranges(k);
+    ULL base_length = N / k;
+    ULL extra = N % k;
 
-    UI start = 0;
-    for (UI i = 0; i < k; ++i) {
-        UI end = start + base_length - 1;
+    ULL start = 0;
+    for (ULL i = 0; i < k; ++i) {
+        ULL end = start + base_length - 1;
         if (extra > 0) {
             end += 1;
             extra -= 1;
@@ -623,18 +622,18 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
             ULL Mlocal = nrows_per_thread * NUM_THREADS;
 
             // std::vector<UI> end_indices;
-            for (auto start = 0u; start < M; start += Mlocal)
+            for (ULL start = 0u; start < M; start += Mlocal)
             {
-                auto end = std::min(start + Mlocal, M);
+                ULL end = std::min(start + Mlocal, M);
                 std::vector<std::vector<UI>> funcs(Mlocal, std::vector<UI>(N, 0));
                 std::vector<std::vector<bool>> xorables(Mlocal, std::vector<bool>(N, false));
                 std::vector<std::vector<UI>> costs(Mlocal, std::vector<UI>(N, INF));
 
                 std::vector<std::thread> threads;
                 // threads.reserve(num_threads);
-                for (auto i = 0u, start_row = start; start_row < end; i++, start_row += nrows_per_thread)
+                for (ULL i = 0u, start_row = start; start_row < end; i++, start_row += nrows_per_thread)
                 {
-                    auto end_row = std::min(start_row + nrows_per_thread, end);
+                    ULL end_row = std::min(start_row + nrows_per_thread, end);
                     threads.push_back(
                         std::thread(thread_old_new, std::ref(old_nodes), std::ref(new_nodes), std::ref(funcs), std::ref(xorables), std::ref(costs), start_row, end_row, COSTS[fCB], start, tgt_lvl)
                     );
@@ -644,10 +643,10 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
                 for (auto row = start; row < end; row++)
                 {
                     // fmt::print("Combining {} out of {} ({:f}\%) \n", (i+1), old_nodes.size(), 100 * (float)(i+1) / (float)old_nodes.size());
-                    auto i = row - start;
+                    ULL i = row - start;
                     ULL hi = old_nodes[row];
                     // Node& ni =  GNM[hi];
-                    for (auto j = 0u; j < N; j++)
+                    for (ULL j = 0u; j < N; j++)
                     {
                         ULL hj = new_nodes[j];
                         UI cost = costs[i][j];
@@ -776,6 +775,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
         fmt::print("\t\tToo many pairs among {:L} new nodes to fit into memory (total {:L}). Splitting... \n", N, Ncombs);
 
         ULL NUM_MACRO_CHUNKS = ceil(Ncombs, MAX_SIZE);
+        fmt::print("\t\tInto {} chunks \n", NUM_MACRO_CHUNKS);
         for (auto [START, END]  : divide_range(Ncombs, NUM_MACRO_CHUNKS))
         {
             ULL chunk_size = END - START;
