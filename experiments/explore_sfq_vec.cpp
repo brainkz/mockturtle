@@ -13,8 +13,6 @@
 #include "mockturtle/algorithms/nodes.hpp"
 #include <algorithm>
 #include <locale>
-// #include <SmallVector.h>
-// #include <execution>
 
 #include <iomanip>
 #include <ctime>
@@ -37,7 +35,8 @@ std::string get_current_time_formatted() {
     return ss.str();
 }
 
-constexpr US THREADING_MODE = 0; //0 threading, 1 batch processing, 2 serial
+#define THREADING_MODE 0
+// constexpr US THREADING_MODE = 0; //0 threading, 1 batch processing, 2 serial
 constexpr ULL MAX_SIZE = 200'000'000;
 constexpr ULL NUM_THREADS = 100;
 
@@ -88,7 +87,7 @@ inline Node& get_gex(UI func)
 
 inline void check_node(ULL hash)
 {
-    Node & n = GNM[hash];
+    Node & n = GNM.at(hash); // [hash];
     fmt::print("Checking node {} | num_parents = {} | {:L}\n", n.to_str(), n.parent_hashes.size(), hash);
     if (n.last_func == fNOFUNC)
     {
@@ -146,7 +145,7 @@ inline void print_GNM()
     }
 }
 
-std::tuple<ULL, bool> force_create_node(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
+std::tuple<ULL, bool> force_create_node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
 {
     auto it = GNM.find(_hash);
     bool node_is_new = (it == GNM.end());
@@ -158,13 +157,13 @@ std::tuple<ULL, bool> force_create_node(TT _func, US _last_func, UI _cost, UI _d
     return std::make_tuple(_hash, false); 
 }
 
-std::tuple<ULL, bool> force_create_node(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {})
+std::tuple<ULL, bool> force_create_node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {})
 {
     ULL _hash = calculate_hash(_func, _last_func, _cost, _depth, _xorable, _parent_hashes);
     return force_create_node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
 }
 
-std::tuple<ULL, bool> create_node(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
+std::tuple<ULL, bool> create_node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
 //, std::unordered_map<ULL, Node>& hash_map = GNM)
 {
     auto it = GNM.find(_hash);
@@ -219,13 +218,13 @@ std::tuple<ULL, bool> create_node(TT _func, US _last_func, UI _cost, UI _depth, 
 }
 
 
-std::tuple<ULL, bool> create_node(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {})
+std::tuple<ULL, bool> create_node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {})
 {
     ULL _hash = calculate_hash(_func, _last_func, _cost, _depth, _xorable, _parent_hashes);
     return create_node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
 }
 
-std::tuple<ULL, bool> create_node_no_upd(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash, std::unordered_map<ULL, Node>& hash_map = GNM)
+std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash, std::unordered_map<ULL, Node>& hash_map = GNM)
 {
     auto it = hash_map.find(_hash);
     bool node_is_new = (it == hash_map.end());
@@ -272,7 +271,7 @@ std::tuple<ULL, bool> create_node_no_upd(TT _func, US _last_func, UI _cost, UI _
     return std::make_tuple(_hash,  false); 
 }
 
-std::tuple<ULL, bool> create_node_no_upd(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {}, std::unordered_map<ULL, Node>& hash_map = GNM)
+std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {}, std::unordered_map<ULL, Node>& hash_map = GNM)
 {
     ULL _hash = calculate_hash(_func, _last_func, _cost, _depth, _xorable, _parent_hashes);
     return create_node_no_upd(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash, hash_map);
@@ -377,7 +376,7 @@ UI node_cost(const Node& n1, const Node& n2, UI gate_cost)
     {
         ULL n_hash = stack.back();
         stack.pop_back();
-        Node& n = GNM[n_hash];
+        Node& n = GNM.at(n_hash); // [n_hash];
         // fmt::print("\t\t\tProcessing node {}\n", n.to_str());
         ct_spl[n_hash]++;
         if (ct_spl[n_hash] == 1)
@@ -407,7 +406,7 @@ UI node_cost(const Node& n1, const Node& n2, UI gate_cost)
         auto count = ct_spl[n_hash];
         if (ct_spl[n_hash] > 1)
         {
-            Node& n = GNM[n_hash];
+            Node& n = GNM.at(n_hash); //[n_hash];
             auto last_func = n.last_func;
             gate_cost += COSTS[last_func] * (count - 1); // duplicate a gate
             if (last_func == fXOR)
@@ -432,7 +431,7 @@ std::tuple<UI, std::vector<std::pair<ULL, UI>>, std::vector<ULL>> node_cost_sing
     {
         ULL n_hash = stack.back();
         stack.pop_back();
-        Node& n = GNM[n_hash];
+        Node& n = GNM.at(n_hash); //[n_hash];
 
         auto it = std::find_if(ct_spl.begin(), ct_spl.end(), [n_hash](const std::pair<ULL, UI>& p) { return p.first == n_hash; });
         if (it == ct_spl.end())
@@ -470,7 +469,7 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, 
 {
     std::vector<ULL> stack { h2 };
     stack.reserve( 2 * depth ); 
-    if (verbose) fmt::print("\t\t\tProcessing node {}, limit = {}\n", GNM[h2].to_str(), limit);
+    if (verbose) fmt::print("\t\t\tProcessing node {}, limit = {}\n", GNM.at(h2).to_str(), limit);
     shortcut_cost(init_cost);
     while (!stack.empty())
     {
@@ -492,14 +491,14 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, 
         if (verbose) fmt::print("\t\t\tIncremented the ct_spl for {}\n", n_hash);
         if (it->second == 1)
         {
-            Node& n = GNM[n_hash];
+            Node& n = GNM.at(n_hash); //[n_hash];
             if (verbose) fmt::print("\t\t\tAccessing the cost of {}\n", n.last_func);
             init_cost += COSTS[n.last_func];
             shortcut_cost(init_cost);     
             if (verbose) fmt::print("\t\t\tFirst time, adding the cost of {} ({}). Total cost is {}\n", F2STR[n.last_func], COSTS[n.last_func], init_cost);
             for (const auto& p_hash : n.parent_hashes)
             {
-                Node& p = GNM[p_hash];
+                Node& p = GNM.at(p_hash); //[p_hash];
                 stack.push_back(p_hash);
                 if (verbose) fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
             }
@@ -527,7 +526,7 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, 
         auto it = std::find_if(ct_spl.begin(), ct_spl.end(), [n_hash](const std::pair<ULL, UI>& p) { return p.first == n_hash; });
         if (it != ct_spl.end() && it->second > 1)
         {
-            Node& n = GNM[n_hash];
+            Node& n = GNM.at(n_hash); //[n_hash];
             auto last_func = n.last_func;
             init_cost += COSTS[last_func] * (it->second - 1); // duplicate a gate
             if (last_func == fXOR)
@@ -548,19 +547,19 @@ void thread_old_new(const std::vector<ULL>& hashes_i, const std::vector<ULL>& ha
     fmt::print("\t\tProcessing old - new pairs between #{:L} and #{:L} (out of total {:L})\n", start_row, end_row, hashes_i.size());
     for (ULL i = start_row; i < end_row; ++i) {
         ULL hi = hashes_i[i];
-        Node & ni = GNM[hi];
+        Node & ni = GNM.at(hi); // [hi];
         auto [init_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, gate_cost, tgt_lvl*3);
         // fmt::print("Preliminary calculations: init_cost = {}, #predecessors = {}, #non-spllittables = {}\n", init_cost, ct_spl.size(), non_splittable_nodes.size());
         for (int j = 0; j < N; ++j) 
         {
             ULL hj = hashes_j[j];
-            Node & nj = GNM[hj];
+            Node & nj = GNM.at(hj); // [hj];
 
             // fmt::print("\tCost calculation: ni = {}, nj = {}\n", ni.to_str(), nj.to_str());
 
-            TT func = ni.func | nj.func;
+            UI func = ni.func | nj.func;
             continue_if (func == 0 || func == ONES || func == ni.func || func == nj.func);
-            bool xorable = (ni.func ^ nj.func) == func;
+            bool xorable = ((ni.func ^ nj.func) == func) & ni.xorable & nj.xorable;
             Node & best_n = xorable ? get_gex(func) : get_gea(func);
             if (best_n.lvl >= tgt_lvl)
             {
@@ -628,7 +627,7 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
     }
     else //need to split into chunks
     {
-        // case 1 - row size is not too large - should in principle always be the case for 4-input TT-s
+        // case 1 - row size is not too large - should in principle always be the case for 4-input UI-s
         // In this case, divide the combinations in one dimension - split by rows
         fmt::print("\t\tToo many combinations between {:L} old nodes and {:L} new nodes to fit into memory (total {:L}). Splitting... \n", M, N, M*N);
         if (N < MAX_SIZE / NUM_THREADS)
@@ -694,7 +693,7 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, st
     {   
         COMPUTE_IJ(k, N, i, j);
         ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
-        Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+        Node & ni = GNM.at(hi); //[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
         if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
         {
             // fmt::print("\tUpdating\n");
@@ -706,13 +705,14 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, st
 
         // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
         ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
-        Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+        Node & nj = GNM.at(hj); // [hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
 
         // fmt::print("\t\t\tCalculating cost for k {}:\n\t\t\t\t#{}: {}\n\t\t\t\t#{}: {}\n", k, i, ni.to_str(), j, nj.to_str());
 
-        TT func = ni.func | nj.func;
+        UI func = ni.func | nj.func;
         continue_if (func == 0 || func == ONES || func == ni.func || func == nj.func);
-        bool xorable = (ni.func ^ nj.func) == func; // fmt::print("\t\t Xorable status = {}\n", xorables[k]);
+        // bool xorable = (ni.func ^ nj.func) == func; // fmt::print("\t\t Xorable status = {}\n", xorables[k]);
+        bool xorable = ((ni.func ^ nj.func) == func) & ni.xorable & nj.xorable;
         
         Node & best_n = xorable ? get_gex(func) : get_gea(func);
         if (best_n.lvl >= tgt_lvl)
@@ -841,7 +841,7 @@ void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::v
     {   
         COMPUTE_IJ(k, N, i, j);
         ULL hi = hashes[i];     // fmt::print("\t\t hash_i={}\n", hi);
-        Node & ni = GNM[hi];    // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+        Node & ni = GNM.at(hi); // [hi];    // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
 
         if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
         {
@@ -854,9 +854,9 @@ void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::v
 
         // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
         ULL hj = hashes[j];     // fmt::print("\t\t hash_j={}\n", hj);
-        Node & nj = GNM[hj];    // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+        Node & nj = GNM.at(hj); // [hj];    // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
 
-        TT func = ni.func ^ nj.func;
+        UI func = ni.func ^ nj.func;
         Node & best_n = get_gex(func);
         if (best_n.lvl >= tgt_lvl) 
         {
@@ -877,7 +877,7 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
     std::vector<ULL> valid_nodes;
     for (auto hash : nodes)
     {   
-        if (GNM[hash].xorable)
+        if (GNM.at(hash).xorable) // [hash]
         {
             valid_nodes.push_back(hash);
         }
@@ -971,7 +971,7 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and,
     {   
         COMPUTE_IJ(k, N, i, j);
         ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
-        Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+        Node & ni = GNM.at(hi);// [hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
         if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
         {
             // fmt::print("\tUpdating\n");
@@ -983,9 +983,9 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and,
 
         // ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}, start_k={}, end_k={}, #hashes={}\n", k, i, j, start_k, end_k, hashes.size());
         ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
-        Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+        Node & nj = GNM.at(hj);// [hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
 
-        TT func_and = ni.func & nj.func;
+        UI func_and = ni.func & nj.func;
         ULL best_and_hash = GEX[func_and];
         UL best_and_lvl;
         UL best_and_cost;
@@ -999,13 +999,13 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and,
             if (GNM.find(best_and_hash) == GNM.end())
             {
                 fmt::print("best_and_hash : {}\nni : {}\nnj : {}\nfunc_and : {}\nnode in GNM : {}", 
-                best_and_hash, ni.to_str(), nj.to_str(), func_and, GNM[best_and_hash].to_str());
+                best_and_hash, ni.to_str(), nj.to_str(), func_and, GNM.at(best_and_hash).to_str());
             };
-            Node & best_and = GNM[best_and_hash];
+            Node & best_and = GNM.at(best_and_hash); // [best_and_hash];
             best_and_lvl = best_and.lvl;
             best_and_cost = best_and.cost;
         }
-        TT func_or  = ni.func | nj.func;
+        UI func_or  = ni.func | nj.func;
         ULL best_or_hash  = GEX[func_or ];
         UL best_or_lvl;
         UL best_or_cost;
@@ -1019,9 +1019,9 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and,
             if (GNM.find(best_or_hash) == GNM.end())
             {
                 fmt::print("best_or_hash : {}\nni : {}\nnj : {}\nfunc_or : {}\nnode in GNM : {}", 
-                best_or_hash, ni.to_str(), nj.to_str(), func_or, GNM[best_or_hash].to_str());
+                best_or_hash, ni.to_str(), nj.to_str(), func_or, GNM.at(best_or_hash).to_str());
             };
-            Node & best_or = GNM[best_or_hash];
+            Node & best_or = GNM.at(best_or_hash);
             best_or_lvl = best_or.lvl;
             best_or_cost = best_or.cost;
         }
@@ -1166,7 +1166,7 @@ std::tuple<ULL, bool> check_cb(Node& ni, Node& nj, std::vector<ULL>& fresh_nodes
 {
     // fmt::print("\t\tA: {}\n", ni.to_str());
     // fmt::print("\t\tB: {}\n", nj.to_str());
-    TT func = ni.func | nj.func;
+    UI func = ni.func | nj.func;
     if (func == ni.func || func == nj.func || func == 0 || func == ONES)
     {
         // Node& ref = GEX[func];
@@ -1189,7 +1189,7 @@ std::tuple<ULL, bool> check_xor(Node& ni, Node& nj)
 {
     // fmt::print("\t\tA: {}\n", ni.to_str());
     // fmt::print("\t\tB: {}\n", nj.to_str());
-    TT func = ni.func ^ nj.func;
+    UI func = ni.func ^ nj.func;
     // if (func == 0 || func == ONES)
     // {
     //     Node& ref = GEX[func];
@@ -1211,8 +1211,8 @@ std::tuple<ULL, bool, ULL, bool> check_and_or(Node& ni, Node& nj)
     // fmt::print("\t\tA: {}\n", ni.to_str());
     // fmt::print("\t\tB: {}\n", nj.to_str());
     US depth = ni.lvl * 3 + 3;
-    TT func_and = ni.func & nj.func;
-    TT func_or  = ni.func | nj.func;
+    UI func_and = ni.func & nj.func;
+    UI func_or  = ni.func | nj.func;
     // fmt::print("\t\t\t&: {}\n", func_and);
     // fmt::print("\t\t\t&: {}\n", func_or );
     // if (func == 0 || func == ONES)
@@ -1257,7 +1257,7 @@ std::unordered_set<ULL> remove_dominated()
         ULL hash = stack.back();
         stack.pop_back();
         
-        Node& node = GNM[hash];
+        Node& node = GNM.at(hash); // [hash];
         if (protected_nodes.find(hash) == protected_nodes.end())
         {
             for (ULL p_hash : node.parent_hashes)
@@ -1372,7 +1372,7 @@ void cb_generation(US lvl, std::string level_prefix)
             for (auto hj : new_nodes)
             {
                 Node& nj =  GNM[hj];
-                TT func = ni.func | nj.func;
+                UI func = ni.func | nj.func;
                 continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
                 // continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
                 bool xorable = (func == (ni.func ^ nj.func));
@@ -1404,7 +1404,7 @@ void cb_generation(US lvl, std::string level_prefix)
             {
                 ULL hj = new_nodes[j];
                 Node& nj =  GNM[hj];
-                TT func = ni.func | nj.func;
+                UI func = ni.func | nj.func;
                 continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
                 bool xorable = (func == (ni.func ^ nj.func));
 
@@ -1471,7 +1471,7 @@ void as_generation(US lvl)
     fmt::print("\t{} : DFF/NOT {:L} nodes\n", lvl, nodes.size());
     for (ULL hash : nodes)
     {
-        Node& ni =  GNM[hash];
+        Node& ni =  GNM.at(hash); // [hash];
         force_create_node(ni.func, fDFF, ni.cost + COSTS[fDFF], tgt_depth, true, {hash});
         create_node(ni.func ^ ONES, fNOT, ni.cost + COSTS[fNOT], tgt_depth, true, {hash});
     }
@@ -1507,7 +1507,7 @@ void as_generation(US lvl)
 
                 // fmt::print("\t\tA: {}\n", ni.to_str());
                 // fmt::print("\t\tB: {}\n", nj.to_str());
-                TT func = ni.func ^ nj.func;
+                UI func = ni.func ^ nj.func;
                 // UI limit = std::min(GNM[GEX[func]].cost);
                 auto [cost,status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, GNM[GEX[func]].cost, tgt_lvl*3);
                 continue_if (!status);
@@ -1558,8 +1558,8 @@ void sa_generation(US lvl)
                 ULL hj = nodes[j];
                 Node& nj =  GNM[hj];
 
-                TT func_and = ni.func & nj.func;
-                TT func_or  = ni.func | nj.func;
+                UI func_and = ni.func & nj.func;
+                UI func_or  = ni.func | nj.func;
                 UI limit = std::max(GNM[GEX[func_and]].cost, GNM[GEX[func_or]].cost);
 
                 auto [cost_and, status] = node_cost(hj, gate_cost_and, ct_spl, non_splittable_nodes, INF, tgt_lvl*3);
@@ -1622,7 +1622,8 @@ bool is_subset(const std::vector<ULL>& v1, const std::vector<ULL>& v2) {
     });
 }
 
-int main() {
+int main() 
+{
     std::locale::global(std::locale("en_US.UTF-8"));
     // fmt::print("Start:\n");
     // print_GNM();
@@ -1633,7 +1634,45 @@ int main() {
     // } };
     // successfully done: {0,0,0,0}, 
     // { { {0,0,0,0}, {0,0,0,1},  } } ; //  
-    std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4}, {0,0,0,1}, {0,0,0,0} } };
+    std::vector<std::vector<UI>> sets_of_levels { 
+        { 
+            {0,0,0,0}, 
+            {0,0,0,1}, 
+            {0,0,0,2}, 
+            {0,0,0,3}, 
+            {0,0,0,4}, 
+            {0,0,1,1}, 
+            {0,0,1,2}, 
+            {0,0,1,3}, 
+            {0,0,1,4}, 
+            {0,0,2,2}, 
+            {0,0,2,3}, 
+            {0,0,2,4}, 
+            {0,0,3,3}, 
+            {0,0,3,4}, 
+            {0,0,4,4}, 
+            {0,1,1,1}, 
+            {0,1,1,2}, 
+            {0,1,1,3}, 
+            {0,1,1,4}, 
+            {0,1,2,2}, 
+            {0,1,2,3}, 
+            {0,1,2,4}, 
+            {0,1,3,3}, 
+            {0,1,3,4}, 
+            {0,1,4,4}, 
+            {0,2,2,2}, 
+            {0,2,2,3}, 
+            {0,2,2,4}, 
+            {0,2,3,3}, 
+            {0,2,3,4}, 
+            {0,2,4,4}, 
+            {0,3,3,3}, 
+            {0,3,3,4}, 
+            {0,3,4,4}, 
+            {0,4,4,4} 
+        }     
+    };
 
     for (std::vector<UI> levels : sets_of_levels) 
     {
@@ -1641,13 +1680,12 @@ int main() {
         std::fill(GEA.begin(), GEA.end(), 0);
         std::fill(GEX.begin(), GEX.end(), 0);
         auto i = 0u;
-        for (TT func : gen_pi_func(NUM_VARS))
+        for (UI func : gen_pi_func(NUM_VARS))
         {
             create_node(func, fPI, 0, levels[i++]*3 + 1, true);
         }
 
-        std::string level_prefix = fmt::format("20230320_vec/x3_{}{}{}{}", levels[0], levels[1], levels[2], levels[3]);
-        // std::string level_prefix = fmt::format("Profile_vec", levels[0], levels[1], levels[2], levels[3]);
+        std::string level_prefix = fmt::format("20230328_vec/x3_{}", fmt::join(levels, ""));
         fmt::print("Analyzing levels: {}\n", level_prefix);
         fmt::print("After PI:\n");
         print_GNM();
@@ -1722,7 +1760,7 @@ int main() {
 
         for (auto & [hash, n1] : GNM)
         {
-            Node& n2 = GNM_new[hash];
+            Node& n2 = GNM_new.at(hash);
             bool scalar_fields_equal = (n1.func == n2.func && n1.last_func == n2.last_func && n1.cost == n2.cost && n1.depth == n2.depth && n1.xorable == n2.xorable);
             std::vector<ULL> p1, p2;
             p1.insert(p1.end(), n1.parent_hashes.begin(), n1.parent_hashes.end());
@@ -1732,11 +1770,7 @@ int main() {
             std::sort(p2.begin(), p2.end());
             bool parents_equal = (p1 == p2);
 
-            if (scalar_fields_equal && parents_equal)
-            {
-                continue;
-            }
-            else
+            if (!(scalar_fields_equal && parents_equal))
             {
                 fmt::print("Hash: {}\n\n", hash);
                 fmt::print("\tfunc\t: {} - {}\n", n1.func, n2.func);
@@ -1758,6 +1792,6 @@ int main() {
     return 0;
 }
 
-// "nohup ./experiments/explore_sfq_MT > 20230320_Results/x3.log 2>&1 &"
-
-// ''
+/*
+nohup ./experiments/explore_sfq_vec > 20230328_vec/x3.log 2>&1 &
+*/

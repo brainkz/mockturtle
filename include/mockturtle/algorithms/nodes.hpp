@@ -12,6 +12,7 @@
 #include <array>
 #include <fmt/format.h>
 #include <thread>
+#include <kitty/kitty.hpp>
 
 typedef unsigned short US;
 typedef unsigned int   UI;
@@ -21,9 +22,10 @@ typedef const unsigned int   CUI;
 typedef const unsigned long  CUL;
 typedef unsigned long long ULL;
 
+bool DEBUG = false;
+
 constexpr UI NUM_VARS = 4u;
-typedef unsigned int TT;
-// typedef kitty::static_truth_table<NUM_IN> TT;
+typedef kitty::static_truth_table<NUM_VARS> staticTT;
 
 constexpr US fDFF   = 0;
 constexpr US fNOT   = 1;
@@ -39,7 +41,15 @@ constexpr US fSPL   = 10;
 constexpr US fPI    = 11;
 constexpr US fNOFUNC= 99;
 
-const UI kNumThreads = 100;
+constexpr UI kNumThreads = 100;
+
+const std::string GENLIB_PHASE = "UNKNOWN";
+constexpr float GENLIB_INPUT_LOAD = 1;
+constexpr float GENLIB_MAX_LOAD = 999;
+constexpr float GENLIB_RISE_BLOCK_DELAY   = 0.025;
+constexpr float GENLIB_RISE_FANOUT_DELAY  = 0.025;
+constexpr float GENLIB_FALL_BLOCK_DELAY   = 0.025;
+constexpr float GENLIB_FALL_FANOUT_DELAY  = 0.025;
 
 
 // constexpr bool accel_cost = true;
@@ -61,9 +71,17 @@ std::unordered_map<US, std::string> F2STR {
     {fPI    , "PI "},
     {fNOFUNC, "N/A"}
     }; 
+std::unordered_map<US, std::string> PI2LETTER { 
+    {0x00FF, "d"},
+    {0x0F0F, "c"},
+    {0x3333, "b"},
+    {0x5555, "a"},
+    {0x0000, "0"},
+    {0xFFFF, "1"},
+    }; 
 
 constexpr UL NUM_TT = (1 << (1 << NUM_VARS));
-constexpr TT ONES = NUM_TT - 1;
+constexpr UI ONES = NUM_TT - 1;
 constexpr UL INF = 0xFFFFFF;
 
 // Hash combiner
@@ -72,7 +90,7 @@ static void hash_combine(std::size_t& seed, const T& val) {
     seed ^= std::hash<T>{}(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
-ULL calculate_hash(TT func, US last_func, UI cost, UI depth, bool xorable, std::vector<ULL> parent_hashes = {})
+ULL calculate_hash(UI func, US last_func, UI cost, UI depth, bool xorable, std::vector<ULL> parent_hashes = {})
 {
     std::size_t seed = 0;
     hash_combine(seed, func);
@@ -86,9 +104,28 @@ ULL calculate_hash(TT func, US last_func, UI cost, UI depth, bool xorable, std::
     return seed;
 };
 
+// inline void apply_swaps(staticTT & tt, const std::vector<std::pair<uint8_t,uint8_t>> & swaps)
+// {
+//     for (auto [i,j] : swaps)
+//     {
+//         kitty::swap_inplace( tt, i, j );
+//     }
+// }
+inline UI apply_swaps(UI func, const std::vector<std::pair<uint8_t,uint8_t>> & swaps)
+{
+    std::vector<ULL> words = {func};
+    staticTT tt;
+    kitty::create_from_words(tt, words.begin(), words.end());
+    for (auto [i,j] : swaps)
+    {
+        kitty::swap_inplace( tt, i, j );
+    }
+    return tt._bits;
+}
+
 class Node {
 public:
-    TT func = 0;
+    UI func = 0;
     US last_func = fNOFUNC;
     UI cost = INF;
     UI depth = INF;
@@ -118,7 +155,7 @@ public:
         return *this;
     }
 
-    Node(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes)
+    Node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes)
         : func(_func), last_func(_last_func), cost(_cost), depth(_depth), xorable(_xorable), parent_hashes(_parent_hashes), lvl(depth / 3)
     {
         // Calculate hash based on the hashes of parent_hashes and specified fields
@@ -126,7 +163,7 @@ public:
         // hash = calculate_hash();
     }
 
-    Node(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable)
+    Node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable)
         : func(_func), last_func(_last_func), cost(_cost), depth(_depth), xorable(_xorable), parent_hashes{}, lvl(depth / 3)
     {
         // Calculate hash based on the hashes of parent_hashes and specified fields
@@ -134,7 +171,7 @@ public:
         hash = calculate_hash(func, last_func, cost, depth, xorable);
     }
 
-    Node(TT _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
+    Node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
         : func(_func), last_func(_last_func), cost(_cost), depth(_depth), xorable(_xorable), parent_hashes(_parent_hashes), lvl(depth / 3), hash(_hash)
     {
         // Hash is precalculated based on the hashes of parent_hashes and specified fields
@@ -164,6 +201,213 @@ public:
         // return "Func: " + std::to_string(func) + "|Last: " + std::to_string(last_func) + "|Cost: " + std::to_string(cost) + "|Depth: " + std::to_string(depth) + "|X: " + std::to_string(xorable);
     }
 
+    std::string genlib_eqn(std::unordered_map<ULL, Node> & nodemap, std::vector<UI> & pis) const
+    {
+        // if (DEBUG) {fmt::print("\t\tAccessing genlib_eqn: {}\n", to_str());}
+        if (last_func == fPI)
+        {
+            if (std::find(pis.begin(), pis.end(), func) == pis.end())
+            {
+                pis.push_back(func);
+            }
+            return PI2LETTER[func];
+        }
+        else if (last_func == fDFF)
+        {
+            assert(parent_hashes.size() == 1);
+            return fmt::format("{}", nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+        }
+        else if (last_func == fNOT)
+        {
+            assert(parent_hashes.size() == 1);
+            return fmt::format("!{}", nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+        }
+        else if (last_func == fCB)
+        {
+            assert(parent_hashes.size() == 2);
+            return fmt::format("({0}+{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+        }
+        else if (last_func == fOR || last_func == fMERGE)
+        {
+            assert(parent_hashes.size() == 2);
+            return fmt::format("({0}|{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+        }
+        else if (last_func == fAND)
+        {
+            assert(parent_hashes.size() == 2);
+            return fmt::format("({0}&{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+        }
+        else if (last_func == fXOR)
+        {
+            assert(parent_hashes.size() == 2);
+            // return fmt::format("(!({0})*({1})+({0})*!({1}))", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("({0}^{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+        }
+        else
+        {
+            if (DEBUG) {fmt::print("Unsupported function {}", to_str());}
+            return "";
+        }
+    }
+
+    std::string to_genlib(std::unordered_map<ULL, Node> & nodemap, const std::vector<UI> & levels, const std::vector<UI> PI_funcs, const std::vector<std::pair<uint8_t,uint8_t>> & swaps = {}) const
+    {
+        std::vector<UI> pis;
+        std::string str = fmt::format("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(levels, ""), cost,  genlib_eqn(nodemap, pis));
+
+        for (auto & pi : pis)
+        {
+            UL idx = std::find(PI_funcs.begin(), PI_funcs.end(), pi) - PI_funcs.begin();
+            auto true_lvl = (depth + 1) / 3;
+            std::string line = fmt::format("\tPIN {} {} {} {} {:d} {:0.3f} {:d} {:0.3f}\n", 
+            PI2LETTER[pi], GENLIB_PHASE, GENLIB_INPUT_LOAD, GENLIB_MAX_LOAD, 
+            true_lvl - levels[idx], GENLIB_RISE_FANOUT_DELAY, true_lvl - levels[idx], GENLIB_FALL_FANOUT_DELAY);
+            str.append(line);
+            // if (DEBUG) {fmt::print(line);}
+        }
+        // if (DEBUG) {fmt::print(str);}
+        return str;
+    }
+
+    std::string to_stack(std::unordered_map<ULL, Node> & nodemap) const
+    {
+        if (last_func == fPI)
+        {
+            return PI2LETTER[func];
+        }
+        else if (last_func == fDFF)
+        {
+            assert(parent_hashes.size() == 1);
+            return fmt::format("DFF({})", nodemap[parent_hashes.back()].to_stack(nodemap));
+        }
+        else if (last_func == fNOT)
+        {
+            assert(parent_hashes.size() == 1);
+            return fmt::format("NOT({})", nodemap[parent_hashes.back()].to_stack(nodemap));
+        }
+        else if (last_func == fCB || last_func == fMERGE)
+        {
+            assert(parent_hashes.size() == 2);
+            return fmt::format("CB({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap), nodemap[parent_hashes.back()].to_stack(nodemap));
+        }
+        else if ( last_func == fOR )
+        {
+            assert(parent_hashes.size() == 2);
+            return fmt::format("OR({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap), nodemap[parent_hashes.back()].to_stack(nodemap));
+        }
+        else if (last_func == fAND)
+        {
+            assert(parent_hashes.size() == 2);
+            return fmt::format("AND({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap), nodemap[parent_hashes.back()].to_stack(nodemap));
+        }
+        else if (last_func == fXOR)
+        {
+            assert(parent_hashes.size() == 2);
+            return fmt::format("XOR({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap), nodemap[parent_hashes.back()].to_stack(nodemap));
+        }
+        else
+        {
+            if (DEBUG) {fmt::print("Unsupported function {}", to_str());}
+            return "";
+        }
+    }
+
+    std::tuple<bool, UI> redundancy_check(std::unordered_map<ULL, Node> & GNM)
+    {
+        // std::vector<UI>   pi_funcs     {0x00FF, 0x0F0F, 0x3333, 0x5555};
+        std::vector<UI>   pi_funcs     {0x5555, 0x3333, 0x0F0F, 0x00FF};
+        std::vector<bool> has_dff      {false, false, false, false};
+        std::vector<bool> has_other    {false, false, false, false};
+        std::vector<bool> is_reached   {false, false, false, false};
+        std::vector<ULL> stack = parent_hashes;
+        if (DEBUG) {fmt::print("\tAnalyzing stack for node {}\n", to_str());}
+        while (!stack.empty())
+        {
+            ULL n_hash = stack.back();
+            stack.pop_back();
+            Node& n = GNM.at(n_hash); // [n_hash];
+            if (DEBUG) {fmt::print("\t\tAnalyzing node: {}\n", n.to_str());}
+            auto it = std::find(pi_funcs.begin(), pi_funcs.end(), n.func);
+            if (it != pi_funcs.end()) // if the function is a PI
+            {
+                auto idx = it - pi_funcs.begin();
+                if (DEBUG) {fmt::print("\t\tFound PI at idx {} for {:04x}\n", idx, n.func);}
+                // if (DEBUG) {fmt::print("\t\tLast_func == {}\n", n.last_func);}
+                // if (DEBUG) {fmt::print("\t\fDFF == {}\n", fDFF);}
+                if (n.last_func == fDFF) 
+                {
+                    has_dff[idx] = true;
+                }
+                else if (n.last_func == fPI)
+                {
+                    is_reached[idx] = true;
+                }
+                else 
+                {
+                    has_other[idx] = true;
+                }
+                if (DEBUG) {fmt::print("\t\t\tNew has_dff:\t{}\n", fmt::join(has_dff, "\t"));}
+                if (DEBUG) {fmt::print("\t\t\tNew has_other:\t{}\n", fmt::join(has_other, "\t"));}
+                if (DEBUG) {fmt::print("\t\t\tNew is_reached:\t{}\n", fmt::join(is_reached, "\t"));}
+            }
+            /*
+                if (n.parent_hashes.size() > 1)
+                {
+                    bool all_dff = true;
+                    for (auto phash : n.parent_hashes)
+                    {
+                        Node & p = GNM.at(phash);
+                        if (p.last_func != fDFF) 
+                        {
+                            all_dff = false;
+                            break;
+                        }
+                    }
+                    if (all_dff)
+                    {
+                        return std::make_tuple(false, 0);
+                    }
+                }
+            */
+            stack.insert(stack.end(), n.parent_hashes.begin(), n.parent_hashes.end());
+        }   
+
+        bool is_valid = true;
+        UI support_size = NUM_VARS;
+
+        if (DEBUG) {fmt::print("\t\tAnalyzing vectors\n");}
+        for (auto i = 0u; i < NUM_VARS; ++i)
+        {
+            if (DEBUG) {fmt::print("\t\tPI : {}\t func:{:04x} \t has_dff: {} | has_other: {}| is_reached: {}\n", i, pi_funcs[i], has_dff[i],  has_other[i], is_reached[i]);   }
+            if (has_other[i])
+            {
+                if (DEBUG) {fmt::print("\t\t\t OK PI\n");}
+                continue;
+            }
+            else if ( has_dff[i] ) 
+            {
+                assert(is_reached[i]); 
+                if (DEBUG) {fmt::print("\t\t\t Violating PI\n");}
+                return std::make_tuple(false, 0);
+            }
+            else if ( ~has_dff[i] ) 
+            {             
+                if (is_reached[i]) 
+                {
+                    if (DEBUG) {fmt::print("\t\t\t OK PI\n");}
+                    continue;
+                }
+                else
+                {
+                    if (DEBUG) {fmt::print("\t\t\t Redundant PI\n");}
+                    support_size--; 
+                    continue;
+                }
+            }
+        }
+        return std::make_tuple(true, support_size);
+    }
+
 private:
 
 };
@@ -177,15 +421,15 @@ namespace std {
 }
 
 
-std::vector<TT> gen_pi_func(UI nvars)
+std::vector<UI> gen_pi_func(UI nvars)
 {
     if (nvars == 1)
     {
         return {1};
     }
-    TT power = (1 << (1 << (nvars - 1)));
-    TT factor = power + 1;
-    std::vector<TT> out = {power - 1};
+    UI power = (1 << (1 << (nvars - 1)));
+    UI factor = power + 1;
+    std::vector<UI> out = {power - 1};
     for (auto n : gen_pi_func(nvars - 1))
     {
         out.push_back(factor * n);
@@ -310,7 +554,6 @@ bool is_good(ULL hash, Node & node, std::unordered_map<ULL, bool> & status, std:
     }
     return good;
 }
-
 
 std::unordered_map<ULL, bool> subset_of_pi(std::vector<ULL>& pi, std::unordered_map<ULL, Node>& all_hashes)
 {
