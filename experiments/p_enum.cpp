@@ -67,9 +67,20 @@ int main()
     index = find_first_one_bit( map );
   }
 
+  for (uint32_t func = 0u; func < (1 << (1 << num_vars)); func ++)
+  {
+    kitty::create_from_words( tt, &func, &func + 1 );
+    auto [tt_p_canon, dummy1, dummy2] = kitty::exact_p_canonization( tt );
+    auto tt_minbase = tt_p_canon;
+    kitty::min_base_inplace( tt_minbase );
+    std::cout << "\n" << kitty::to_binary(tt_minbase)
+              << "\n" << kitty::to_binary(tt_p_canon) << "\n";
+  }
+
   std::cout << "[i] enumerated "
             << map.num_bits() << " functions into "
             << classes.size() << " classes." << std::endl;
+
 
   return 0;
 }

@@ -14,6 +14,7 @@
 #include <thread>
 #include <kitty/kitty.hpp>
 
+
 typedef unsigned short US;
 typedef unsigned int   UI;
 typedef unsigned long  UL;
@@ -51,7 +52,9 @@ constexpr float GENLIB_RISE_FANOUT_DELAY  = 0.025;
 constexpr float GENLIB_FALL_BLOCK_DELAY   = 0.025;
 constexpr float GENLIB_FALL_FANOUT_DELAY  = 0.025;
 
+std::vector<UI> PI {0x5555, 0x3333, 0x0F0F, 0x00FF};
 
+std::unordered_map<UI, std::string> eqn_dict;
 // constexpr bool accel_cost = true;
 #define accel_cost false
 
@@ -134,10 +137,6 @@ public:
     UI lvl = INF;
     ULL hash = 0;
 
-    #if accel_cost
-    std::unordered_map<ULL, UI> predecessor_count;
-    std::unordered_set<ULL> non_splittable_pred;
-    #endif
     Node() = default;
     Node(const Node& other) : func(other.func), last_func(other.last_func), cost(other.cost), depth(other.depth), xorable(other.xorable), parent_hashes(other.parent_hashes), hash(other.hash), lvl(other.lvl) {}
 
@@ -196,52 +195,70 @@ public:
         //     Node & ref = GNM[ph];
         //     s += fmt::format(" {} ", ref.func);
         // }
-        return fmt::format("{:016b}{} | {} | c{}, d{}, l{} |", func, (xorable?'x':' '), F2STR[(US)last_func], cost, depth, lvl);
+        return fmt::format("{:>20}: {:016b}{} | {} | c{}, d{}, l{} |", hash, func, (xorable?'x':' '), F2STR[(US)last_func], cost, depth, lvl);
         // return fmt::format("{:04x}{} | {} | {}, {} | ", func, (xorable?'x':' '), F2STR[(US)last_func], cost, depth);
         // return "Func: " + std::to_string(func) + "|Last: " + std::to_string(last_func) + "|Cost: " + std::to_string(cost) + "|Depth: " + std::to_string(depth) + "|X: " + std::to_string(xorable);
     }
 
-    std::string genlib_eqn(std::unordered_map<ULL, Node> & nodemap, std::vector<UI> & pis) const
+    // std::string genlib_eqn(std::unordered_map<ULL, Node> & nodemap, std::vector<std::string> & symbol) const
+    std::string genlib_eqn(std::unordered_map<ULL, Node> & nodemap, std::vector<std::string> & symbol, std::vector<UI> & indices) const
     {
-        // if (DEBUG) {fmt::print("\t\tAccessing genlib_eqn: {}\n", to_str());}
+        // fmt::print("\t\tAccessing genlib_eqn: {}\n", to_str());
         if (last_func == fPI)
         {
-            if (std::find(pis.begin(), pis.end(), func) == pis.end())
+            // std::vector<std::string> _symbol_tmp = { "d", "c", "b", "a" };
+            // std::vector<std::string> _symbol = { "d", "c", "b", "a" };
+            // for (auto idx : indices)
+            // {
+            //     _symbol.push_back();
+            // }
+            switch (func)
             {
-                pis.push_back(func);
+                case 0x5555: return symbol[indices[3]];
+                case 0x3333: return symbol[indices[2]];
+                case 0x0F0F: return symbol[indices[1]];
+                case 0x00FF: return symbol[indices[0]];
+                // case 0x5555: return _symbol[indices[3]];
+                // case 0x3333: return _symbol[indices[2]];
+                // case 0x0F0F: return _symbol[indices[1]];
+                // case 0x00FF: return _symbol[indices[0]];
+                // case 0x5555: return "a";
+                // case 0x3333: return "b";
+                // case 0x0F0F: return "c";
+                // case 0x00FF: return "d";
+                case 0x0000: return "0";
+                case 0xFFFF: return "1";
             }
-            return PI2LETTER[func];
         }
         else if (last_func == fDFF)
         {
             assert(parent_hashes.size() == 1);
-            return fmt::format("{}", nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("{}", nodemap[parent_hashes.back()].genlib_eqn(nodemap, symbol, indices));
         }
         else if (last_func == fNOT)
         {
             assert(parent_hashes.size() == 1);
-            return fmt::format("!{}", nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("!{}", nodemap[parent_hashes.back()].genlib_eqn(nodemap, symbol, indices));
         }
         else if (last_func == fCB)
         {
             assert(parent_hashes.size() == 2);
-            return fmt::format("({0}+{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("({0}+{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, symbol, indices), nodemap[parent_hashes.back()].genlib_eqn(nodemap, symbol, indices));
         }
         else if (last_func == fOR || last_func == fMERGE)
         {
             assert(parent_hashes.size() == 2);
-            return fmt::format("({0}|{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("({0}|{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, symbol, indices), nodemap[parent_hashes.back()].genlib_eqn(nodemap, symbol, indices));
         }
         else if (last_func == fAND)
         {
             assert(parent_hashes.size() == 2);
-            return fmt::format("({0}&{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("({0}&{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, symbol, indices), nodemap[parent_hashes.back()].genlib_eqn(nodemap, symbol, indices));
         }
         else if (last_func == fXOR)
         {
             assert(parent_hashes.size() == 2);
-            // return fmt::format("(!({0})*({1})+({0})*!({1}))", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
-            return fmt::format("({0}^{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("({0}^{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, symbol, indices), nodemap[parent_hashes.back()].genlib_eqn(nodemap, symbol, indices));
         }
         else
         {
@@ -250,64 +267,75 @@ public:
         }
     }
 
-    std::string to_genlib(std::unordered_map<ULL, Node> & nodemap, const std::vector<UI> & levels, const std::vector<UI> PI_funcs, const std::vector<std::pair<uint8_t,uint8_t>> & swaps = {}) const
-    {
-        std::vector<UI> pis;
-        std::string str = fmt::format("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(levels, ""), cost,  genlib_eqn(nodemap, pis));
+    // std::string to_genlib(std::unordered_map<ULL, Node> & nodemap, const std::vector<UI> & levels, const std::vector<UI> PI_funcs, const std::vector<std::pair<uint8_t,uint8_t>> & swaps = {}) const
+    // {
+    //     std::vector<UI> pis;
+    //     std::string str = fmt::format("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(levels, ""), cost,  genlib_eqn(nodemap, pis));
 
-        for (auto & pi : pis)
-        {
-            UL idx = std::find(PI_funcs.begin(), PI_funcs.end(), pi) - PI_funcs.begin();
-            auto true_lvl = (depth + 1) / 3;
-            std::string line = fmt::format("\tPIN {} {} {} {} {:d} {:0.3f} {:d} {:0.3f}\n", 
-            PI2LETTER[pi], GENLIB_PHASE, GENLIB_INPUT_LOAD, GENLIB_MAX_LOAD, 
-            true_lvl - levels[idx], GENLIB_RISE_FANOUT_DELAY, true_lvl - levels[idx], GENLIB_FALL_FANOUT_DELAY);
-            str.append(line);
-            // if (DEBUG) {fmt::print(line);}
-        }
-        // if (DEBUG) {fmt::print(str);}
-        return str;
-    }
+    //     for (auto & pi : pis)
+    //     {
+    //         UL idx = std::find(PI_funcs.begin(), PI_funcs.end(), pi) - PI_funcs.begin();
+    //         auto true_lvl = (depth + 1) / 3;
+    //         std::string line = fmt::format("\tPIN {} {} {} {} {:d} {:0.3f} {:d} {:0.3f}\n", 
+    //         PI2LETTER[pi], GENLIB_PHASE, GENLIB_INPUT_LOAD, GENLIB_MAX_LOAD, 
+    //         true_lvl - levels[idx], GENLIB_RISE_FANOUT_DELAY, true_lvl - levels[idx], GENLIB_FALL_FANOUT_DELAY);
+    //         str.append(line);
+    //         // if (DEBUG) {fmt::print(line);}
+    //     }
+    //     // if (DEBUG) {fmt::print(str);}
+    //     return str;
+    // }
 
-    std::string to_stack(std::unordered_map<ULL, Node> & nodemap) const
+    std::string to_stack(std::unordered_map<ULL, Node> & nodemap, std::vector<std::string> & symbol)
     {
         if (last_func == fPI)
         {
-            return PI2LETTER[func];
+            assert(func == 0x5555 || func == 0x3333 || func == 0x0F0F || func == 0x00FF || func == 0 || func == 0xFFFF);
+            switch (func)
+            {
+                case 0x5555: return symbol[0];
+                case 0x3333: return symbol[1];
+                case 0x0F0F: return symbol[2];
+                case 0x00FF: return symbol[3];
+                case 0x0000: return "0";
+                case 0xFFFF: return "1";
+            }
         }
         else if (last_func == fDFF)
         {
             assert(parent_hashes.size() == 1);
-            return fmt::format("DFF({})", nodemap[parent_hashes.back()].to_stack(nodemap));
+            return fmt::format("DFF({})", nodemap[parent_hashes.back()].to_stack(nodemap, symbol));
         }
         else if (last_func == fNOT)
         {
             assert(parent_hashes.size() == 1);
-            return fmt::format("NOT({})", nodemap[parent_hashes.back()].to_stack(nodemap));
+            return fmt::format("NOT({})", nodemap[parent_hashes.back()].to_stack(nodemap, symbol));
         }
         else if (last_func == fCB || last_func == fMERGE)
         {
             assert(parent_hashes.size() == 2);
-            return fmt::format("CB({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap), nodemap[parent_hashes.back()].to_stack(nodemap));
+            return fmt::format("CB({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap, symbol), nodemap[parent_hashes.back()].to_stack(nodemap, symbol));
         }
         else if ( last_func == fOR )
         {
             assert(parent_hashes.size() == 2);
-            return fmt::format("OR({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap), nodemap[parent_hashes.back()].to_stack(nodemap));
+            return fmt::format("OR({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap, symbol), nodemap[parent_hashes.back()].to_stack(nodemap, symbol));
         }
         else if (last_func == fAND)
         {
             assert(parent_hashes.size() == 2);
-            return fmt::format("AND({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap), nodemap[parent_hashes.back()].to_stack(nodemap));
+            return fmt::format("AND({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap, symbol), nodemap[parent_hashes.back()].to_stack(nodemap, symbol));
         }
         else if (last_func == fXOR)
         {
             assert(parent_hashes.size() == 2);
-            return fmt::format("XOR({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap), nodemap[parent_hashes.back()].to_stack(nodemap));
+            return fmt::format("XOR({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap, symbol), nodemap[parent_hashes.back()].to_stack(nodemap, symbol));
         }
         else
         {
-            if (DEBUG) {fmt::print("Unsupported function {}", to_str());}
+            // if (DEBUG) {
+            fmt::print("Unsupported function {}", to_str());
+                // }
             return "";
         }
     }
@@ -491,6 +519,7 @@ std::unordered_map<ULL, Node> read_csv_gnm(const std::string& filename)
         Node node;
         std::getline(ss, field, ',');
         std::stringstream(field) >> hash;
+        node.hash = hash;
         std::getline(ss, field, ',');
         std::stringstream(field) >> node.func;
         std::getline(ss, field, ',');

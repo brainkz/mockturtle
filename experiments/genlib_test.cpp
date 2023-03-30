@@ -16,6 +16,13 @@
 
 UI LOG_LVL = 1;
 
+#define LOG_PRINT(lvl, ...) \
+  do { \
+      if ((lvl) <= LOG_LVL) { \
+          fmt::print(__VA_ARGS__); \
+      } \
+  } while (false)
+
 std::vector<std::vector<UI>> binned_indices(const std::vector<UI>& levels)
 {
     std::vector<std::vector<UI>> binned_indices;
@@ -109,34 +116,282 @@ std::vector<kitty::static_truth_table<NUM_VARS>> equivalent_tts(kitty::static_tr
     } while (eq_tt.size() > old_size);
     return eq_tt;
 }
+struct spec
+{
+  // std::string stack;
+  // std::string eqn;
+  ULL hash;
+  UI func;
+  UI cost;
+  UI sup_size; 
+  std::vector<UI> delays; 
+  std::vector<UI> indices; 
+  std::vector<std::string> symbol; 
+  bool has_better_lvl_than(spec& other) 
+  {
+    for (std::size_t idx = 0; idx < delays.size(); ++idx) 
+    {
+      if (delays[idx] > other.delays[idx]) 
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+  bool has_equal_level(spec& other) 
+  {
+    for (std::size_t idx = 0; idx < delays.size(); ++idx) 
+    {
+      if (delays[idx] != other.delays[idx]) 
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+  bool has_not_equal_level(spec& other) 
+  {
+    for (std::size_t idx = 0; idx < delays.size(); ++idx) 
+    {
+      if (delays[idx] != other.delays[idx]) 
+      {
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
+#if false
+  template<typename TT>
+  std::tuple<TT, std::vector<UI>, std::vector<uint8_t>> p_canonize( const TT& tt , std::vector<UI> levels)
+  {
+      auto t1 = tt;
+      auto tmin = t1;
+      auto tminbase = t1;
+
+      const auto& swaps = kitty::detail::swaps[NUM_VARS - 2u];
+
+      int best_swap = -1;
+      std::vector<uint8_t> support;
+      for ( std::size_t i = 0; i < swaps.size(); ++i )
+      {
+          const auto pos = swaps[i];
+          swap_adjacent_inplace( t1, pos );
+          support = kitty::min_base_inplace(tminbase);
+
+          if ( t1 < tmin && tminbase == t1)
+          {
+              best_swap = static_cast<int>( i );
+              tmin = t1;
+          }
+      }
+      for ( auto i = 0; i <= best_swap; ++i )
+      {
+          std::swap(levels[swaps[i]], levels[swaps[i] + 1]);
+      }
+
+      return std::make_tuple( tmin, levels, support );
+  }
+
+  spec canonize( Node & n, std::vector<UI> levels )
+  {
+      UI func = n.func;
+      kitty::static_truth_table<NUM_VARS> t1;
+      kitty::create_from_words(t1, &func, &func + 1);
+
+      std::vector<UI> indices(NUM_VARS);
+      std::vector<bool> support(NUM_VARS, false);
+      std::vector<UI> delays(NUM_VARS, INF);
+      LOG_PRINT(0, "levels: ({})\n", fmt::join(levels, ","));
+      for ( auto i = 0; i < NUM_VARS; ++i )
+      {
+        indices[i] = i;
+        if (kitty::has_var(t1, i))
+        {
+          support[i] = true;
+          delays[i] = ( n.depth + 2 - (3 * levels[i])) / 3;
+        }
+        fmt::print("{}: delay: {}\tdepth: {}\t3xlvl: {}\n", i, delays[i], n.depth, (3 * levels[i]));
+      }
+      LOG_PRINT(0, "Started pattern {0:04x}={0:016b} | support: ({1}) | delay:({2}) | indices:({3})\n", func, fmt::join(support, ","), fmt::join(delays, ","), fmt::join(indices, ","));
+
+      const auto& swaps = kitty::detail::swaps[NUM_VARS - 2u];
+
+      auto tmin = t1;
+      int best_swap = -1;
+      for ( std::size_t i = 0; i < swaps.size(); ++i )
+      {
+          const auto pos = swaps[i];
+          swap_adjacent_inplace( t1, pos );
+          kitty::static_truth_table<NUM_VARS> tminbase;
+          kitty::min_base_inplace(tminbase);
+
+          if ( t1 < tmin && tminbase == t1)
+          {
+              best_swap = static_cast<int>( i );
+              tmin = t1;
+          }
+      }
+
+      // fmt::print("Func: {:016b}\nTmin: {:016b}\n ", func, tmin._bits);
+
+      // const UI true_lvl = (n.depth + 3) / 3;/
+      for ( auto i = 0; i <= best_swap; ++i )
+      {
+          auto idx = swaps[i];
+          std::swap(indices[idx], indices[idx + 1]);
+          std::swap(delays[idx], delays[idx + 1]);
+          std::swap(support[idx], support[idx + 1]);
+      }
+
+      spec S;
+      S.func = tmin._bits;
+      S.hash = n.hash;
+      S.support = support;
+      S.delays = delays;
+      S.indices = indices;
+      return S;
+  }
+  inline bool is_lifted(const std::vector<UI> & levels, const std::vector<uint8_t> & support)
+  {
+      for (const auto idx : support)
+      {
+          if (levels[idx] == 0)
+          {
+              return false;
+          }
+      }
+      return true;
+  }
+
+#endif
+std::vector<std::string> permute(const std::vector<std::string>& a, const std::vector<UI>& indices) {
+    std::vector<std::string> result(a.size());
+    for (int i = 0; i < indices.size(); i++) {
+        result[i] = a[indices[i]];
+    }
+    return result;
+}
 
 template <typename TT>
-std::tuple<std::vector<uint8_t>, std::vector<UI>, std::vector<std::pair<uint8_t,uint8_t>>> min_base_perms( TT& tt , std::vector<UI> levels)
+void canonize( spec & S , TT & t1)
 {
-    std::vector<uint8_t> support;
-    std::vector<std::pair<uint8_t,uint8_t>> swaps;
+  UI func = S.func;
+  kitty::create_from_words(t1, &func, &func + 1);
 
-    if (LOG_LVL > 2){fmt::print("\t\t\t\t{:016b}\n", tt._bits);}
-    
+  // LOG_PRINT(0, "Started  pattern 0x{0:04x}=0b{0:016b} | delay: ({1}) | indices:({2})\n", S.func, fmt::join(S.delays, ","), fmt::join(S.indices, ","));
+
+  const auto& swaps = kitty::detail::swaps[t1.num_vars() - 2u];
+
+  TT tmin = t1;
+  int best_swap = -1;
+  for ( std::size_t i = 0; i < swaps.size(); ++i )
+  {
+      const auto pos = swaps[i];
+      swap_adjacent_inplace( t1, pos );
+
+      if ( t1 < tmin )
+      {
+          best_swap = static_cast<int>( i );
+          tmin = t1;
+      }
+  }
+  for ( auto i = 0; i <= best_swap; ++i )
+  {
+      auto idx = swaps[i];
+      std::swap(S.indices[idx], S.indices[idx + 1]);
+      std::swap(S.delays[idx], S.delays[idx + 1]);
+      std::swap(S.symbol[idx], S.symbol[idx + 1]);
+  }
+  S.func = tmin._bits;
+  S.symbol = permute(S.symbol, S.indices);
+  // LOG_PRINT(0, "Finished pattern 0x{0:04x}=0b{0:016b} | delay: ({1}) | indices:({2})\n", S.func, fmt::join(S.delays, ","), fmt::join(S.indices, ","));
+}
+
+spec min_base_perms(const Node & n, std::vector<UI> levels, std::unordered_map<ULL, Node>& nodemap )
+{
+    UI func = n.func;
+    kitty::static_truth_table<NUM_VARS> tt;
+    kitty::create_from_words(tt, &func, &func + 1);
+
+    std::vector<UI> indices(NUM_VARS);
+    std::vector<UI> delays(NUM_VARS, INF);
+    // std::vector<UI> pi = { 0x5555, 0x3333, 0x0F0F, 0x00FF };
+    // std::vector<std::string> symbol = { "a", "b", "c", "d" };
+    std::vector<std::string> symbol = { "d", "c", "b", "a" };
+    // LOG_PRINT(0, "levels: ({})\n", fmt::join(levels, ","));
+    for ( auto i = 0; i < NUM_VARS; ++i )
+    {
+      indices[i] = i;
+      delays[i] = ( n.depth + 2 - (3 * levels[i])) / 3;
+      // fmt::print("{}: delay: {}\tdepth: {}\t3xlvl: {}\n", i, delays[i], n.depth, (3 * levels[i]));
+    }
+    // LOG_PRINT(0, "Started pattern {0:04x}={0:016b} | delay: ({1}) | indices:({2})\n", func, fmt::join(delays, ","), fmt::join(indices, ","));
+
+    auto sup_size = 0u;
     auto k = 0u;
     for ( auto i = 0u; i < tt.num_vars(); ++i )
     {
-    if ( !kitty::has_var( tt, i ) )
-    {
+      if ( !kitty::has_var( tt, i ) )
+      {
         continue;
-    }
-    if ( k < i )
-    {
+      }
+      if ( k < i )
+      {
         kitty::swap_inplace( tt, k, i );
-        std::swap(levels[k], levels[i]);
-        swaps.emplace_back(k,i);
-        if (LOG_LVL > 2){fmt::print("\t\t\t\t{:016b}\n", tt._bits);}
+        std::swap(delays[k], delays[i]);
+        std::swap(indices[k], indices[i]);
+        std::swap(symbol[k], symbol[i]);
+        LOG_PRINT(2, "\t\t\t\t{:016b}\n", tt._bits);
+      }
+      ++k;
     }
-    support.push_back( i );
-    ++k;
+    spec S;
+    if (k == 4)
+    {
+      S.func = func;
+      S.hash = n.hash;
+      S.cost = n.cost;
+      // S.stack = n.to_stack(nodemap, symbol);
+      // S.eqn = n.genlib_eqn(nodemap, symbol);
+      S.sup_size = k;
+      S.delays.insert(S.delays.end(), delays.begin(), delays.begin() + k);
+      S.indices.insert(S.indices.end(), indices.begin(), indices.begin() + k);
+      S.symbol.insert(S.symbol.end(), symbol.begin(), symbol.begin() + k);
     }
-
-    return std::make_tuple(support, levels, swaps);
+    else
+    {
+      S.func = tt._bits & ((1 << (1 << k)) - 1);
+      S.hash = n.hash;
+      S.cost = n.cost;
+      // S.stack = n.to_stack(nodemap, symbol);
+      // S.eqn = n.genlib_eqn(nodemap, symbol);
+      S.sup_size = k;
+      S.delays.insert(S.delays.end(), delays.begin(), delays.begin() + k);
+      S.indices.insert(S.indices.end(), indices.begin(), indices.begin() + k);
+      S.symbol.insert(S.symbol.end(), symbol.begin(), symbol.begin() + k);
+    }
+    if (S.sup_size == 4)
+    {
+      kitty::static_truth_table<4> tt;
+      canonize(S, tt);
+      if (S.indices[0] == 0 && S.indices[1] == 1 && S.indices[2] == 2 && S.indices[3] == 3) 
+      {
+        eqn_dict[S.func] = nodemap[S.hash].genlib_eqn(nodemap, S.symbol, S.indices);
+      }
+    }
+    else if (S.sup_size == 3)
+    {
+      kitty::static_truth_table<3> tt;
+      canonize(S, tt);
+    }
+    else if (S.sup_size == 2)
+    {
+      kitty::static_truth_table<2> tt;
+      canonize(S, tt);
+    }
+    return S;
 }
 
 union func_lvl 
@@ -160,8 +415,195 @@ union func_lvl
 //     std::string eqn = GNM[orig_tt].genlib_eqn(nodemap, pis);
 // }
 
+#define mode 1234
 
-#if false 
+#if (mode == 1234)
+
+  int main()
+  {
+    std::ofstream outfile("LIBRARY_2023_03_28.genlib");
+    std::vector<UI> PI = {0x5555, 0x3333, 0x0F0F, 0x00FF};
+    std::vector<std::vector<UI>> sets_of_levels { 
+      {0,1,2,3},
+      {0,0,0,0},
+      {0,0,0,1},
+      {0,0,0,2},
+      {0,0,0,3},
+      {0,0,0,4},
+      {0,0,1,1},
+      {0,0,1,2},
+      {0,0,1,3},
+      {0,0,1,4},
+      {0,0,2,2},
+      {0,0,2,3},
+      {0,0,2,4},
+      {0,0,3,3},
+      {0,0,3,4},
+      {0,0,4,4},
+      {0,1,1,1},
+      {0,1,1,2},
+      {0,1,1,3},
+      {0,1,1,4},
+      {0,1,2,2},
+      {0,1,2,3},
+      {0,1,2,4},
+      {0,1,3,3},
+      {0,1,3,4},
+      {0,1,4,4},
+      {0,2,2,2},
+      {0,2,2,3},
+      {0,2,2,4},
+      {0,2,3,3},
+      {0,2,3,4},
+      {0,2,4,4},
+      {0,3,3,3},
+      {0,3,3,4},
+      {0,3,4,4},
+      {0,4,4,4} 
+    };
+
+    std::unordered_map<ULL, Node> GNM;
+    std::vector<std::array<ULL, NUM_TT>> GEX_global;
+    // std::vector<std::vector<func_lvl>> delays_global(NUM_TT, std::vector<func_lvl>());
+    // std::unordered_map<UI, std::vector<spec>> best_specs;
+    // std::unordered_map<UI, std::vector<std::pair<std::string, spec>>> best_specs_2;
+    // std::unordered_map<UI, std::vector<std::pair<std::string, spec>>> best_specs_3;
+    // std::unordered_map<UI, std::vector<std::pair<std::string, spec>>> best_specs_4;
+    std::vector<spec> best_specs_2;
+    std::vector<spec> best_specs_3;
+    std::vector<spec> best_specs_4;
+    auto lvl_idx = 0u;
+    for (std::vector<UI> & levels : sets_of_levels)
+    {
+      // if (lvl_idx > 3) break;
+      std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_{}_", fmt::join(levels, ""));
+      auto NM = read_csv_gnm(fmt::format("{}gnm.csv", file_prefix));
+      GEX_global.push_back(read_csv_arr(fmt::format("{}gex.csv", file_prefix)));
+      UI func = 10;
+      ULL nhash = GEX_global.back()[func];
+      Node & n = NM[nhash]; 
+      // fmt::print(" nhash: {}\nn.hash: {}\n", nhash, n.hash);
+      // fmt::print("  func: {}\nn.func: {}\n",  func, n.func);
+      // fmt::print("\t{}\n",  n.to_str());
+      GNM.merge(NM);
+      Node & q = GNM[nhash]; 
+      fmt::print("{}: GNM SIZE IS {}\n", fmt::join(levels, ""), GNM.size());
+      // fmt::print(" nhash: {}\nq.hash: {}\n", nhash, q.hash);
+      // fmt::print("  func: {}\nq.func: {}\n",  func, q.func);
+      // fmt::print("\t{}\n",  q.to_str());
+      assert(GNM[GEX_global.back()[10]].func == 10);
+      lvl_idx++;
+    }
+    fmt::print("DONE: GNM SIZE IS {}\n", GNM.size());
+    lvl_idx = 0u;
+    for (std::vector<UI> & levels : sets_of_levels)
+    {
+      // if (lvl_idx > 3) break;
+      LOG_PRINT(0, "Processing patterns {}\n", fmt::join(levels, " "));
+      // UI func = 0u;
+      for (auto nhash : GEX_global[lvl_idx])
+      {
+        Node & n = GNM[nhash];
+        if (n.func == 0 || n.func == ONES || n.func == 0x5555 || n.func == 0x3333 || n.func == 0x0F0F || n.func == 0x00FF) continue;
+        // fmt::print(" nhash: {}\nn.hash: {}\n", nhash, n.hash);
+        // fmt::print("  func: {}\nn.func: {}\n",  func, n.func);
+        spec S = min_base_perms( n, levels, GNM );
+        if (std::find(S.delays.begin(), S.delays.end(), 0) != S.delays.end())
+        {
+          continue;
+        }
+        if (S.sup_size == 4)
+        {
+          best_specs_4.emplace_back( S );
+        }
+        assert(S.hash == n.hash && nhash == n.hash);
+        // best_specs[ S.func ].push_back(S);
+        // LOG_PRINT(0, "Emplaced pattern {0:04x}={0:016b} | support: ({1}) | delay:({2}) | indices:({3})\n", S.func, S.sup_size, fmt::join(S.delays, ","), fmt::join(S.indices, ","));
+        // fmt::print("{}\n\n", n.to_str());
+        // fmt::print("{}\n\n", n.to_genlib(GNM, levels, PI));
+      }
+      lvl_idx++;
+    }
+
+    auto spec_ctr = 0u;
+    for (UI func = 0u; func < NUM_TT; ++func )
+    {
+      std::vector<spec> specs;
+      for (auto & S : best_specs_4)
+      {
+        if (S.func == func)
+        {
+          specs.push_back(S);
+        }
+      }
+      if (specs.empty()) continue;
+      spec_ctr++;
+      std::unordered_set<UI> to_remove;
+      for (int i = 0u; i < specs.size(); ++i)
+      {
+        spec Si = specs[i];
+        for (int j = i + 1; j < specs.size(); ++j)
+        {
+          spec Sj = specs[j];
+          if (!Si.has_equal_level(Sj))
+          {
+            if (Si.has_better_lvl_than(Sj))
+            {   
+              to_remove.emplace(j);
+            }
+            if (Sj.has_better_lvl_than(Si))
+            {   
+              to_remove.emplace(i);
+            }
+          }
+          else //if the levels are equal
+          {
+            if (Si.cost < Sj.cost)
+            {
+              to_remove.emplace(j);
+            }
+            if (Sj.cost < Si.cost)
+            {
+              to_remove.emplace(i);
+            }
+          }
+        }
+      }
+      LOG_PRINT(0, "Removing {} | {} out of {}\n", fmt::join(to_remove, ","), to_remove.size(), specs.size());
+
+      for (auto i = 0u; i < specs.size(); ++i)
+      {
+        // std::array<ULL, NUM_TT> GEX = GEX_global[i];
+        if (std::find(to_remove.begin(), to_remove.end(), i) == to_remove.end())
+        {
+          // std::unordered_map<ULL, Node> GNM = read_csv_gnm(fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_{}_", fmt::join(levels, "")));
+          spec S = specs[i];
+          Node & n = GNM[S.hash];
+          assert(n.hash == S.hash);
+          LOG_PRINT(0, "{4:>4}: Writing pattern {0:04x}={0:016b} | support: ({1}) | delay:({2}) | indices:({3})\n", S.func, S.sup_size, fmt::join(S.delays, ","), fmt::join(S.indices, ","), spec_ctr);
+          fmt::print("{}\n", n.to_stack(GNM, S.symbol));
+          fmt::print("{}\n", n.to_str());
+          // std::unordered_map<UI, std::string> pi_map;
+          // std::vector<std::string> pi_str {"a", "b", "c", "d"};
+          // for (auto i = 0u; i < NUM_VARS; ++i)
+          // {
+          //   pi_map[i] = pi_str[S.indices[i]];
+          // }
+          fmt::print("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(S.delays, ""), S.cost, eqn_dict[S.func]);
+          outfile << fmt::format("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(S.delays, ""), S.cost, eqn_dict[S.func]);
+          std::vector<std::string> _symbol = { "d", "c", "b", "a" };
+          for (auto i=0u; i < S.delays.size(); ++i)
+          {
+            outfile << fmt::format("\tPIN {} {} {} {} {:d} {:0.3f} {:d} {:0.3f}\n", 
+            _symbol[i], GENLIB_PHASE, GENLIB_INPUT_LOAD, GENLIB_MAX_LOAD, 
+            S.delays[i], GENLIB_RISE_FANOUT_DELAY, S.delays[i], GENLIB_FALL_FANOUT_DELAY);
+          }
+        }
+      }
+    }
+  }
+
+#elif (mode == 999)
     int main()
     {
         std::string gnm_file = "/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_0123_gnm.csv";
@@ -178,7 +620,7 @@ union func_lvl
             if (n.lvl == 1) if (LOG_LVL > 2){fmt::print("{:>5d}:\t{}\n", i++, n.to_str());}
         }
     }
-#else
+#elif (mode == 923)
     int main()
     {
         std::ofstream outfile("LIBRARY_2023_03_24.genlib");
@@ -186,6 +628,8 @@ union func_lvl
         std::vector<std::vector<UI>> sets_of_levels { { {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4} } };
         
         auto ctr = 0u;
+        std::array<UI, NUM_TT> ctr_arr;
+        std::fill(std::begin(ctr_arr), std::end(ctr_arr), 0);
         std::vector<func_lvl> seen_signatures;
         for (const std::vector<UI> levels : sets_of_levels)
         {
@@ -213,20 +657,13 @@ union func_lvl
                 if (LOG_LVL > 2){fmt::print("Base_TT: 0x{:04x} \n", Base_TT._bits);}
 
                 // IMPORTANT: here the min_base is determined
-                auto [support_idx, perm_levels, swaps] = min_base_perms(Base_TT, levels);
+                const auto [min_TT, perm_levels, support_idx] = p_canonize(Base_TT, levels);
+                // auto [support_idx, perm_levels] = p_canonize(Base_TT, levels);
                 auto hexlen = (sup_size > 1 ? ( NUM_VARS >> (NUM_VARS - sup_size) ) : 1);
-                if (LOG_LVL > 2){fmt::print("Reduced TT: 0x{:0{}x} \n", Base_TT._bits  & ((1 << (1 << sup_size)) - 1), hexlen);}
+                if (LOG_LVL > 2){fmt::print("Reduced TT: 0x{:0{}x} \n", min_TT._bits  & ((1 << (1 << sup_size)) - 1), hexlen);}
                 if (LOG_LVL > 2){fmt::print("Permuted levels: {} \n", fmt::join(perm_levels, " "));}
-                bool is_lifted = false;    
-                for (auto idx : support_idx)
-                {
-                    if (levels[idx] == 0)
-                    {
-                        is_lifted = true;
-                        break;
-                    }
-                }
-                if (!is_lifted)
+                
+                if (is_lifted(perm_levels, support_idx))
                 {
                     if (LOG_LVL > 2){fmt::print("Permuted levels do not contain 0. Skipping\n");}
                     continue;
@@ -235,7 +672,7 @@ union func_lvl
                 assert(sup_size == support_idx.size());
                 func_lvl signature;
                 signature.data = 0u;
-                signature.func = Base_TT._bits & ((1 << (1 << sup_size)) - 1);
+                signature.func = min_TT._bits & ((1 << (1 << sup_size)) - 1);
                 signature.support_size = sup_size;
                 if (sup_size > 0) 
                 {
@@ -259,8 +696,11 @@ union func_lvl
                     auto eq_tt = equivalent_tts(Base_TT, levels);
                     seen_signatures.push_back(signature);
 
-                    if (LOG_LVL > 0) {
-                        fmt::print("Writing TT #{:>5d}: {}\n", ++ctr, n.to_str());
+                    if (LOG_LVL > 0) 
+                    {
+                        // fmt::print("Writing TT #{:>5d}: {}\n", ++ctr, n.to_str());
+                        UI data = signature.data;
+                        fmt::print("Writing TT #{:>5d} (#{:d}): {}, {:032b}\n", ++ctr, ++ctr_arr[min_TT._bits], min_TT._bits, data); // n.to_str()
                         fmt::print("\t{}\t{}\n", sup_size, fmt::join(perm_levels.begin(), perm_levels.begin() + sup_size, " "));
                         fmt::print("\t{}\n", n.to_stack(GNM));
                     }
