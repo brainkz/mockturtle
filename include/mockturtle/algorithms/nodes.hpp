@@ -186,7 +186,7 @@ struct Delay
         return true;
     }
 
-    std::pair<Delay, bool> combine_safe(const Delay& other, const bool increment) const
+    std::tuple<Delay, bool> combine_safe(const Delay& other, const bool increment) const
     {
         Delay out = Delay();
 

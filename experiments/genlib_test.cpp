@@ -481,12 +481,12 @@ union func_lvl
       GEX_global.push_back(read_csv_arr(fmt::format("{}gex.csv", file_prefix)));
       UI func = 10;
       ULL nhash = GEX_global.back()[func];
-      Node & n = NM[nhash]; 
+      Node & n = NM[nhash];
       // fmt::print(" nhash: {}\nn.hash: {}\n", nhash, n.hash);
       // fmt::print("  func: {}\nn.func: {}\n",  func, n.func);
       // fmt::print("\t{}\n",  n.to_str());
       GNM.merge(NM);
-      Node & q = GNM[nhash]; 
+      Node & q = GNM[nhash];
       fmt::print("{}: GNM SIZE IS {}\n", fmt::join(levels, ""), GNM.size());
       // fmt::print(" nhash: {}\nq.hash: {}\n", nhash, q.hash);
       // fmt::print("  func: {}\nq.func: {}\n",  func, q.func);
