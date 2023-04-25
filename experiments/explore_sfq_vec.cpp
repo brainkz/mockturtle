@@ -593,11 +593,11 @@ std::tuple<UI, std::vector<std::pair<ULL, UI>>, std::vector<ULL>> node_cost_sing
 }
 
 // assumes precomputed gate_cost, ct_spl, and non_splittable_nodes
-std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, UI>> ct_spl, std::vector<ULL> non_splittable_nodes, const UI limit, const UI depth, bool verbose=false)
+std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, UI>> ct_spl, std::vector<ULL> non_splittable_nodes, const UI limit, const UI depth, bool verbose=true)
 {
     std::vector<ULL> stack { h2 };
     stack.reserve( 2 * depth ); 
-    if (verbose) fmt::print("\t\t\tProcessing node {}, limit = {}\n", GNM[h2].to_str(), limit);
+    if (verbose) fmt::print("\t\t\t{}: Processing node {}, limit = {}\n", h2, GNM[h2].to_str(), limit);
     shortcut_cost(init_cost);
     while (!stack.empty())
     {
@@ -616,21 +616,27 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, 
             it->second++;
         }
 
-        if (verbose) fmt::print("\t\t\tIncremented the ct_spl for {}\n", n_hash);
+        if (verbose) fmt::print("\t\t\t{}: Incremented the ct_spl for {}\n", h2, n_hash);
         if (it->second == 1)
         {
+            if (GNM.find(n_hash) == GNM.end()) 
+            {
+                fmt::print("{}: STACK FAILURE: {}\n", h2, n_hash);
+                assert(false);
+            }
             // assert(GNM.find(n_hash) != GNM.end());
+            
             const Node & n = GNM.at(n_hash); //[n_hash];
-            if (verbose) fmt::print("\t\t\tAccessing the cost of {}\n", n.last_func);
+            if (verbose) fmt::print("\t\t\t{}: Accessing the cost of {}\n", h2, n.to_str());
             init_cost += COSTS[n.last_func];
             shortcut_cost(init_cost);     
-            if (verbose) fmt::print("\t\t\tFirst time, adding the cost of {} ({}). Total cost is {}\n", F2STR[n.last_func], COSTS[n.last_func], init_cost);
+            if (verbose) fmt::print("\t\t\t{}: First time, adding the cost of {} ({}). Total cost is {}\n", h2, F2STR[n.last_func], COSTS[n.last_func], init_cost);
             for (const ULL p_hash : n.parent_hashes)
             {
                 // assert(GNM.find(p_hash) != GNM.end());
                 const Node& p = GNM[p_hash]; // .at(p_hash); //[p_hash];
                 stack.push_back(p_hash);
-                if (verbose) fmt::print("\t\t\tAdding parent node {} to stack\n", p.to_str());
+                if (verbose) fmt::print("\t\t\t{}: Adding parent node {} to stack\n", h2, p.to_str());
             }
             if (n.last_func == fAND || n.last_func == fOR)
             {
@@ -647,7 +653,7 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, 
         {
             init_cost += COSTS[fSPL];
             shortcut_cost(init_cost);  
-            if (verbose) fmt::print("\t\t\tNot first time, adding the cost of SPL ({}). Total cost is {}\n", COSTS[fSPL], init_cost);
+            if (verbose) fmt::print("\t\t\t{}: Not first time, adding the cost of SPL ({}). Total cost is {}\n", h2, COSTS[fSPL], init_cost);
         }
     }
 
