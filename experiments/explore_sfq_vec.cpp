@@ -38,7 +38,7 @@ std::string get_current_time_formatted() {
 #define THREADING_MODE 0
 // constexpr US THREADING_MODE = 0; //0 threading, 1 batch processing, 2 serial
 constexpr ULL MAX_SIZE = 20'000'000'000;
-constexpr ULL NUM_THREADS = 100;
+constexpr ULL NUM_THREADS = 50;
 
 inline void join_threads(std::vector<std::thread>& threads) //, UL maxthreads = INF
 {
@@ -60,6 +60,8 @@ inline void check_threads(std::vector<std::thread>& threads) //, UL maxthreads =
     }
 }
 
+// TODO: Implement stitching. 
+
 std::unordered_map<ULL, Node> GNM;
 // std::unordered_map<ULL, std::unordered_map<ULL,UI>> GN_CT;
 // std::unordered_map<ULL, std::unordered_set<ULL>> GN_CT;
@@ -67,12 +69,14 @@ std::unordered_map<ULL, Node> GNM;
 // std::array<Node, NUM_TT> GEX;
 std::array<ULL, NUM_TT> GEA;
 std::array<ULL, NUM_TT> GEX;
+std::unordered_map<ULL, Node> GNM_global;
+std::vector<std::array<ULL, NUM_TT>> GEA_global; // stores best nodes in terms of delay globally
+std::vector<std::array<ULL, NUM_TT>> GEX_global; // stores best xorable nodes in terms of delay globally
 
 inline ULL ceil(ULL x, ULL y)
 {
     return 1 + ((x - 1) / y);
 }
-
 
 inline Node& get_gea(UI func) 
 {
@@ -84,6 +88,128 @@ inline Node& get_gex(UI func)
     ULL hash = GEX[func];
     return GNM[hash];
 }
+
+
+inline UI count_done(std::vector<UI> & hopeless)  
+{
+    #pragma vector
+    UI ctr = 0;
+    for (auto func = 0u; func < NUM_TT; func++)
+    {
+        if ((get_gex(func).cost < INF) || (std::find(hopeless.begin(), hopeless.end(), func) != hopeless.end()) )
+        {
+            ctr++;
+        }
+        // if (GEX[i].cost == INF || GEX[i].depth == INF)
+        // if (get_gex(i).cost == INF || get_gex(i).depth == INF)
+        // {
+        //     return false;
+        // }
+    }
+    return ctr;
+}
+
+Delay get_delay(const uint64_t & hash, std::unordered_map<ULL, Node> & hash_map)
+{
+    Delay d;
+    Node & root = hash_map[hash];
+    // fmt::print("\n******\n\t\t{}\n", root.to_stack(hash_map, {"a", "b", "c", "d"}));
+    std::vector<uint64_t> stack = { hash };
+    // fmt::print("\t\tTraversing stack\n");
+
+    while (!stack.empty())
+    {
+        uint64_t h = stack.back();
+        stack.pop_back();
+        Node & n = hash_map[h];
+        // fmt::print("\t\t\t{}, {:04x}\n", F2STR[n.last_func], n.func);
+        if (n.last_func == fPI)
+        {
+            uint8_t idx;
+            continue_if (n.func == 0x0000 || n.func == 0xFFFF);
+            switch (n.func)
+            {
+                case 0x5555:    idx = 0; break;
+                case 0x3333:    idx = 1; break;
+                case 0x0F0F:    idx = 2; break;
+                case 0x00FF:    idx = 3; break;
+                default:        assert(false);
+            }
+            d.delays[idx].E = true;
+            d.delays[idx].D = root.lvl - n.lvl;
+            d.delays[idx].L = n.lvl;
+            // fmt::print("\t\t\t{}\n", d.to_str());
+        }
+        else 
+        {
+            for (uint64_t phash : n.parent_hashes)
+            {
+                stack.push_back(phash);
+            }
+        }
+    }
+    return d;
+}
+
+bool is_hopeless(Delay new_delay, UI func, std::vector<std::array<ULL, NUM_TT>>& GEX_global, std::unordered_map<ULL, Node> & GNM_global)
+{
+    if (GEX_global.empty())
+    {
+        fmt::print("GEX_global is empty\n");
+        return false;
+    }
+    for (std::array<ULL, NUM_TT> best_hashes : GEX_global)
+    {
+        ULL best_hash = best_hashes[func];
+        Node & best_n = GNM_global[best_hash];
+        continue_if (best_n.last_func == fNOFUNC);
+        Delay best_delay = get_delay(best_hash, GNM_global);
+        Delay matched_delay = new_delay.trim_support(best_delay);
+
+        // fmt::print("\tNew   : {}\n", new_delay.to_str());
+        // fmt::print("\tBest  : {}\n", best_delay.to_str());
+        // fmt::print("\tTrim  : {}\n", matched_delay.to_str());
+        // fmt::print("\tBest_n: {}\n", best_n.to_str());
+
+        if (best_delay < matched_delay)
+        {
+            // fmt::print("HOPElESS FUNCTION : {0:04x} = {0:016b}\n", func);
+            return true;
+        }
+    }
+    // fmt::print("OK FUNCTION : {0:04x} = {0:016b}\n", func);
+    return false;
+}
+
+std::vector<UI> get_hopeless(Delay new_delay, std::vector<std::array<ULL, NUM_TT>>& GEX_global, std::unordered_map<ULL, Node> & GNM_global)
+{
+    std::vector<UI> hopeless;
+    for (UI func = 0; func < NUM_TT; func++)
+    {
+        if (is_hopeless(new_delay, func, GEX_global, GNM_global))
+        {
+            hopeless.push_back(func);
+        }
+    }
+    return hopeless;
+}
+
+Delay delay_from_levels(UI lvl, std::vector<UI> levels)
+{
+    Delay out;
+    for (UI i = 0; i < levels.size(); i++)
+    {
+        int diff = levels[i] - lvl;
+        if (diff >= 0)
+        {
+            out.delays[i].E = true;
+            out.delays[i].D = diff;
+            out.delays[i].L = levels[i];
+        }
+    }
+    return out;
+}
+
 
 inline void check_node(const ULL hash)
 {
@@ -329,14 +455,16 @@ void register_nodes(std::unordered_map<ULL, Node>& hash_map)
     }
 }
 
-std::vector<ULL> select_depth(short min_depth, short max_depth)
+std::vector<ULL> select_depth(UI min_depth, UI max_depth)
 {
     std::vector<ULL> out;
-    for (auto & [key, n] : GNM)
+    for (auto [hash, n] : GNM)
     {
+        if (hash == 0) continue;
+        // fmt::print("{} : {}\n", hash, n.to_str());
         if (n.depth >= min_depth && n.depth <= max_depth && n.func != 0 && n.func != ONES)
         {
-            out.push_back(key);
+            out.push_back(hash);
         }
     }
     return out;
@@ -492,7 +620,7 @@ std::tuple<UI, bool> node_cost(ULL h2, UI init_cost, std::vector<std::pair<ULL, 
         if (it->second == 1)
         {
             // assert(GNM.find(n_hash) != GNM.end());
-            const Node & n = GNM[n_hash]; // .at(n_hash); //[n_hash];
+            const Node & n = GNM.at(n_hash); //[n_hash];
             if (verbose) fmt::print("\t\t\tAccessing the cost of {}\n", n.last_func);
             init_cost += COSTS[n.last_func];
             shortcut_cost(init_cost);     
@@ -566,7 +694,6 @@ void thread_old_new(const std::vector<ULL>& hashes_i, const std::vector<ULL>& ha
 
             const UI func = ni.func | nj.func;
             continue_if (func == 0 || func == ONES || func == ni.func || func == nj.func);
-            Node & best_n = xorable ? get_gex(func) : get_gea(func);
             const bool xorable = ((ni.func ^ nj.func) == func) & ni.xorable & nj.xorable;
             const Node & best_n = xorable ? get_gex(func) : get_gea(func);
             if (best_n.lvl >= tgt_lvl)
@@ -615,7 +742,7 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
             );
         }
         join_threads(threads);
-        check_threads(threads);
+        // check_threads(threads);
         for (auto i = 0u; i < M; i++)
         {
             // fmt::print("Combining {} out of {} ({:f}\%) \n", (i+1), old_nodes.size(), 100 * (float)(i+1) / (float)old_nodes.size());
@@ -662,7 +789,7 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
                     );
                 }
                 join_threads(threads);
-                check_threads(threads);
+                // check_threads(threads);
                 fmt::print("Combining results\n");
                 for (auto row = start; row < end; row++)
                 {
@@ -740,7 +867,6 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, st
     }
 }
 
-
 void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth, std::vector<ULL>& fresh_nodes, UI num_threads = NUM_THREADS)
 {
     const ULL N = new_nodes.size();
@@ -777,7 +903,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
             );
         }
         join_threads(threads);
-        check_threads(threads);
+        // check_threads(threads);
 
         fmt::print("\t\tCombining new - new pairs\n");
 
@@ -820,7 +946,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
                 );
             }
             join_threads(threads);
-            check_threads(threads);
+            // check_threads(threads);
 
             fmt::print("\t\tCombining NEW-NEW CB results\n");
             for (ULL k = START; k < END; k++)
@@ -925,7 +1051,7 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
             );
         }
         join_threads(threads);
-        check_threads(threads);
+        // check_threads(threads);
 
         for (ULL k = 0u; k < Ncombs; k++)
         {
@@ -955,7 +1081,7 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
                 );
             }
             join_threads(threads);
-            check_threads(threads);
+            // check_threads(threads);
             fmt::print("\t\tCombining XOR results\n");
             for (ULL k = START; k < END; k++)
             {
@@ -1113,7 +1239,7 @@ void threaded_and_or_wrapper(const std::vector<ULL>& nodes, const UI depth, UI n
             );
         }
         join_threads(threads);
-        check_threads(threads);
+        // check_threads(threads);
 
         for (ULL k = 0u; k < Ncombs; k++)
         {
@@ -1151,7 +1277,7 @@ void threaded_and_or_wrapper(const std::vector<ULL>& nodes, const UI depth, UI n
                 );
             }
             join_threads(threads);
-            check_threads(threads);
+            // check_threads(threads);
 
             fmt::print("\t\tCombining AND/OR results\n");
             for (ULL k = START; k < END; k++)
@@ -1300,7 +1426,7 @@ std::unordered_set<ULL> remove_dominated()
     return to_be_removed;
 }
 
-void cb_generation(US lvl, std::string level_prefix)
+void cb_generation(US lvl, std::string level_prefix, std::vector<UI>& hopeless)
 {
     const US min_lvl = (lvl == 0) ? 0 : lvl * 3 - 1;
     std::vector<ULL> new_nodes = select_depth(min_lvl, lvl * 3 + 1);
@@ -1318,14 +1444,10 @@ void cb_generation(US lvl, std::string level_prefix)
         fmt::print("\tProcessing {:L} old nodes with {:L} new nodes\n", old_nodes.size(), new_nodes.size());
         thread_old_new_wrapper(old_nodes, new_nodes, depth, fresh_nodes);
         
-        // fmt::print("\t{}: Checking old nodes after old-new...\n", iteration);
-        // check_nodes(old_nodes);
-        // fmt::print("\t{}: Checking fresh nodes after old-new...\n", iteration);
-        // check_nodes(fresh_nodes);
-        // fmt::print("\t{}: Checking new nodes after old-new...\n", iteration);
-        // check_nodes(new_nodes);
-        // fmt::print("\t{}: Checking GNM after old-new...\n", iteration);
-        // check_GNM();
+        // fmt::print("\t{}: Checking old nodes after old-new...\n", iteration); // check_nodes(old_nodes);
+        // fmt::print("\t{}: Checking fresh nodes after old-new...\n", iteration); // check_nodes(fresh_nodes);
+        // fmt::print("\t{}: Checking new nodes after old-new...\n", iteration); // check_nodes(new_nodes);
+        // fmt::print("\t{}: Checking GNM after old-new...\n", iteration); // check_GNM();
 
         // write_csv_gnm(GNM, fmt::format("{}_gnm_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
         // write_csv_arr(GEA, fmt::format("{}_gea_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
@@ -1443,7 +1565,7 @@ void cb_generation(US lvl, std::string level_prefix)
         // fmt::print("\t{}: Checking new nodes after new-new...\n", iteration);
         // check_nodes(new_nodes);
         
-        std::unordered_set<ULL> removed_nodes = remove_dominated();
+        std::unordered_set<ULL> removed_nodes; // = remove_dominated();
         for (const ULL new_hash : new_nodes)
         {
             if (removed_nodes.find(new_hash) == removed_nodes.end())
@@ -1463,7 +1585,8 @@ void cb_generation(US lvl, std::string level_prefix)
         // old_nodes.insert(old_nodes.end(), new_nodes.begin(), new_nodes.end());
         // new_nodes.clear();
         // new_nodes.insert(new_nodes.end(), fresh_nodes.begin(), fresh_nodes.end());
-        go_on = fresh_nodes.size() > 0;
+        auto num_done = count_done( hopeless );
+        go_on = ( fresh_nodes.size() > 0 ) && ( num_done == NUM_TT );
         fresh_nodes.clear(); 
         iteration++;
         // fmt::print("GOON VAR IS {}", go_on);
@@ -1530,7 +1653,7 @@ void as_generation(US lvl)
         }
 
     #endif
-    remove_dominated();
+    // remove_dominated();
 }
 void sa_generation(US lvl)
 {
@@ -1590,45 +1713,44 @@ void sa_generation(US lvl)
             }
         }
     #endif 
-    remove_dominated();
+    // remove_dominated();
 }
 
-inline bool is_done(std::array<ULL, NUM_TT> & GEX)  
+inline bool is_done(std::array<ULL, NUM_TT> & GEX, std::vector<UI> & hopeless)  
 {
     #pragma vector
-    for (auto i = 0u; i < NUM_TT; i++)
+    for (auto func = 0u; func < NUM_TT; func++)
     {
         // if (GEX[i].cost == INF || GEX[i].depth == INF)
         // if (get_gex(i).cost == INF || get_gex(i).depth == INF)
-        if (GEX[i] == 0)
+        if (GEX[func] == 0 && (std::find(hopeless.begin(), hopeless.end(), func) == hopeless.end()) )
         {
             return false;
         }
     }
     return true;
 }
-
-inline UI count_done()  
-{
-    #pragma vector
-    UI ctr = 0;
-    for (auto i = 0u; i < NUM_TT; i++)
-    {
-        ctr += (get_gex(i).cost < INF);
-        // if (GEX[i].cost == INF || GEX[i].depth == INF)
-        // if (get_gex(i).cost == INF || get_gex(i).depth == INF)
-        // {
-        //     return false;
-        // }
-    }
-    return ctr;
-}
-
 bool is_subset(const std::vector<ULL>& v1, const std::vector<ULL>& v2) {
     // Check if all elements of v1 are in v2
     return std::all_of(v1.begin(), v1.end(), [&v2](const int& val) {
         return std::find(v2.begin(), v2.end(), val) != v2.end();
     });
+}
+
+
+void transfer_nodes( 
+    std::array<ULL, NUM_TT> GEA, 
+    std::array<ULL, NUM_TT> GEX,
+    std::unordered_map<ULL, Node> & GNM, 
+    std::vector<std::array<ULL, NUM_TT>>& GEA_global, 
+    std::vector<std::array<ULL, NUM_TT>>& GEX_global, 
+    std::unordered_map<ULL, Node> & GNM_global)
+{
+    GNM_global.insert(GNM.begin(), GNM.end()); 
+    GNM.clear();
+
+    GEA_global.push_back(GEA);
+    GEX_global.push_back(GEX);
 }
 
 int main() 
@@ -1644,60 +1766,70 @@ int main()
     // successfully done: {0,0,0,0}, 
     // { { {0,0,0,0}, {0,0,0,1},  } } ; //  
     std::vector<std::vector<UI>> sets_of_levels { 
-            //{0,0,0,0}, 
-            //{0,0,0,1}, 
-            //{0,0,0,2}, 
-            {0,0,0,3}, 
-            {0,0,0,4}, 
+            {0,0,0,0}, 
+            {0,0,0,1}, 
+            {0,0,0,2}, 
+            // {0,0,0,3}, 
+            // {0,0,0,4}, 
             {0,0,1,1}, 
             {0,0,1,2}, 
-            {0,0,1,3}, 
-            {0,0,1,4}, 
-            {0,0,2,2}, 
-            {0,0,2,3}, 
-            {0,0,2,4}, 
-            {0,0,3,3}, 
-            {0,0,3,4}, 
-            {0,0,4,4}, 
+            // {0,0,1,3}, 
+            // {0,0,1,4}, 
+            // {0,0,2,2}, 
+            // {0,0,2,3}, 
+            // {0,0,2,4}, 
+            // {0,0,3,3}, 
+            // {0,0,3,4}, 
+            // {0,0,4,4}, 
             {0,1,1,1}, 
             {0,1,1,2}, 
             {0,1,1,3}, 
-            {0,1,1,4}, 
+            // {0,1,1,4}, 
             {0,1,2,2}, 
             {0,1,2,3}, 
-            {0,1,2,4}, 
-            {0,1,3,3}, 
-            {0,1,3,4}, 
-            {0,1,4,4}, 
-            {0,2,2,2}, 
-            {0,2,2,3}, 
-            {0,2,2,4}, 
-            {0,2,3,3}, 
-            {0,2,3,4}, 
-            {0,2,4,4}, 
-            {0,3,3,3}, 
-            {0,3,3,4}, 
-            {0,3,4,4}, 
-            {0,4,4,4} 
+            // {0,1,2,4}, 
+            // {0,1,3,3}, 
+            // {0,1,3,4}, 
+            // {0,1,4,4}, 
+            // {0,2,2,2}, 
+            // {0,2,2,3}, 
+            // {0,2,2,4}, 
+            // {0,2,3,3}, 
+            // {0,2,3,4}, 
+            // {0,2,4,4}, 
+            // {0,3,3,3}, 
+            // {0,3,3,4}, 
+            // {0,3,4,4}, 
+            // {0,4,4,4} 
     };
     
     //outer dimension - function
     //middle dimension - set of delays
     //inner dimension - delay of each input
-    std::vector<std::vector<std::vector<UI>>> best_delays;
-
+    int iter_counter = -1;
     for (std::vector<UI> levels : sets_of_levels) 
     {
-        GNM.clear();
-        std::fill(GEA.begin(), GEA.end(), 0);
-        std::fill(GEX.begin(), GEX.end(), 0);
+        iter_counter++;
+        if (iter_counter < 3)
+        {
+            // std::string level_prefix = fmt::format("20230328_vec/x3_{}", fmt::join(levels, ""));
+            std::string level_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/Results_20230425/zip_{}", fmt::join(levels, ""));
+            GNM = read_csv_gnm(fmt::format("{}_gnm.csv", level_prefix));
+            GEA = read_csv_arr(fmt::format("{}_gea.csv", level_prefix));
+            GEX = read_csv_arr(fmt::format("{}_gex.csv", level_prefix));
+            std::vector<UI> dummy = {};
+            UL ndone = count_done( dummy );
+            transfer_nodes(GEA, GEX, GNM, GEA_global, GEX_global, GNM_global);
+            fmt::print("{}, {}, {}, {}\n", ndone, GEA_global.size(), GEX_global.size(), GNM_global.size());
+        }
+
         auto i = 0u;
         for (UI func : gen_pi_func(NUM_VARS))
         {
             create_node(func, fPI, 0, levels[i++]*3 + 1, true);
         }
 
-        std::string level_prefix = fmt::format("20230328_vec/x3_{}", fmt::join(levels, ""));
+        std::string level_prefix = fmt::format("Results_20230425/zip_{}", fmt::join(levels, ""));
 
         fmt::print("Analyzing levels: {}\n", level_prefix);
         fmt::print("After PI:\n");
@@ -1710,18 +1842,22 @@ int main()
         // for (US lvl = 0; lvl < 50; lvl ++)
         for (US lvl = 0; lvl < 50; lvl ++)
         {
-            UL start_n_TT = count_done();
+            Delay new_delay = delay_from_levels(lvl, levels);
+            std::vector<UI> hopeless = get_hopeless(new_delay, GEX_global, GNM_global);
+
+            /* NEED TO IDENTIFY WHICH NODES ARE NOT WORTH CREATING*/
+            UL start_n_TT = count_done( hopeless );
             fmt::print("Processing lvl {}: CB\n", lvl);
             // fmt::print("Checking integrity of GNM before CB\n");
             // check_GNM();
-            cb_generation(lvl, level_prefix);
+            cb_generation(lvl, level_prefix, hopeless);
             // fmt::print("Checking integrity of GNM after CB\n");
             // check_GNM();
-            fmt::print("\n\n\t\nCompleted {}\n\n\n", count_done());
+            fmt::print("\n\n\t\n[LVL {}] [AFTER CB] Completed {}\n\n\n", lvl, count_done( hopeless ));
             // write_csv_gnm(GNM, fmt::format("{}_gnm_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             // write_csv_arr(GEA, fmt::format("{}_gea_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             // write_csv_arr(GEX, fmt::format("{}_gex_cb_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
-            break_if (is_done(GEX) && lvl >= levels.back()) ;
+            break_if (is_done(GEX, hopeless) && lvl >= levels.back()) ;
 
             // break_if (lvl == 1); 
 
@@ -1731,11 +1867,11 @@ int main()
             as_generation(lvl);
             // fmt::print("Checking integrity of GNM after AS\n");
             // check_GNM();
-            fmt::print("\n\n\t\nCompleted {}\n\n\n", count_done());
+            fmt::print("\n\n\t\n[LVL {}] [AFTER AS] Completed {}\n\n\n", lvl, count_done( hopeless ));
             // write_csv_gnm(GNM, fmt::format("{}_gnm_as_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             // write_csv_arr(GEA, fmt::format("{}_gea_as_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             // write_csv_arr(GEX, fmt::format("{}_gex_as_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
-            break_if (is_done(GEX) && lvl >= levels.back()) ;
+            break_if (is_done(GEX, hopeless) && lvl >= levels.back()) ;
 
             fmt::print("Processing lvl {}: SA\n", lvl);
             // fmt::print("Checking integrity of GNM before SA\n");
@@ -1743,13 +1879,14 @@ int main()
             sa_generation(lvl);
             // fmt::print("Checking integrity of GNM after SA\n");
             // check_GNM();
-            fmt::print("\n\n\t\nCompleted {}\n\n\n", count_done());
+            // fmt::print("\n\n\t\nCompleted {}\n\n\n", count_done( hopeless ));
+            fmt::print("\n\n\t\n[LVL {}] [AFTER SA] Completed {}\n\n\n", lvl, count_done( hopeless ));
             // write_csv_gnm(GNM, fmt::format("{}_gnm_sa_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             // write_csv_arr(GEA, fmt::format("{}_gea_sa_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
             // write_csv_arr(GEX, fmt::format("{}_gex_sa_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
-            break_if (is_done(GEX) && lvl >= levels.back()) ;
+            break_if (is_done(GEX, hopeless) && lvl >= levels.back()) ;
 
-            UL end_n_TT = count_done();
+            UL end_n_TT = count_done( hopeless );
             break_if (start_n_TT == end_n_TT && lvl >= levels.back());
         }
 
@@ -1801,10 +1938,15 @@ int main()
                 }
             }
         }
+        // TODO: check that this function indeed moves entries from GNM, GEX and GEA to GNM_global
+        transfer_nodes(GEA, GEX, GNM, GEA_global, GEX_global, GNM_global);
+        GNM.clear();
+        std::fill(GEA.begin(), GEA.end(), 0);
+        std::fill(GEX.begin(), GEX.end(), 0);
     }
     return 0;
 }
 
 /*
-nohup ./experiments/explore_sfq_vec > 20230329_vec/x3.log 2>&1 &
+nohup ./experiments/explore_sfq_vec > Results_20230425/zipped.log 2>&1 &
 */

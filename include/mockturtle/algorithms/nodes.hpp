@@ -126,6 +126,244 @@ inline UI apply_swaps(UI func, const std::vector<std::pair<uint8_t,uint8_t>> & s
     return tt._bits;
 }
 
+
+struct UD 
+{
+    bool E = false;
+    uint8_t D  : 4;
+    uint8_t L : 3;
+
+    UD(bool E_, uint8_t D_, uint8_t L_) : E(E_), D(D_), L(L_) {}
+    UD() : E(false), D(0b1111), L(0b111) {}
+};
+
+struct Delay 
+{
+    std::array<UD, NUM_VARS> delays;
+
+    Delay() : delays({{ UD(), UD(), UD(), UD() }}) {}
+
+    Delay(const Delay& other)  { delays = other.delays; }
+
+
+    Delay(const UI func, const uint8_t lvl) 
+    {  
+        unsigned int idx = 0;
+        switch (func)
+        {
+            case 0x5555:    idx = 0; break;
+            case 0x3333:    idx = 1; break;
+            case 0x0F0F:    idx = 2; break;
+            case 0x00FF:    idx = 3; break;
+            default:        assert(false);
+        }
+
+        // for (uint8_t i = 0; i < NUM_VARS; i++ )
+        // {
+        //     fmt::print("BEFORE [{}]: {}, {}, {}\n", i, (int)delays[i].E, (int)delays[i].D, (int)delays[i].L);
+        // }
+        
+        delays[idx].E = true;
+        delays[idx].D = 0;
+        delays[idx].L = lvl;
+        // for (uint8_t i = 0; i < NUM_VARS; i++ )
+        // {
+        //     fmt::print("AFTER  [{}]: {}, {}, {}\n", i, (int)delays[i].E, (int)delays[i].D, (int)delays[i].L);
+        // }
+    }
+
+    /* Checks if two delays can be connected to the same gate*/
+    bool compatible_with(const Delay& other) const
+    {
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            if (delays[i].E && other.delays[i].E)
+            {
+                if (delays[i].D != other.delays[i].D) return false;
+                if (delays[i].L != other.delays[i].L) return false;
+            }
+        }
+        return true;
+    }
+
+    std::pair<Delay, bool> combine_safe(const Delay& other, const bool increment) const
+    {
+        Delay out = Delay();
+
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            if (delays[i].E)
+            {
+                if (!other.delays[i].E || delays[i].D == other.delays[i].D) //ensure compatibility
+                {
+                    return std::make_tuple(out, false);
+                }
+                else
+                {
+                    out.delays[i].E = true;
+                    out.delays[i].D = delays[i].D + increment;
+                    out.delays[i].L = delays[i].L;
+                }
+            }
+            else if (other.delays[i].E)
+            {
+                out.delays[i].E = true;
+                out.delays[i].D = other.delays[i].D + increment;
+                out.delays[i].L = other.delays[i].L;
+            }
+        }
+
+        return std::make_tuple(out, true);
+    }
+
+    bool has_same_support_as(const Delay& other) const
+    {
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            if ( delays[i].E ^ other.delays[i].E )
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    Delay trim_support(const Delay & target) const
+    {
+        Delay out = *this;
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            out.delays[i].E = target.delays[i].E;
+        }
+        return out;
+    }
+
+    bool operator<(const Delay& other) const
+    {
+        bool smaller_delay = false;
+        assert(has_same_support_as(other));
+
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            if ( delays[i].E )
+            {
+                if (delays[i].D > other.delays[i].D) 
+                {
+                    return false;
+                }
+                smaller_delay |= (delays[i].D < other.delays[i].D);
+            }
+        }
+        return smaller_delay;
+    }
+    bool operator<=(const Delay& other) const
+    {
+        assert(has_same_support_as(other));
+
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            if ( delays[i].E && (delays[i].D > other.delays[i].D) )  return false;   
+        }
+        return true;
+    }
+    bool operator>=(const Delay& other) const
+    {
+        return other <= *this;
+    }
+    bool operator> (const Delay& other) const
+    {
+        return other < *this;
+    }
+
+    Delay& operator+=(const int d) 
+    {
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            delays[i].D += d;
+        }
+        return *this;
+    }    
+    Delay& operator++() 
+    {
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            delays[i].D++;
+        }
+        return *this;
+    }
+    Delay& operator-=(const int d) 
+    {
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            delays[i].D -= d;
+        }
+        return *this;
+    }    
+    Delay& operator--() 
+    {
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            delays[i].D--;
+        }
+        return *this;
+    }
+    Delay operator+(const int d) const 
+    {
+        Delay out = *this;
+        out += d;
+        return out;
+    }
+    Delay operator-(const int d) const 
+    {
+        Delay out = *this;
+        out -= d;
+        return out;
+    }
+
+    /* Ensure that the operands are compatible*/
+    Delay operator| (const Delay& other) const
+    {
+        Delay out = *this;
+        // for (uint8_t i = 0; i < NUM_VARS; ++i)
+        // {
+        //     fmt::print("\toperator| copied  [{}]: {}, {}, {}\n", i, (int)out.delays[i].E, (int)out.delays[i].D, (int)out.delays[i].L);
+        // }
+        // for (uint8_t i = 0; i < NUM_VARS; ++i)
+        // {
+        //     fmt::print("\toperator| other   [{}]: {}, {}, {}\n", i, (int)other.delays[i].E, (int)other.delays[i].D, (int)other.delays[i].L);
+        // }
+        for (uint8_t i = 0; i < NUM_VARS; ++i)
+        {
+            if (delays[i].E)
+            {
+                out.delays[i].E = true;
+                out.delays[i].D = delays[i].D;
+                out.delays[i].L = delays[i].L;
+            }
+            else if (other.delays[i].E)
+            {
+                out.delays[i].E = true;
+                out.delays[i].D = other.delays[i].D;
+                out.delays[i].L = other.delays[i].L;
+            }
+        }
+        // for (uint8_t i = 0; i < NUM_VARS; ++i)
+        // {
+        //     fmt::print("\toperator| final   [{}]: {}, {}, {}\n", i, (int)out.delays[i].E, (int)out.delays[i].D, (int)out.delays[i].L);
+        // }
+        return out;
+    }
+    std::string to_str() const
+    {
+        std::string out = fmt::format("{}{}, {}{}, {}{}, {}{}\n", 
+                                        (delays[0].E ? 'E' : 'X'), delays[0].D, 
+                                        (delays[1].E ? 'E' : 'X'), delays[1].D, 
+                                        (delays[2].E ? 'E' : 'X'), delays[2].D, 
+                                        (delays[3].E ? 'E' : 'X'), delays[3].D);
+        return out;
+    }
+};
+
 class Node {
 public:
     UI func = 0;
@@ -286,7 +524,7 @@ public:
     //     return str;
     // }
 
-    std::string to_stack(std::unordered_map<ULL, Node> & nodemap, std::vector<std::string> & symbol)
+    std::string to_stack(std::unordered_map<ULL, Node> & nodemap, std::vector<std::string> symbol)
     {
         if (last_func == fPI)
         {
@@ -334,7 +572,7 @@ public:
         else
         {
             // if (DEBUG) {
-            fmt::print("Unsupported function {}", to_str());
+            fmt::print("Unsupported function {}\n", to_str());
                 // }
             return "";
         }
