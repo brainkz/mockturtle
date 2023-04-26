@@ -20,12 +20,16 @@ std::vector<std::vector<UI>> binned_indices(const std::vector<UI>& levels)
 {
     std::vector<std::vector<UI>> binned_indices;
 
-    for (UI i = 0; i < levels.size(); ++i) {
+    for (UI i = 0; i < levels.size(); ++i) 
+    {
         // Check if this element is a duplicate
-        if (i > 0 && levels[i] == levels[i-1]) {
+        if (i > 0 && levels[i] == levels[i-1]) 
+        {
             // If it is, add the index to the last inner vector
             binned_indices.back().push_back(i);
-        } else {
+        } 
+        else 
+        {
             // If it's not, create a new inner vector
             binned_indices.push_back({i});
         }
@@ -181,9 +185,9 @@ union func_lvl
 #else
     int main()
     {
-        std::ofstream outfile("LIBRARY_2023_03_24.genlib");
+        std::ofstream outfile("LIBRARY_2023_04_26.genlib");
 
-        std::vector<std::vector<UI>> sets_of_levels { { {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4} } };
+        std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3} } };
         
         auto ctr = 0u;
         std::vector<func_lvl> seen_signatures;
@@ -192,7 +196,7 @@ union func_lvl
             if (LOG_LVL > 0) {fmt::print("Processing patterns {}\n", fmt::join(levels, " "));}
             const std::vector<UI> PI_funcs {0x5555, 0x3333, 0x0F0F, 0x00FF};
 
-            std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_{}_", fmt::join(levels, ""));
+            std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_Database/x3_{}_", fmt::join(levels, ""));
 
             std::unordered_map<ULL, Node> GNM = read_csv_gnm(fmt::format("{}gnm.csv", file_prefix));
             // std::array<ULL, NUM_TT> GEA = read_csv_arr(fmt::format("{}gea.csv", file_prefix));
@@ -231,7 +235,7 @@ union func_lvl
                     if (LOG_LVL > 2){fmt::print("Permuted levels do not contain 0. Skipping\n");}
                     continue;
                 }
-
+                
                 assert(sup_size == support_idx.size());
                 func_lvl signature;
                 signature.data = 0u;
