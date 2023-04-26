@@ -15,6 +15,10 @@
 #include <algorithm>
 #include <locale>
 
+#include <unistd.h>
+#include <string>
+
+
 #include <iomanip>
 #include <ctime>
 
@@ -248,7 +252,7 @@ std::tuple<ULL, bool> create_node(UI _func, US _last_func, UI _cost, UI _depth, 
 
 bool is_best(ULL hash)
 {
-    Node & n = GNM[hash];
+    Node & n = GNM.at(hash);
     if (n.xorable)
     {
         Node& best_xor = get_gex(n.func);    
@@ -770,89 +774,48 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<UI>& funcs, st
     std::vector<std::pair<ULL, UI>> ct_spl;
     std::vector<ULL> non_splittable_nodes;
     // fmt::print("\t\tProcessing new - new combinations between #{} and #{}\n", start_k, end_k);
-
-    ULL start_i = N - 2 - static_cast<ULL>(std::sqrt(4*N*(N - 1) - 8*start_k - 7) / 2.0 - 0.5);
-    ULL start_j = start_k + start_i + 1 - N * (N - 1) / 2 + (N - start_i) * ((N - start_i) - 1) / 2;
-    ULL end_i = N - 2 - static_cast<ULL>(std::sqrt(4*N*(N - 1) - 8*end_k - 7) / 2.0 - 0.5);
-    ULL end_j = end_k + end_i + 1 - N * (N - 1) / 2 + (N - end_i) * ((N - end_i) - 1) / 2;
-
-    ULL k = start_k;
-
-    for (ULL i = start_i; i <= end_i && k < end_k; i++)
-    {
+    for (ULL k = start_k; k < end_k; k++)
+    {   
+        COMPUTE_IJ(k, N, i, j);
         ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
-        Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
-        auto [init_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, gate_cost, tgt_lvl*3);
-        // std::set<UI> skip_tt = CB_ed[ni.func];
-
-        for (ULL j = ((i==start_i)?(start_j):(start_i+1)); j < N && k < end_k; j++, k++)
+        Node & ni = GNM.at(hi); //[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+        if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
         {
-            ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
-            Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+            // fmt::print("\tUpdating\n");
+            auto [init_cost_tmp, ct_spl_tmp, non_splittable_nodes_tmp] = node_cost_single(hi, gate_cost, tgt_lvl*3);
+            init_cost = init_cost_tmp;
+            ct_spl = ct_spl_tmp;
+            non_splittable_nodes = non_splittable_nodes_tmp;
+        }
 
-            // continue_if (std::find(skip_tt.begin(), skip_tt.end(), nj.func) != skip_tt.end());
-            // continue_if (skip_tt.find(nj.func) != skip_tt.end());
+        // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
+        ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
+        Node & nj = GNM.at(hj); // [hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
 
-            UI func = ni.func | nj.func;
-            continue_if (func == 0 || func == ONES || func == ni.func || func == nj.func);
-            // bool xorable = (ni.func ^ nj.func) == func; // fmt::print("\t\t Xorable status = {}\n", xorables[k]);
-            bool xorable = ((ni.func ^ nj.func) == func) & ni.xorable & nj.xorable;
-            
-            Node & best_n = xorable ? get_gex(func) : get_gea(func);
-            if (best_n.lvl >= tgt_lvl)
+        // fmt::print("\t\t\tCalculating cost for k {}:\n\t\t\t\t#{}: {}\n\t\t\t\t#{}: {}\n", k, i, ni.to_str(), j, nj.to_str());
+
+        UI func = ni.func | nj.func;
+        continue_if (func == 0 || func == ONES || func == ni.func || func == nj.func);
+        // bool xorable = (ni.func ^ nj.func) == func; // fmt::print("\t\t Xorable status = {}\n", xorables[k]);
+        bool xorable = ((ni.func ^ nj.func) == func) & ni.xorable & nj.xorable;
+        
+        Node & best_n = xorable ? get_gex(func) : get_gea(func);
+        if (best_n.lvl >= tgt_lvl)
+        {
+            auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_n.cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            // fmt::print("\t\t\t\t Result: cost {}, success {}\n", cost, status);
+            if (status)
             {
-                auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_n.cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
-                // fmt::print("\t\t\t\t Result: cost {}, success {}\n", cost, status);
-                if (status)
-                {
-                    costs[k - offset] = cost;
-                    xorables[k - offset] = xorable;
-                    funcs[k - offset] = func; // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
-                }
+                costs[k - offset] = cost;
+                xorables[k - offset] = xorable;
+                funcs[k - offset] = func; // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
             }
         }
+        old_i = i;
     }
-
-    // for (ULL k = start_k; k < end_k; k++)
-    // {   
-    //     COMPUTE_IJ(k, N, i, j);
-    //     ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
-    //     Node & ni = GNM.at(hi); //[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
-    //     if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
-    //     {
-    //         // fmt::print("\tUpdating\n");
-    //         auto [init_cost_tmp, ct_spl_tmp, non_splittable_nodes_tmp] = node_cost_single(hi, gate_cost, tgt_lvl*3);
-    //         init_cost = init_cost_tmp;
-    //         ct_spl = ct_spl_tmp;
-    //         non_splittable_nodes = non_splittable_nodes_tmp;
-    //     }
-
-    //     // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
-    //     ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
-    //     Node & nj = GNM.at(hj); // [hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
-
-    //     // fmt::print("\t\t\tCalculating cost for k {}:\n\t\t\t\t#{}: {}\n\t\t\t\t#{}: {}\n", k, i, ni.to_str(), j, nj.to_str());
-
-    //     UI func = ni.func | nj.func;
-    //     continue_if (func == 0 || func == ONES || func == ni.func || func == nj.func);
-    //     // bool xorable = (ni.func ^ nj.func) == func; // fmt::print("\t\t Xorable status = {}\n", xorables[k]);
-    //     bool xorable = ((ni.func ^ nj.func) == func) & ni.xorable & nj.xorable;
-        
-    //     Node & best_n = xorable ? get_gex(func) : get_gea(func);
-    //     if (best_n.lvl >= tgt_lvl)
-    //     {
-    //         auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_n.cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
-    //         // fmt::print("\t\t\t\t Result: cost {}, success {}\n", cost, status);
-    //         if (status)
-    //         {
-    //             costs[k - offset] = cost;
-    //             xorables[k - offset] = xorable;
-    //             funcs[k - offset] = func; // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
-    //         }
-    //     }
-    //     old_i = i;
-    // }
 }
+
+
 
 
 void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth, std::vector<ULL>& fresh_nodes, UI num_threads = NUM_THREADS)
@@ -952,6 +915,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
     }
 }
 
+
 void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::vector<UI>& costs, const ULL start_k, const ULL end_k, const UI gate_cost, const ULL offset, const UI tgt_lvl) 
 {
     // fmt::print("\t\tFunction is called\n");
@@ -961,41 +925,37 @@ void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::v
     UI init_cost;
     std::vector<std::pair<ULL, UI>> ct_spl;
     std::vector<ULL> non_splittable_nodes;
+    for (ULL k = start_k; k < end_k; k++)
+    {   
+        COMPUTE_IJ(k, N, i, j);
+        ULL hi = hashes[i];     // fmt::print("\t\t hash_i={}\n", hi);
+        Node & ni = GNM.at(hi); // [hi];    // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
 
-    ULL start_i = N - 2 - static_cast<ULL>(std::sqrt(4*N*(N - 1) - 8*start_k - 7) / 2.0 - 0.5);
-    ULL start_j = start_k + start_i + 1 - N * (N - 1) / 2 + (N - start_i) * ((N - start_i) - 1) / 2;
-    ULL end_i = N - 2 - static_cast<ULL>(std::sqrt(4*N*(N - 1) - 8*end_k - 7) / 2.0 - 0.5);
-    ULL end_j = end_k + end_i + 1 - N * (N - 1) / 2 + (N - end_i) * ((N - end_i) - 1) / 2;
-
-    ULL k = start_k;
-
-    for (ULL i = start_i; i <= end_i && k < end_k; i++)
-    {
-        ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
-        Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
-        auto [init_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, gate_cost, tgt_lvl*3);
-        // std::set<UI> skip_tt = XOR_ed[ni.func];
-
-        for (ULL j = ((i==start_i)?(start_j):(start_i+1)); j < N && k < end_k; j++, k++)
+        if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
         {
-            ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
-            Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
-            
-            // continue_if (skip_tt.find(nj.func) != skip_tt.end());
-            // continue_if (std::find(skip_tt.begin(), skip_tt.end(), nj.func) != skip_tt.end());
+            // fmt::print("\tUpdating\n");
+            auto [init_cost_tmp, ct_spl_tmp, non_splittable_nodes_tmp] = node_cost_single(hi, gate_cost, tgt_lvl*3);
+            init_cost = init_cost_tmp;
+            ct_spl = ct_spl_tmp;
+            non_splittable_nodes = non_splittable_nodes_tmp;
+        }
 
-            UI func = ni.func ^ nj.func;
-            Node & best_n = get_gex(func);
-            if (best_n.lvl >= tgt_lvl) 
+        // fmt::print("\t\tk={}, i={}, j={}\n", k, i, j);
+        ULL hj = hashes[j];     // fmt::print("\t\t hash_j={}\n", hj);
+        Node & nj = GNM.at(hj); // [hj];    // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+
+        UI func = ni.func ^ nj.func;
+        Node & best_n = get_gex(func);
+        if (best_n.lvl >= tgt_lvl) 
+        {
+            auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_n.cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            if (status)
             {
-                auto [cost, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_n.cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
-                if (status)
-                {
-                    funcs[k - offset] = func;  // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
-                    costs[k - offset] = cost;   // fmt::print("\t\t Cost = {}\n", costs[k]);
-                }
+                funcs[k - offset] = func;  // fmt::print("\t\t Wrote func = {0:016b} = {0:04x}\n",  funcs[k]);
+                costs[k - offset] = cost;   // fmt::print("\t\t Cost = {}\n", costs[k]);
             }
         }
+        old_i = i;
     }
 }
 
@@ -1094,114 +1054,111 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<UI>& funcs_and,
     UI init_cost;
     std::vector<std::pair<ULL, UI>> ct_spl;
     std::vector<ULL> non_splittable_nodes;
-    
-    ULL start_i = N - 2 - static_cast<ULL>(std::sqrt(4*N*(N - 1) - 8*start_k - 7) / 2.0 - 0.5);
-    ULL start_j = start_k + start_i + 1 - N * (N - 1) / 2 + (N - start_i) * ((N - start_i) - 1) / 2;
-    ULL end_i = N - 2 - static_cast<ULL>(std::sqrt(4*N*(N - 1) - 8*end_k - 7) / 2.0 - 0.5);
-    ULL end_j = end_k + end_i + 1 - N * (N - 1) / 2 + (N - end_i) * ((N - end_i) - 1) / 2;
 
-    ULL k = start_k;
-
-    for (ULL i = start_i; i <= end_i && k < end_k; i++)
-    {
+    for (ULL k = start_k; k < end_k; k++)
+    {   
+        COMPUTE_IJ(k, N, i, j);
         ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
-        Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
-        auto [init_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, gate_cost_and, tgt_lvl*3);
-        // std::set<UI> skip_tt = AND_ed[ni.func];
-
-        for (ULL j = ((i==start_i)?(start_j):(start_i+1)); j < N && k < end_k; j++, k++)
+        Node & ni = GNM.at(hi);// [hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
+        if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
         {
-            ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
-            Node & nj = GNM[hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
+            // fmt::print("\tUpdating\n");
+            auto [init_cost_tmp, ct_spl_tmp, non_splittable_nodes_tmp] = node_cost_single(hi, gate_cost_and, tgt_lvl*3);
+            init_cost = init_cost_tmp;
+            ct_spl = ct_spl_tmp;
+            non_splittable_nodes = non_splittable_nodes_tmp;
+        }
 
-            // continue_if (skip_tt.find(nj.func) != skip_tt.end());
-            // continue_if (std::find(skip_tt.begin(), skip_tt.end(), nj.func) != skip_tt.end());
+        // ULL j = k + i + 1 - N * (N - 1) / 2 + (N - i)*((N - i) - 1) / 2; // fmt::print("\t\tk={}, i={}, j={}, start_k={}, end_k={}, #hashes={}\n", k, i, j, start_k, end_k, hashes.size());
+        ULL hj = hashes[j]; // fmt::print("\t\t hash_j={}\n", hj);
+        Node & nj = GNM.at(hj);// [hj]; // fmt::print("\t\t Retrieved nj={}\n", nj.to_str());
 
-            UI func_and = ni.func & nj.func;
-            ULL best_and_hash = GEX[func_and];
-            UL best_and_lvl;
-            UL best_and_cost;
-            if (func_and == 0 || func_and == ONES || func_and == ni.func || func_and == nj.func)
+        UI func_and = ni.func & nj.func;
+        ULL best_and_hash = GEX[func_and];
+        UL best_and_lvl;
+        UL best_and_cost;
+        if (func_and == 0 || func_and == ONES || func_and == ni.func || func_and == nj.func)
+        {
+            best_and_lvl = 0;
+            best_and_cost = 0;
+        }
+        else
+        {
+            if (GNM.find(best_and_hash) == GNM.end())
             {
-                best_and_lvl = 0;
-                best_and_cost = 0;
-            }
-            else
+                fmt::print("best_and_hash : {}\nni : {}\nnj : {}\nfunc_and : {}\nnode in GNM : {}", 
+                best_and_hash, ni.to_str(), nj.to_str(), func_and, GNM.at(best_and_hash).to_str());
+            };
+            Node & best_and = GNM.at(best_and_hash); // [best_and_hash];
+            best_and_lvl = best_and.lvl;
+            best_and_cost = best_and.cost;
+        }
+        UI func_or  = ni.func | nj.func;
+        ULL best_or_hash  = GEX[func_or ];
+        UL best_or_lvl;
+        UL best_or_cost;
+        if (func_or == 0 || func_or == ONES || func_or == ni.func || func_or == nj.func)
+        {
+            best_or_lvl = 0;
+            best_or_cost = 0;
+        }
+        else
+        {
+            if (GNM.find(best_or_hash) == GNM.end())
             {
-                if (GNM.find(best_and_hash) == GNM.end())
-                {
-                    fmt::print("best_and_hash : {}\nni : {}\nnj : {}\nfunc_and : {}\nnode in GNM : {}", 
-                    best_and_hash, ni.to_str(), nj.to_str(), func_and, GNM[best_and_hash].to_str());
-                };
-                Node & best_and = GNM[best_and_hash]; // [best_and_hash];
-                best_and_lvl = best_and.lvl;
-                best_and_cost = best_and.cost;
-            }
-            UI func_or  = ni.func | nj.func;
-            ULL best_or_hash  = GEX[func_or ];
-            UL best_or_lvl;
-            UL best_or_cost;
-            if (func_or == 0 || func_or == ONES || func_or == ni.func || func_or == nj.func)
-            {
-                best_or_lvl = 0;
-                best_or_cost = 0;
-            }
-            else
-            {
-                if (GNM.find(best_or_hash) == GNM.end())
-                {
-                    fmt::print("best_or_hash : {}\nni : {}\nnj : {}\nfunc_or : {}\nnode in GNM : {}", 
-                    best_or_hash, ni.to_str(), nj.to_str(), func_or, GNM[best_or_hash].to_str());
-                };
-                Node & best_or = GNM[best_or_hash];
-                best_or_lvl = best_or.lvl;
-                best_or_cost = best_or.cost;
-            }
+                fmt::print("best_or_hash : {}\nni : {}\nnj : {}\nfunc_or : {}\nnode in GNM : {}", 
+                best_or_hash, ni.to_str(), nj.to_str(), func_or, GNM.at(best_or_hash).to_str());
+            };
+            Node & best_or = GNM.at(best_or_hash);
+            best_or_lvl = best_or.lvl;
+            best_or_cost = best_or.cost;
+        }
 
-            if (best_and_lvl >= tgt_lvl && best_or_lvl >= tgt_lvl) 
+        if (best_and_lvl >= tgt_lvl && best_or_lvl >= tgt_lvl) 
+        {
+            UI limit = std::max(best_and_cost, best_or_cost);
+            auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, limit, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            if (status)
             {
-                UI limit = std::max(best_and_cost, best_or_cost);
-                auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, limit, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
-                if (status)
-                {
-                    UI cost_or = cost_and - COSTS[fAND] + COSTS[fOR]; // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
-                    // assert(funcs_and.size() > k-offset);
-                    funcs_and[k - offset] = func_and;  // fmt::print("\t\t Wrote func AND = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_and[k], k-offset, funcs_and.size());
-                    // assert(costs_and.size() > k-offset);
-                    costs_and[k - offset] = cost_and;   // fmt::print("\t\t Cost AND = {}\n", costs_and[k]);
-                    // assert(funcs_or.size() > k-offset);
-                    funcs_or[k - offset] = func_or;  // fmt::print("\t\t Wrote func OR = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_or[k], k-offset, funcs_and.size());
-                    // assert(costs_or.size() > k-offset);
-                    costs_or[k - offset] = cost_or;   // fmt::print("\t\t Cost OR = {}\n", costs_or[k]);
-                }
-            }
-            else if (best_and_lvl >= tgt_lvl)
-            {
-                auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_and_cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
-                if (status)
-                {
-                    // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
-                    // assert(funcs_and.size() > k-offset);
-                    funcs_and[k - offset] = func_and;  // fmt::print("\t\t Wrote func AND = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_and[k], k-offset, funcs_and.size());
-                    // assert(costs_and.size() > k-offset);
-                    costs_and[k - offset] = cost_and;   // fmt::print("\t\t Cost AND = {}\n", costs_and[k]);
-                }
-            }
-            else if (best_or_lvl >= tgt_lvl) 
-            {
-                auto [cost_or, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_or_cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
-                if (status)
-                {
-                    // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
-                    // assert(funcs_or.size() > k-offset);
-                    funcs_or[k - offset] = func_or;  // fmt::print("\t\t Wrote func OR = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_or[k], k-offset, funcs_and.size());
-                    // assert(costs_or.size() > k-offset);
-                    costs_or[k - offset] = cost_or;   // fmt::print("\t\t Cost OR = {}\n", costs_or[k]);
-                }
+                UI cost_or = cost_and - COSTS[fAND] + COSTS[fOR]; // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
+                // assert(funcs_and.size() > k-offset);
+                funcs_and[k - offset] = func_and;  // fmt::print("\t\t Wrote func AND = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_and[k], k-offset, funcs_and.size());
+                // assert(costs_and.size() > k-offset);
+                costs_and[k - offset] = cost_and;   // fmt::print("\t\t Cost AND = {}\n", costs_and[k]);
+                // assert(funcs_or.size() > k-offset);
+                funcs_or[k - offset] = func_or;  // fmt::print("\t\t Wrote func OR = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_or[k], k-offset, funcs_and.size());
+                // assert(costs_or.size() > k-offset);
+                costs_or[k - offset] = cost_or;   // fmt::print("\t\t Cost OR = {}\n", costs_or[k]);
             }
         }
+        else if (best_and_lvl >= tgt_lvl)
+        {
+            auto [cost_and, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_and_cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            if (status)
+            {
+                // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
+                // assert(funcs_and.size() > k-offset);
+                funcs_and[k - offset] = func_and;  // fmt::print("\t\t Wrote func AND = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_and[k], k-offset, funcs_and.size());
+                // assert(costs_and.size() > k-offset);
+                costs_and[k - offset] = cost_and;   // fmt::print("\t\t Cost AND = {}\n", costs_and[k]);
+            }
+        }
+        else if (best_or_lvl >= tgt_lvl) 
+        {
+            auto [cost_or, status] = node_cost(hj, init_cost, ct_spl, non_splittable_nodes, best_or_cost, tgt_lvl*3); // costs[i][j] = node_cost(ni, nj, gate_cost);
+            if (status)
+            {
+                // fmt::print("\t\t Writing k={} with offset={} targeting index={} (vec_size = {})\n", k, offset, k-offset, funcs_and.size());
+                // assert(funcs_or.size() > k-offset);
+                funcs_or[k - offset] = func_or;  // fmt::print("\t\t Wrote func OR = {0:016b} = {0:04x} to index {1} (vec_size = {2})\n",  funcs_or[k], k-offset, funcs_and.size());
+                // assert(costs_or.size() > k-offset);
+                costs_or[k - offset] = cost_or;   // fmt::print("\t\t Cost OR = {}\n", costs_or[k]);
+            }
+        }
+        old_i = i;
     }
 }
+
 
 void threaded_and_or_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_threads = NUM_THREADS)
 {
@@ -1439,7 +1396,6 @@ void cb_generation(US lvl, std::string level_prefix)
     std::vector<ULL> fresh_nodes;
     UI iteration = 0;
     do {
-    #if (THREADING_MODE == 0)
         // first, combine new nodes with old nodes
         fmt::print("\tProcessing {:L} old nodes with {:L} new nodes\n", old_nodes.size(), new_nodes.size());
         thread_old_new_wrapper(old_nodes, new_nodes, depth, fresh_nodes);
@@ -1495,99 +1451,6 @@ void cb_generation(US lvl, std::string level_prefix)
         write_csv_gnm(GNM, fmt::format("{}_gnm_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
         write_csv_arr(GEA, fmt::format("{}_gea_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
         write_csv_arr(GEX, fmt::format("{}_gex_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
-
-    #elif (THREADING_MODE == 1)
-            // first, combine new nodes with old nodes
-            fmt::print("\tProcessing old {} nodes with new {} nodes\n", old_nodes.size(), new_nodes.size());
-            #pragma omp parallel for num_threads(10)
-            for (ULL k = 0u; k < new_nodes.size() * old_nodes.size(); k++)
-            {
-                ULL i = k / old_nodes.size();
-                ULL j = k % old_nodes.size();
-                fmt::print("\tCB ({}, {}, {}):\n", i, j, k);
-                Node& ni =  GNM[new_nodes[i]];
-                Node& nj =  GNM[old_nodes[j]];
-                auto [nhash, added] = check_cb(ni, nj, fresh_nodes);
-                go_on |= added;
-            }
-            // next, combine new nodes 
-            fmt::print("\tProcessing new {} nodes\n", new_nodes.size());
-            #pragma omp parallel for num_threads(10)
-            for (ULL k = 0u, n = new_nodes.size(); k < n * (n - 1) / 2; k++)
-            {
-                COMPUTE_IJ(k, n, i, j);
-                fmt::print("\tCB ({}, {}, {}):\n", i, j, k);
-                Node& ni =  GNM[new_nodes[i]];
-                Node& nj =  GNM[new_nodes[j]];
-                auto [nhash, added] = check_cb(ni, nj, fresh_nodes);
-                go_on |= added;
-            }
-    #elif (THREADING_MODE == 2)
-        // first, combine new nodes with old nodes
-        fmt::print("\tProcessing {} old nodes with {} new nodes\n", old_nodes.size(), new_nodes.size());
-        auto i = 0u;
-        for (auto hi : old_nodes)
-        {
-            fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i++, old_nodes.size(), 100 * (float)i / (float)old_nodes.size());
-            Node& ni =  GNM[hi];
-            auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fCB], tgt_lvl*3);
-            for (auto hj : new_nodes)
-            {
-                Node& nj =  GNM[hj];
-                UI func = ni.func | nj.func;
-                continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
-                // continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
-                bool xorable = (func == (ni.func ^ nj.func));
-                //if inputs are already more expensive, skip
-                UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
-                // fmt::print("calculating cb cost for {} and {} up to limit {}\n", ni.to_str(), nj.to_str(), INF);
-                auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit, tgt_lvl*3);
-                // fmt::print("final cost is {} and status is {}\n", cost, status);
-                continue_if (!status);
-                auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
-                if (added)
-                {
-                    Node& n =  GNM[nhash];
-                    fresh_nodes.push_back(nhash);
-                    // fmt::print("\t\tC: {}\n", n .to_str());
-                    go_on = true;
-                }
-            }
-        }
-
-        // next, combine new nodes 
-        for (auto i = 0u; i < new_nodes.size(); i++)
-        {
-            fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i, new_nodes.size(), 100 * (float)i / (float)new_nodes.size());
-            ULL hi = new_nodes[i];
-            Node& ni =  GNM[hi];
-            auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fCB], tgt_lvl*3);
-            for (auto j = i+1; j < new_nodes.size(); j++)
-            {
-                ULL hj = new_nodes[j];
-                Node& nj =  GNM[hj];
-                UI func = ni.func | nj.func;
-                continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
-                bool xorable = (func == (ni.func ^ nj.func));
-
-                UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
-                // fmt::print("calculating cb cost for {} and {} up to limit {}\n", ni.to_str(), nj.to_str(), INF);
-                auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit, tgt_lvl*3);
-                // fmt::print("1 final cost is {} and status is {}\n", cost, status);
-                continue_if (!status) ;
-                // fmt::print("2 final cost is {} and status is {}\n", cost, status);
-                // UI cost = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes);
-                
-                auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
-                if (added)
-                {
-                    Node& n =  GNM[nhash];
-                    fresh_nodes.push_back(nhash);
-                    // fmt::print("\t\tC: {}\n", n .to_str());
-                }
-            }
-        }
-    #endif
 
         // fmt::print("\t{}: Checking old nodes after new-new...\n", iteration);
         // check_nodes(old_nodes);
@@ -1645,49 +1508,7 @@ void as_generation(US lvl)
     // xor-combine the nodes
     
     fmt::print("\t{}: XOR {:L} nodes\n", lvl, nodes.size());
-    #if (THREADING_MODE == 0)   
-        threaded_xor_wrapper(nodes, tgt_depth);
-    #elif (THREADING_MODE == 2)
-        #pragma omp parallel for num_threads(10)
-        for (ULL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
-        {
-            COMPUTE_IJ(k, n, i, j);
-            fmt::print("\tXOR ({}, {}, {}):\n", i, j, k);
-            Node& ni =  GNM[nodes[i]];
-            Node& nj =  GNM[nodes[j]];
-            continue_if (!ni.xorable || !nj.xorable);
-            auto [nhash, added] = check_xor(ni, nj);
-        }
-    #elif (THREADING_MODE == 1)
-        for (auto i = 0u; i < nodes.size(); i++)
-        {
-            fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i, nodes.size(), 100 * (float)i / (float)nodes.size());
-            ULL hi = nodes[i];
-            Node& ni =  GNM[hi];
-            continue_if (!ni.xorable);
-            auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fXOR], tgt_lvl*3);
-            for (auto j = i+1; j < nodes.size(); j++)
-            {
-                ULL hj = nodes[j];
-                Node& nj =  GNM[hj];
-                continue_if (!nj.xorable);
-
-                // fmt::print("\t\tA: {}\n", ni.to_str());
-                // fmt::print("\t\tB: {}\n", nj.to_str());
-                UI func = ni.func ^ nj.func;
-                // UI limit = std::min(GNM[GEX[func]].cost);
-                auto [cost,status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, GNM[GEX[func]].cost, tgt_lvl*3);
-                continue_if (!status);
-                auto [nhash, added] = create_node(func, fXOR, cost, tgt_depth, true, {ni.hash, nj.hash});
-                if (added)
-                {
-                    Node& n =  GNM[nhash];
-                    // fmt::print("\t\tC: {}\n", n .to_str());
-                }
-            }
-        }
-
-    #endif
+    threaded_xor_wrapper(nodes, tgt_depth);
     // remove_dominated();
 
     // for (ULL i = 0; i < nodes.size(); i++)
@@ -1713,56 +1534,7 @@ void sa_generation(US lvl)
     // US tgt_depth = lvl * 3 + 3;
     // xor-combine the nodes
     fmt::print("\t{}: AND/OR {:L} nodes\n", lvl, nodes.size());
-    #if (THREADING_MODE == 0)
-        threaded_and_or_wrapper(nodes, tgt_depth);
-    #elif (THREADING_MODE == 2)
-        #pragma omp parallel for num_threads(10)
-        for (ULL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
-        {
-            COMPUTE_IJ(k, n, i, j);
-            fmt::print("\tAND/OR ({}, {}, {}):\n", i, j, k);
-            Node& ni =  GNM[nodes[i]];
-            Node& nj =  GNM[nodes[j]];
-            continue_if (!ni.xorable || !nj.xorable);
-            auto [hash_and, added_and, hash_or, added_or] = check_and_or(ni, nj);
-        }
-    #elif (THREADING_MODE == 1)
-        // ULL total_combs = nodes.size() * (nodes.size() - 1) / 2;
-        for (auto i = 0u; i < nodes.size(); i++)
-        {
-            fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i, nodes.size(), 100 * (float)i / (float)nodes.size());
-            ULL hi = nodes[i];
-            Node& ni =  GNM[hi];
-            auto [gate_cost_and, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fAND], tgt_lvl*3);
-            
-            for (auto j = i+1; j < nodes.size(); j++)
-            {
-                ULL hj = nodes[j];
-                Node& nj =  GNM[hj];
-
-                UI func_and = ni.func & nj.func;
-                UI func_or  = ni.func | nj.func;
-                UI limit = std::max(GNM[GEX[func_and]].cost, GNM[GEX[func_or]].cost);
-
-                auto [cost_and, status] = node_cost(hj, gate_cost_and, ct_spl, non_splittable_nodes, INF, tgt_lvl*3);
-                UI cost_or = cost_and - COSTS[fAND] + COSTS[fOR];
-                continue_if (!status) ;
-
-                auto [hash_and, added_and] = create_node(func_and, fAND, cost_and, tgt_depth, true, {ni.hash, nj.hash});
-                auto [hash_or , added_or ] = create_node(func_or , fOR , cost_or , tgt_depth, true, {ni.hash, nj.hash});
-                // if (added_and)
-                // {
-                //     Node& n =  GNM[hash_and];
-                //     fmt::print("\t\t&: {}\n", n .to_str());
-                // }
-                // if (added_or )
-                // {
-                //     Node& n =  GNM[hash_or ];
-                //     fmt::print("\t\t|: {}\n", n .to_str());
-                // }
-            }
-        }
-    #endif 
+    threaded_and_or_wrapper(nodes, tgt_depth);
     // remove_dominated();
 
     // for (ULL i = 0; i < nodes.size(); i++)
@@ -1806,6 +1578,16 @@ bool is_subset(const std::vector<ULL>& v1, const std::vector<ULL>& v2) {
     });
 }
 
+std::string get_computer_name() 
+{
+    char hostname[256];
+    gethostname(hostname, 256);
+
+    std::string str(hostname);
+
+    return str;
+}
+
 int main() 
 {
     std::locale::global(std::locale("en_US.UTF-8"));
@@ -1818,21 +1600,70 @@ int main()
     // } };
     // successfully done: {0,0,0,0}, 
     // { { {0,0,0,0}, {0,0,0,1},  } } ; //  
-    std::vector<std::vector<UI>> sets_of_levels { 
-        { 
-            // {0,0,0,0}, 
-            // FOR 058:
-            {0,0,0,2}, // now processed by 058
-            {0,0,0,1}, // now processed by 046
-            // {0,0,1,1},  // completed by 058
-            // {0,0,1,2},  // completed by 058
-            // {0,1,1,1},  // completed by 059
-            // {0,1,1,2},  // completed by 059
-            // {0,1,1,3},  // completed by 059
-            {0,1,2,2}, // now processed by 059
-            {0,1,2,3}, // now processed by 057
-        }     
-    };
+    std::string comp_name = get_computer_name();
+    std::vector<std::vector<UI>> sets_of_levels;
+    // {0,0,0,0}, //Done long time ago
+    if (comp_name == "iccluster058")
+    {
+            sets_of_levels.push_back({0,0,0,1}); // first solved by 058
+            sets_of_levels.push_back({0,0,0,2}); // first solved by 058
+            sets_of_levels.push_back({0,0,1,1}); // first solved by 058
+
+            sets_of_levels.push_back({0,0,1,2}); // first solved by 065
+            sets_of_levels.push_back({0,1,1,1}); // first solved by 065
+
+            sets_of_levels.push_back({0,1,1,2}); // first solved by 059
+            sets_of_levels.push_back({0,1,1,3}); // first solved by 059
+
+            sets_of_levels.push_back({0,1,2,2}); // first solved by 076
+            sets_of_levels.push_back({0,1,2,3}); // first solved by 076
+    }
+    else if (comp_name == "iccluster059")
+    {
+            sets_of_levels.push_back({0,1,1,2}); // first solved by 059
+            sets_of_levels.push_back({0,1,1,3}); // first solved by 059
+
+            sets_of_levels.push_back({0,1,2,2}); // first solved by 076
+            sets_of_levels.push_back({0,1,2,3}); // first solved by 076
+
+            sets_of_levels.push_back({0,0,0,1}); // first solved by 058
+            sets_of_levels.push_back({0,0,0,2}); // first solved by 058
+            sets_of_levels.push_back({0,0,1,1}); // first solved by 058
+
+            sets_of_levels.push_back({0,0,1,2}); // first solved by 065
+            sets_of_levels.push_back({0,1,1,1}); // first solved by 065
+    }
+    else if (comp_name == "iccluster065")
+    {
+            sets_of_levels.push_back({0,0,1,2}); // first solved by 065
+            sets_of_levels.push_back({0,1,1,1}); // first solved by 065
+
+            sets_of_levels.push_back({0,1,1,2}); // first solved by 059
+            sets_of_levels.push_back({0,1,1,3}); // first solved by 059
+
+            sets_of_levels.push_back({0,1,2,2}); // first solved by 076
+            sets_of_levels.push_back({0,1,2,3}); // first solved by 076
+
+            sets_of_levels.push_back({0,0,0,1}); // first solved by 058
+            sets_of_levels.push_back({0,0,0,2}); // first solved by 058
+            sets_of_levels.push_back({0,0,1,1}); // first solved by 058
+    }
+    else if (comp_name == "iccluster076")
+    {
+            sets_of_levels.push_back({0,1,2,2}); // first solved by 076
+            sets_of_levels.push_back({0,1,2,3}); // first solved by 076
+            
+            sets_of_levels.push_back({0,0,0,1}); // first solved by 058
+            sets_of_levels.push_back({0,0,0,2}); // first solved by 058
+            sets_of_levels.push_back({0,0,1,1}); // first solved by 058
+
+            sets_of_levels.push_back({0,0,1,2}); // first solved by 065
+            sets_of_levels.push_back({0,1,1,1}); // first solved by 065
+
+            sets_of_levels.push_back({0,1,1,2}); // first solved by 059
+            sets_of_levels.push_back({0,1,1,3}); // first solved by 059
+    }
+
 
     // std::reverse(sets_of_levels.begin(), sets_of_levels.end());
 

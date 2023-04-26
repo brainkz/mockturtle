@@ -235,7 +235,7 @@ union func_lvl
                     if (LOG_LVL > 2){fmt::print("Permuted levels do not contain 0. Skipping\n");}
                     continue;
                 }
-                
+
                 assert(sup_size == support_idx.size());
                 func_lvl signature;
                 signature.data = 0u;
@@ -263,7 +263,8 @@ union func_lvl
                     auto eq_tt = equivalent_tts(Base_TT, levels);
                     seen_signatures.push_back(signature);
 
-                    if (LOG_LVL > 0) {
+                    if (LOG_LVL > 0) 
+                    {
                         fmt::print("Writing TT #{:>5d}: {}\n", ++ctr, n.to_str());
                         fmt::print("\t{}\t{}\n", sup_size, fmt::join(perm_levels.begin(), perm_levels.begin() + sup_size, " "));
                         fmt::print("\t{}\n", n.to_stack(GNM));
