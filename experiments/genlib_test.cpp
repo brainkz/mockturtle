@@ -84,6 +84,7 @@ std::vector<std::vector<UI>> pi_perms(const std::vector<UI> & levels)
 
 std::vector<kitty::static_truth_table<NUM_VARS>> equivalent_tts(kitty::static_truth_table<NUM_VARS> Base_TT, std::vector<UI> levels)
 {
+    // TODO : USE KITTY SWAPS TO GENERATE EQUIVALENT TTs
     std::vector<kitty::static_truth_table<NUM_VARS>> eq_tt{ Base_TT };
     ULL old_size;
     do
@@ -161,6 +162,147 @@ union func_lvl
 // }
 
 
+int main()
+{
+    std::ofstream outfile("LIBRARY_2023_04_28.genlib");
+
+    // std::vector<std::vector<UI>> sets_of_levels { { {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4} } };
+    std::vector<std::vector<UI>> sets_of_levels { { 
+        {0,0,0,0},
+        {0,0,0,1},
+        {0,0,0,2},
+        {0,0,1,1},
+        {0,0,1,2},
+        {0,1,1,1},
+        {0,1,2,2},
+        {0,1,1,3},
+        {0,1,1,2},
+        {0,1,2,3}
+    } };
+    
+    auto ctr = 0u;
+    std::vector<func_lvl> seen_signatures;
+    for (const std::vector<UI> & levels : sets_of_levels)
+    {
+        if (LOG_LVL > 0) {fmt::print("Processing patterns {}\n", fmt::join(levels, " "));}
+        const std::vector<UI> PI_funcs {0x5555, 0x3333, 0x0F0F, 0x00FF};
+
+        // std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_{}_", fmt::join(levels, ""));
+        const std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_20230427/x3_{}_", fmt::join(levels, ""));
+
+        std::unordered_map<ULL, Node> GNM = read_csv_gnm(fmt::format("{}gnm.csv", file_prefix));
+        std::array<ULL, NUM_TT> GEX = read_csv_arr(fmt::format("{}gex.csv", file_prefix));
+
+        // const std::vector<std::vector<UI>> perms = pi_perms(levels);
+        // // std::vector<kitty::static_truth_table<NUM_VARS>> skip_tt;
+        // std::vector<kitty::static_truth_table<NUM_VARS>> skip_tt;
+
+        std::vector<ULL> hashes_to_include;
+
+        std::array<UI, NUM_TT> best_costs;
+        std::array<UI, NUM_TT> best_lvls;
+        std::array<UI, NUM_TT> counter;
+
+        fmt::print("Recording best costs and lvls\n");
+        for (UI func = 0u; func < NUM_TT; func++)
+        {
+            ULL nhash = GEX[func];
+            Node & n = GNM[nhash];
+            best_costs[func] = n.cost;
+            best_lvls[func] = n.lvl;
+        }
+        fmt::print("Traversing GNM\n");
+        for (auto & [hash, node] : GNM)
+        {
+            if (node.last_func == fNOFUNC) 
+            {
+                continue;
+            }
+
+            if (node.lvl <= best_lvls[node.func] && node.cost <= best_costs[node.func])
+            {
+                fmt::print("{0:>6d}: Adding best node for {1}\n", ++counter[node.func], node.to_str());
+                hashes_to_include.push_back(hash);
+            }
+        }
+
+        // for (auto nhash : GEX)
+        for (auto nhash : hashes_to_include)
+        {
+            if (GNM.find(nhash) == GNM.end())
+            {
+                continue;
+            }
+            Node & n = GNM[nhash];
+            auto [is_ok, sup_size] = n.redundancy_check(GNM);
+            if (LOG_LVL > 2){fmt::print("\tOK: {} | support_size: {}\n\n", is_ok, (is_ok?fmt::format("{}",sup_size):"N/A"));}
+            if (!is_ok || sup_size == 0) continue;
+            kitty::static_truth_table<NUM_VARS> Base_TT;
+            std::vector<UI> words {n.func};
+            kitty::create_from_words(Base_TT, words.begin(), words.end());
+            if (LOG_LVL > 2){fmt::print("Base_TT: 0x{:04x} \n", Base_TT._bits);}
+
+            // IMPORTANT: here the min_base is determined
+            auto [support_idx, perm_levels, swaps] = min_base_perms(Base_TT, levels);
+            auto hexlen = (sup_size > 1 ? ( NUM_VARS >> (NUM_VARS - sup_size) ) : 1);
+            if (LOG_LVL > 2){fmt::print("Reduced TT: 0x{:0{}x} \n", Base_TT._bits  & ((1 << (1 << sup_size)) - 1), hexlen);}
+            if (LOG_LVL > 2){fmt::print("Permuted levels: {} \n", fmt::join(perm_levels, " "));}
+            bool is_lifted = false;    
+            for (auto idx : support_idx)
+            {
+                if (levels[idx] == 0)
+                {
+                    is_lifted = true;
+                    break;
+                }
+            }
+            if (!is_lifted)
+            {
+                if (LOG_LVL > 2){fmt::print("Permuted levels do not contain 0. Skipping\n");}
+                continue;
+            }
+
+            assert(sup_size == support_idx.size());
+            func_lvl signature;
+            signature.data = 0u;
+            signature.func = Base_TT._bits & ((1 << (1 << sup_size)) - 1);
+            signature.support_size = sup_size;
+            if (sup_size > 0) 
+            {
+                signature.l1 = perm_levels[0];
+                if (sup_size > 1)
+                {
+                    signature.l2 = perm_levels[1];
+                    if (sup_size > 2)
+                    {
+                        signature.l3 = perm_levels[2];
+                        if (sup_size > 3)
+                        {
+                            signature.l4 = perm_levels[3];
+                        }
+                    }
+                }
+            }
+
+            if (std::find_if(seen_signatures.begin(), seen_signatures.end(), [signature](func_lvl a) {return (a.data == signature.data);}) == seen_signatures.end())
+            {
+                auto eq_tt = equivalent_tts(Base_TT, levels);
+                seen_signatures.push_back(signature);
+
+                if (LOG_LVL > 0) {
+                    fmt::print("Writing TT #{:>5d}: {}\n", ++ctr, n.to_str());
+                    fmt::print("\t{}\t{}\n", sup_size, fmt::join(perm_levels.begin(), perm_levels.begin() + sup_size, " "));
+                    fmt::print("\t{}\n", n.to_stack(GNM));
+                }
+                outfile << fmt::format("{}\n\n", n.to_genlib(GNM, levels, PI_funcs));
+            }
+            
+            // fmt::format("{:032b}", signature.func);
+            // outfile << fmt::format("{}\n\n", n.to_genlib(GNM, levels, PI_funcs));
+        }
+    }
+}
+
 #if false 
     int main()
     {
@@ -176,100 +318,6 @@ union func_lvl
             Node & n = GNM.at(hash);
             // if (LOG_LVL > 2){fmt::print("{:>5d}:\t{}\t{}\n", i++, hash, n.to_str());}
             if (n.lvl == 1) if (LOG_LVL > 2){fmt::print("{:>5d}:\t{}\n", i++, n.to_str());}
-        }
-    }
-#else
-    int main()
-    {
-        std::ofstream outfile("LIBRARY_2023_03_24.genlib");
-
-        std::vector<std::vector<UI>> sets_of_levels { { {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,1}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4} } };
-        
-        auto ctr = 0u;
-        std::vector<func_lvl> seen_signatures;
-        for (const std::vector<UI> levels : sets_of_levels)
-        {
-            if (LOG_LVL > 0) {fmt::print("Processing patterns {}\n", fmt::join(levels, " "));}
-            const std::vector<UI> PI_funcs {0x5555, 0x3333, 0x0F0F, 0x00FF};
-
-            std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_{}_", fmt::join(levels, ""));
-
-            std::unordered_map<ULL, Node> GNM = read_csv_gnm(fmt::format("{}gnm.csv", file_prefix));
-            // std::array<ULL, NUM_TT> GEA = read_csv_arr(fmt::format("{}gea.csv", file_prefix));
-            std::array<ULL, NUM_TT> GEX = read_csv_arr(fmt::format("{}gex.csv", file_prefix));
-
-            // const std::vector<std::vector<UI>> perms = pi_perms(levels);
-            // // std::vector<kitty::static_truth_table<NUM_VARS>> skip_tt;
-            // std::vector<kitty::static_truth_table<NUM_VARS>> skip_tt;
-            for (auto nhash : GEX)
-            {
-                Node & n = GNM[nhash];
-                auto [is_ok, sup_size] = n.redundancy_check(GNM);
-                if (LOG_LVL > 2){fmt::print("\tOK: {} | support_size: {}\n\n", is_ok, (is_ok?fmt::format("{}",sup_size):"N/A"));}
-                if (!is_ok || sup_size == 0) continue;
-                kitty::static_truth_table<NUM_VARS> Base_TT;
-                std::vector<UI> words {n.func};
-                kitty::create_from_words(Base_TT, words.begin(), words.end());
-                if (LOG_LVL > 2){fmt::print("Base_TT: 0x{:04x} \n", Base_TT._bits);}
-
-                // IMPORTANT: here the min_base is determined
-                auto [support_idx, perm_levels, swaps] = min_base_perms(Base_TT, levels);
-                auto hexlen = (sup_size > 1 ? ( NUM_VARS >> (NUM_VARS - sup_size) ) : 1);
-                if (LOG_LVL > 2){fmt::print("Reduced TT: 0x{:0{}x} \n", Base_TT._bits  & ((1 << (1 << sup_size)) - 1), hexlen);}
-                if (LOG_LVL > 2){fmt::print("Permuted levels: {} \n", fmt::join(perm_levels, " "));}
-                bool is_lifted = false;    
-                for (auto idx : support_idx)
-                {
-                    if (levels[idx] == 0)
-                    {
-                        is_lifted = true;
-                        break;
-                    }
-                }
-                if (!is_lifted)
-                {
-                    if (LOG_LVL > 2){fmt::print("Permuted levels do not contain 0. Skipping\n");}
-                    continue;
-                }
-
-                assert(sup_size == support_idx.size());
-                func_lvl signature;
-                signature.data = 0u;
-                signature.func = Base_TT._bits & ((1 << (1 << sup_size)) - 1);
-                signature.support_size = sup_size;
-                if (sup_size > 0) 
-                {
-                    signature.l1 = perm_levels[0];
-                    if (sup_size > 1)
-                    {
-                        signature.l2 = perm_levels[1];
-                        if (sup_size > 2)
-                        {
-                            signature.l3 = perm_levels[2];
-                            if (sup_size > 3)
-                            {
-                                signature.l4 = perm_levels[3];
-                            }
-                        }
-                    }
-                }
-
-                if (std::find_if(seen_signatures.begin(), seen_signatures.end(), [signature](func_lvl a) {return (a.data == signature.data);}) == seen_signatures.end())
-                {
-                    auto eq_tt = equivalent_tts(Base_TT, levels);
-                    seen_signatures.push_back(signature);
-
-                    if (LOG_LVL > 0) {
-                        fmt::print("Writing TT #{:>5d}: {}\n", ++ctr, n.to_str());
-                        fmt::print("\t{}\t{}\n", sup_size, fmt::join(perm_levels.begin(), perm_levels.begin() + sup_size, " "));
-                        fmt::print("\t{}\n", n.to_stack(GNM));
-                    }
-                    outfile << fmt::format("{}\n\n", n.to_genlib(GNM, levels, PI_funcs));
-                }
-
-                // fmt::format("{:032b}", signature.func);
-                // outfile << fmt::format("{}\n\n", n.to_genlib(GNM, levels, PI_funcs));
-            }
         }
     }
 #endif
