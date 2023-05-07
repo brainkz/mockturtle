@@ -364,8 +364,7 @@ void create_random( TT& tt, std::default_random_engine::result_type seed )
 template<typename TT>
 void create_random( TT& tt )
 {
-  auto num = std::chrono::system_clock::now().time_since_epoch().count();
-  create_random( tt, static_cast<std::default_random_engine::result_type>( num ) );
+  create_random( tt, static_cast<std::default_random_engine::result_type>( std::chrono::system_clock::now().time_since_epoch().count() ) );
 }
 
 /*! \brief Constructs a truth table from a range of words
@@ -1238,6 +1237,7 @@ bool formula_execute_operation( std::stack<TT>& truth_tables, unsigned const op 
 template<typename TT, typename = std::enable_if_t<is_complete_truth_table<TT>::value>>
 bool create_from_formula( TT& tt, const std::string& expression, const std::vector<std::string>& var_names )
 {
+  std::cout << expression << std::endl;
   enum stack_symbols
   {
     MARK = 0,
@@ -1306,6 +1306,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
       {
         std::cerr << "[e] symbol before constant.\n";
         flag = F_ERROR;
+        return false;
         break;
       }
       truth_tables.push( tt.construct() );
@@ -1317,6 +1318,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
       {
         std::cerr << "[e] symbol before constant.\n";
         flag = F_ERROR;
+        return false;
         break;
       }
       truth_tables.push( ~tt.construct() );
@@ -1338,6 +1340,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
       {
         std::cerr << "[e] no variable specified before negation.\n";
         flag = F_ERROR;
+        return false;
         break;
       }
       temp_tt = truth_tables.top();
@@ -1351,6 +1354,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
       {
         std::cerr << "[e] no variable specified before binary operation.\n";
         flag = F_ERROR;
+        return false;
         break;
       }
       symbols.push( AND );
@@ -1363,6 +1367,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
       {
         std::cerr << "[e] no variable specified before binary operation.\n";
         flag = F_ERROR;
+        return false;
         break;
       }
       symbols.push( OR );
@@ -1374,6 +1379,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
       {
         std::cerr << "[e] no variable specified before binary operation.\n";
         flag = F_ERROR;
+        return false;
         break;
       }
       symbols.push( XOR );
@@ -1399,11 +1405,15 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
           symbols.pop();
           if ( oper == MARK )
             break;
-
+          if ( truth_tables.size() < 2 )
+          {
+            return false;
+          }
           if ( !detail::formula_execute_operation( truth_tables, oper ) )
           {
             std::cerr << "[e] unknown operation.\n";
             flag = F_ERROR;
+            return false;
             break;
           }
         }
@@ -1427,6 +1437,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
         {
           std::cerr << "[e] negation sign or open bracket inside variable name.\n";
           flag = F_ERROR;
+          return false;
           break;
         }
         ++j;
@@ -1448,6 +1459,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
       {
         std::cerr << "[e] cannot find variable " << expression.substr( i, j ) << " in variables list.\n";
         flag = F_ERROR;
+        return false;
         break;
       }
 
@@ -1512,10 +1524,15 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
         {
           symbols.pop();
           /* execute previous op */
+          if ( truth_tables.size() < 2 )
+          {
+            return false;
+          }
           if ( !detail::formula_execute_operation( truth_tables, op2 ) )
           {
             std::cerr << "[e] unknown operation.\n";
             flag = F_ERROR;
+            return false;
             break;
           }
           symbols.push( op1 );
@@ -1530,6 +1547,10 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
     }
   }
 
+  if (truth_tables.empty())
+  {
+    return false;
+  }
   if ( flag != F_ERROR )
   {
     /* last operation if present */
@@ -1539,11 +1560,11 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
       {
         std::cerr << "[e] unknown operation.\n";
         flag = F_ERROR;
+        return false;
         break;
       }
       symbols.pop();
     }
-
     /* assign truth table */
     tt = truth_tables.top();
   }

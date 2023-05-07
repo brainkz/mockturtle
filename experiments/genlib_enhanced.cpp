@@ -11,6 +11,7 @@
 #include <fmt/format.h>
 #include <thread>
 #include "mockturtle/algorithms/nodes.hpp"
+#include <kitty/kitty.hpp>
 #include <algorithm>
 #include <locale>
 
@@ -178,6 +179,12 @@ struct Delay
         }
         std::copy(v.begin(), v.end(), delays.begin());
     }
+    template <typename collection> 
+    explicit Delay(const collection c) 
+    {
+        std::copy(c.begin(), c.begin() + N, delays.begin());
+    }
+
     bool strictly_better_than(const Delay<N>& other) const 
     {
         bool strictly_smaller = false;
@@ -259,34 +266,29 @@ void update_registry( Delay<N> D, uint32_t func, uint64_t hash,
 }
 
 template <unsigned N>
-void force_update_registry( Delay<N> D, uint32_t func, uint64_t hash, std::unordered_map <uint32_t, std::unordered_map <Delay<N>, uint64_t>> & functions, std::unordered_map<uint64_t, Node> & nodemap)
+void force_update_registry( Delay<N> D, uint16_t func, uint64_t hash, std::unordered_map <uint16_t, std::unordered_map <Delay<N>, uint64_t>> & functions, std::unordered_map<uint64_t, Node> & nodemap)
 {
     bool add = true;
-    auto it = functions.find(func);
-    if (it != functions.end()) 
+    // Iterate over the entries in the inner map
+    for (const auto& [other_D, other_hash] : functions[func]) 
     {
-        std::unordered_map<Delay<N>, uint64_t>& inner_map = it->second;
-        // Iterate over the entries in the inner map
-        for (const auto& [other_D, other_hash] : inner_map) 
+        Node &       node = nodemap[      hash];
+        Node & other_node = nodemap[other_hash];
+        if (D.strictly_better_than(other_D))        // new delay pattern dominates the old delay pattern
+        {
+            // to_delete.push_back(other_D); 
+        }
+        else if (other_D.strictly_better_than(D))   // old delay pattern dominates the new delay pattern
+        {
+            // to_delete.push_back(D);
+            // only add if the cost is better
+            add = (node.cost < other_node.cost);
+        }
+        else if (D == other_D)                      // the delay patterns are equal, look at the cost
         {
             Node &       node = nodemap[      hash];
             Node & other_node = nodemap[other_hash];
-            if (D.strictly_better_than(other_D))        // new delay pattern dominates the old delay pattern
-            {
-                // to_delete.push_back(other_D); 
-            }
-            else if (other_D.strictly_better_than(D))   // old delay pattern dominates the new delay pattern
-            {
-                // to_delete.push_back(D);
-                // only add if the cost is better
-                add = (node.cost < other_node.cost);
-            }
-            else if (D == other_D)                      // the delay patterns are equal, look at the cost
-            {
-                Node &       node = nodemap[      hash];
-                Node & other_node = nodemap[other_hash];
-                add = (node.cost < other_node.cost);
-            }
+            add = (node.cost < other_node.cost);
         }
     }
     if (add)
@@ -297,7 +299,7 @@ void force_update_registry( Delay<N> D, uint32_t func, uint64_t hash, std::unord
 
 
 template <unsigned N>
-void filter_registry( std::unordered_map <uint32_t, std::unordered_map <Delay<N>, uint64_t>> & functions, std::unordered_map<uint64_t, Node> & nodemap)
+void filter_registry( std::unordered_map <uint16_t, std::unordered_map <Delay<N>, uint64_t>> & functions, std::unordered_map<uint64_t, Node> & nodemap)
 {
     for (auto & [func, inner_map] : functions)
     {
@@ -337,7 +339,7 @@ void filter_registry( std::unordered_map <uint32_t, std::unordered_map <Delay<N>
 
 int main()
 {
-    std::ofstream outfile("LIBRARY_2023_05_01.genlib");
+    std::ofstream outfile("LIBRARY_2023_05_07_CONNECT.genlib");
 
     std::vector<std::vector<UI>> sets_of_levels { { 
         {0,0,0,0},
@@ -355,10 +357,10 @@ int main()
 
 
     std::unordered_map<ULL, Node> GNM_global;
-    std::unordered_map <uint32_t, std::unordered_map <Delay<4>, uint64_t>> functions_4;
-    std::unordered_map <uint32_t, std::unordered_map <Delay<3>, uint64_t>> functions_3;
-    std::unordered_map <uint32_t, std::unordered_map <Delay<2>, uint64_t>> functions_2;
-    std::unordered_map <uint32_t, std::unordered_map <Delay<1>, uint64_t>> functions_1;
+    std::unordered_map <uint16_t, std::unordered_map <Delay<4>, uint64_t>> functions_4;
+    std::unordered_map <uint16_t, std::unordered_map <Delay<3>, uint64_t>> functions_3;
+    std::unordered_map <uint16_t, std::unordered_map <Delay<2>, uint64_t>> functions_2;
+    std::unordered_map <uint16_t, std::unordered_map <Delay<1>, uint64_t>> functions_1;
     
     auto ctr = 0u;
     std::vector<func_lvl> seen_signatures;
@@ -388,35 +390,34 @@ int main()
             {
                 continue;
             }
-
-            auto [status, support_size, func, DP, pi_map] = process_node(hash, GNM);
-            if (node.func == 0xd597 || node.func == 0xd957 || node.func == 0xe557 || node.func == 0xe337 || node.func == 0xb397 ||
-                node.func == 0xb937 || node.func == 0xad1f || node.func == 0xcb1f || node.func == 0xc1bf || node.func == 0xa1df ||
-                node.func == 0x89f7 || node.func == 0x8f97 || node.func == 0xb397)
+            int node_cost = node.recalculate_cost(GNM_global, COSTS_CONNECT);
+            node.cost = node_cost;
+            GNM_global[hash].cost = node_cost;
+            if (node_cost > 9999) 
             {
-                fmt::print("Found {}\n", node.func);
-                fmt::print("\tStack: {}\n", node.to_stack(GNM, pi_map));
-                fmt::print("\tCharacteristics: {}\n", node.to_str());
-                fmt::print("\tDelays: {}\n", fmt::join(DP, ", "));
+                continue;
             }
-            if (status)
+
+            auto [tt, pi_delays, support_size] = process_node(hash, GNM);
+            if (support_size == 4)
             {
-                if (support_size == 4)
-                {
-                    force_update_registry<4>( Delay<4>(DP), func, hash, functions_4, GNM_global);
-                }
-                else if (support_size == 3)
-                {
-                    force_update_registry<3>( Delay<3>(DP), func, hash, functions_3, GNM_global);
-                }
-                else if (support_size == 2)
-                {
-                    force_update_registry<2>( Delay<2>(DP), func, hash, functions_2, GNM_global);
-                }
-                else if (support_size == 1)
-                {
-                    force_update_registry<1>( Delay<1>(DP), func, hash, functions_1, GNM_global);
-                }
+                uint16_t func = tt._bits;
+                force_update_registry<4>( Delay<4>(pi_delays), tt._bits, hash, functions_4, GNM_global);
+            }
+            else if (support_size == 3)//only first N delays are taken
+            {
+                uint16_t func = tt._bits & 0x00FF;  // fmt::print("{:04x} -> {:04x}\n", tt._bits, func);
+                force_update_registry<3>( Delay<3>(pi_delays), func, hash, functions_3, GNM_global);
+            }
+            else if (support_size == 2)
+            {
+                uint16_t func = tt._bits & 0x000F;  // fmt::print("{:04x} -> {:04x}\n", tt._bits, func);
+                force_update_registry<2>( Delay<2>(pi_delays), func, hash, functions_2, GNM_global);
+            }
+            else if (support_size == 1)
+            {
+                uint16_t func = tt._bits & 0x0003;  // fmt::print("{:04x} -> {:04x}\n", tt._bits, func);
+                force_update_registry<1>( Delay<1>(pi_delays), func, hash, functions_1, GNM_global);
             }
         }
     }
@@ -433,12 +434,44 @@ int main()
         fmt::print("{0}: Function: {1:01x}={1:02b}\n", out_ctr++, func); 
         for (auto & [D, hash] : inner_map)
         {
+            out_ctr++;
             Node & node = GNM_global[hash];
-            fmt::print("{}\n", node.to_stack(GNM_global));
-            fmt::print("\tStack: {}\n", node.to_stack(GNM_global));
-            fmt::print("\tCost: {}\n", node.cost);
-            fmt::print("\tCharacteristics: {}\n", node.to_str());
-            fmt::print("\tDelays: {}\n\n", fmt::join(D.delays, ","));
+            std::string repr_eqn;
+            std::vector<UI> pis;
+            assert((func >> 2) == 0);
+            uint16_t repr_func = (func << 14) | (func << 12) | (func << 10) | (func << 8) | (func << 6) | (func << 4) | (func << 2) | func;
+            for (auto & [hash, n] : GNM_global)
+            {
+                if (n.func == repr_func)
+                {
+                    repr_eqn = n.genlib_eqn(GNM_global, pis);
+                    // kitty::static_truth_table<4> tt;
+                    // std::vector<std::string> vars = {"a", "b", "c", "d"};
+                    // bool status = kitty::create_from_formula(tt, repr_eqn, vars);
+                    // fmt::print("{}: {}\n", status, repr_eqn);
+                    // if (status) // 
+                    if (repr_eqn.size() > 1)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            std::string str = fmt::format("#{}\nGATE 0x{:04x}_{} {} O={};\n", node.to_stack(GNM_global), func, fmt::join(D.delays, ""), node.cost, repr_eqn);
+            for (auto i = 0u; i < D.delays.size(); ++i)
+            {
+                std::string line = fmt::format("\tPIN {} {} {} {} {:d} {:0.3f} {:d} {:0.3f}\n", 
+                    IDX2LETTER[i], GENLIB_PHASE, GENLIB_INPUT_LOAD, GENLIB_MAX_LOAD, 
+                    D.delays[i], GENLIB_RISE_FANOUT_DELAY, D.delays[i], GENLIB_FALL_FANOUT_DELAY);
+                str.append(line);
+            }
+            outfile << fmt::format("{}", str);
+
+            // fmt::print("{}\n", node.to_stack(GNM_global));
+            // fmt::print("\tStack: {}\n", node.to_stack(GNM_global));
+            // fmt::print("\tCost: {}\n", node.cost);
+            // fmt::print("\tCharacteristics: {}\n", node.to_str());
+            // fmt::print("\tDelays: {}\n\n", fmt::join(D.delays, ","));
         }
     }
     fmt::print("2-input functions\n");
@@ -447,26 +480,85 @@ int main()
         fmt::print("{0}: Function: {1:01x}={1:04b}\n", out_ctr++, func); 
         for (auto & [D, hash] : inner_map)
         {
+            out_ctr++;
             Node & node = GNM_global[hash];
-            fmt::print("{}\n", node.to_stack(GNM_global));
-            fmt::print("\tStack: {}\n", node.to_stack(GNM_global));
-            fmt::print("\tCost: {}\n", node.cost);
-            fmt::print("\tCharacteristics: {}\n", node.to_str());
-            fmt::print("\tDelays: {}\n\n", fmt::join(D.delays, ","));
+            std::string repr_eqn;
+            std::vector<UI> pis;
+            assert((func >> 4) == 0);
+            uint16_t repr_func = (func << 12) | (func << 8) | (func << 4) | func;
+            for (auto & [hash, n] : GNM_global)
+            {
+                if (n.func == repr_func)
+                {
+                    repr_eqn = n.genlib_eqn(GNM_global, pis);
+                    kitty::static_truth_table<2> tt;
+                    std::vector<std::string> vars = {"a", "b"};
+                    bool status = kitty::create_from_formula(tt, repr_eqn, vars);
+                    fmt::print("{}: {}\n", status, repr_eqn);
+                    if (status) // if (repr_eqn.size() > 1)
+                    {
+                        break;
+                    }
+                }
+            }
+            std::string str = fmt::format("#{}\nGATE 0x{:04x}_{} {} O={};\n", node.to_stack(GNM_global), func, fmt::join(D.delays, ""), node.cost, repr_eqn);
+            for (auto i = 0u; i < D.delays.size(); ++i)
+            {
+                std::string line = fmt::format("\tPIN {} {} {} {} {:d} {:0.3f} {:d} {:0.3f}\n", 
+                    IDX2LETTER[i], GENLIB_PHASE, GENLIB_INPUT_LOAD, GENLIB_MAX_LOAD, 
+                    D.delays[i], GENLIB_RISE_FANOUT_DELAY, D.delays[i], GENLIB_FALL_FANOUT_DELAY);
+                str.append(line);
+            }
+            outfile << fmt::format("{}", str);
+
+            // fmt::print("{}\n", node.to_stack(GNM_global));
+            // fmt::print("\tStack: {}\n", node.to_stack(GNM_global));
+            // fmt::print("\tCost: {}\n", node_cost);
+            // fmt::print("\tCharacteristics: {}\n", node.to_str());
+            // fmt::print("\tDelays: {}\n\n", fmt::join(D.delays, ","));
         }
     }
     fmt::print("3-input functions\n");
     for (auto & [func, inner_map] : functions_3)
     {
-        fmt::print("{0}: Function: {1:02x}={1:08b}\n", out_ctr++, func); 
+        fmt::print("{0}: Function: {1:02x}={1:08b}\n", out_ctr, func); 
         for (auto & [D, hash] : inner_map)
         {
+            out_ctr++;
             Node & node = GNM_global[hash];
-            fmt::print("{}\n", node.to_stack(GNM_global));
-            fmt::print("\tStack: {}\n", node.to_stack(GNM_global));
-            fmt::print("\tCost: {}\n", node.cost);
-            fmt::print("\tCharacteristics: {}\n", node.to_str());
-            fmt::print("\tDelays: {}\n\n", fmt::join(D.delays, ","));
+            std::string repr_eqn;
+            std::vector<UI> pis;
+            assert((func >> 8) == 0);
+            uint16_t repr_func = (func << 8) | func;
+            for (auto & [hash, n] : GNM_global)
+            {
+                if (n.func == repr_func)
+                {
+                    repr_eqn = n.genlib_eqn(GNM_global, pis);
+                    kitty::static_truth_table<3> tt;
+                    std::vector<std::string> vars = {"a", "b", "c"};
+                    bool status = kitty::create_from_formula(tt, repr_eqn, vars);
+                    fmt::print("{}: {}\n", status, repr_eqn);
+                    if (status) // if (repr_eqn.size() > 1)
+                    {
+                        break;
+                    }
+                }
+            }
+            std::string str = fmt::format("#{}\nGATE 0x{:04x}_{} {} O={};\n", node.to_stack(GNM_global), func, fmt::join(D.delays, ""), node.cost, repr_eqn);
+            for (auto i = 0u; i < D.delays.size(); ++i)
+            {
+                std::string line = fmt::format("\tPIN {} {} {} {} {:d} {:0.3f} {:d} {:0.3f}\n", 
+                    IDX2LETTER[i], GENLIB_PHASE, GENLIB_INPUT_LOAD, GENLIB_MAX_LOAD, 
+                    D.delays[i], GENLIB_RISE_FANOUT_DELAY, D.delays[i], GENLIB_FALL_FANOUT_DELAY);
+                str.append(line);
+            }
+            outfile << fmt::format("{}", str);
+            // fmt::print("{}\n", node.to_stack(GNM_global));
+            // fmt::print("\tStack: {}\n", node.to_stack(GNM_global));
+            // fmt::print("\tCost: {}\n", node_cost);
+            // fmt::print("\tCharacteristics: {}\n", node.to_str());
+            // fmt::print("\tDelays: {}\n\n", fmt::join(D.delays, ","));
         }
     }
     fmt::print("4-input functions\n");
@@ -475,12 +567,41 @@ int main()
         fmt::print("{0}: Function: {1:04x}={1:016b}\n", out_ctr++, func); 
         for (auto & [D, hash] : inner_map)
         {
+            out_ctr++;
             Node & node = GNM_global[hash];
-            fmt::print("{}\n", node.to_stack(GNM_global));
-            fmt::print("\tStack: {}\n", node.to_stack(GNM_global));
-            fmt::print("\tCost: {}\n", node.cost);
-            fmt::print("\tCharacteristics: {}\n", node.to_str());
-            fmt::print("\tDelays: {}\n\n", fmt::join(D.delays, ","));
+            std::string repr_eqn;
+            std::vector<UI> pis;
+            uint16_t repr_func = func;
+            for (auto & [hash, n] : GNM_global)
+            {
+                if (n.func == repr_func)
+                {
+                    repr_eqn = n.genlib_eqn(GNM_global, pis);
+                    kitty::static_truth_table<4> tt;
+                    std::vector<std::string> vars = {"a", "b", "c", "d"};
+                    bool status = kitty::create_from_formula(tt, repr_eqn, vars);
+                    fmt::print("{}: {}\n", status, repr_eqn);
+                    if (status) // if (repr_eqn.size() > 1)
+                    {
+                        break;
+                    }
+                }
+            }
+            std::string str = fmt::format("#{}\nGATE 0x{:04x}_{} {} O={};\n", node.to_stack(GNM_global), func, fmt::join(D.delays, ""), node.cost, repr_eqn);
+            for (auto i = 0u; i < D.delays.size(); ++i)
+            {
+                std::string line = fmt::format("\tPIN {} {} {} {} {:d} {:0.3f} {:d} {:0.3f}\n", 
+                    IDX2LETTER[i], GENLIB_PHASE, GENLIB_INPUT_LOAD, GENLIB_MAX_LOAD, 
+                    D.delays[i], GENLIB_RISE_FANOUT_DELAY, D.delays[i], GENLIB_FALL_FANOUT_DELAY);
+                str.append(line);
+            }
+            outfile << fmt::format("{}\t#{}\n\n", str, node.to_stack(GNM_global));
+
+            // fmt::print("{}\n", node.to_stack(GNM_global));
+            // fmt::print("\tStack: {}\n", node.to_stack(GNM_global));
+            // fmt::print("\tCost: {}\n", node_cost);
+            // fmt::print("\tCharacteristics: {}\n", node.to_str());
+            // fmt::print("\tDelays: {}\n\n", fmt::join(D.delays, ","));
         }
     }
 }

@@ -406,7 +406,6 @@ public:
 
   inline bool is_dead( node const& n ) const
   {
-    std::cout << "aaa" << std::endl;
     return _storage->nodes[n].data[0].h1 == 0;
     // return false;
   }
