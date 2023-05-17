@@ -154,7 +154,7 @@ private:
       if ( _ntk.is_constant( _ntk.get_node( f ) ) )
       {
         res.create_po( old2new[f][0] );
-        return;
+        return; 
       }
 
       uint32_t slack = _worst_delay - delays[old2new[f][0]];
@@ -249,61 +249,75 @@ rsfq_view<Ntk> rsfq_path_balancing( Ntk const& ntk )
   static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
   static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
   static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
-  static_assert( has_has_binding_v<Ntk>, "Ntk does not implement the add_binding method" );
+  static_assert( has_has_binding_v<Ntk>, "Ntk does not implement the has_binding method" );
 
   detail::rsfq_path_balancing_impl p( ntk );
   return p.run();
 }
 
-// /*! \brief Check path balancing for RSFQ.
-//  *
-//  * This function checks path balancing according
-//  * to the RSFQ technology constraints:
-//  * - Checks nodes are balanced
-//  * - Checks POs are balanced
-//  *
-//  * \param ntk Network
-//  */
-// template<class Ntk>
-// bool check_buffering( Ntk const& ntk )
-// {
-//   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
-//   static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
-//   static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
-//   static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
+/*! \brief Check path balancing for RSFQ.
+ *
+ * This function checks path balancing according
+ * to the RSFQ technology constraints:
+ * - Checks nodes are balanced
+ * - Checks POs are balanced
+ *
+ * \param ntk Network
+ */
+template<class Ntk>
+bool rsfq_check_buffering( Ntk const& ntk )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
+  static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
+  static_assert( has_has_binding_v<Ntk>, "Ntk does not implement the has_binding method" );
 
-//   depth_view<Ntk> ntk_d{ ntk };
-//   bool result = true;
+  bool result = true;
+  uint32_t worst_delay = 0;
+  node_map<uint32_t, Ntk> delays( ntk, 0 );
 
-//   /* check path balancing */
-//   ntk.foreach_gate( [&]( auto const& n ) {
-//     ntk.foreach_fanin( n, [&]( auto const& f ) {
-//       if ( ntk_d.level( ntk.get_node( f ) ) != ntk_d.level( n ) - 1 )
-//       {
-//         result = false;
-//       }
-//       return result;
-//     } );
-//     return result;
-//   } );
+  /* check path balancing */
+  ntk.foreach_gate( [&]( auto const& n ) {
+    gate const& g = ntk.get_binding( n );
 
-//   /* check balanced POs */
-//   if ( result )
-//   {
-//     auto depth = ntk_d.depth();
-//     ntk_d.foreach_po( [&]( auto const& f ) {
-//       /* don't check constant POs */
-//       if ( ntk.is_constant( ntk.get_node( f ) ) )
-//         return true;
-//       if ( ntk_d.level( ntk_d.get_node( f ) ) != depth )
-//       {
-//         result = false;
-//       }
-//       return result;
-//     } );
-//   }
+    /* compute delay */
+    ntk.foreach_fanin( n, [&]( auto const& f, uint32_t i ) {
+      uint32_t pin_delay = static_cast<uint32_t>( std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) );
+      delays[n] = std::max( delays[n], delays[f] + pin_delay );
+    } );
 
-//   return result;
-// }
+    /* verify path balancing */
+    ntk.foreach_fanin( n, [&]( auto const& f, uint32_t i ) {
+      uint32_t pin_delay = static_cast<uint32_t>( std::max( g.pins[i].rise_block_delay, g.pins[i].fall_block_delay ) );
+      uint32_t fanin_delay = delays[f] + pin_delay;
+
+      if ( delays[n] != fanin_delay )
+        result = false;
+
+      return result;
+    } );
+
+    worst_delay = std::max( worst_delay, delays[n] );
+    return result;
+  } );
+
+  /* check balanced POs */
+  if ( result )
+  {
+    ntk.foreach_po( [&]( auto const& f ) {
+      /* don't check constant POs */
+      if ( ntk.is_constant( ntk.get_node( f ) ) )
+        return true;
+      if ( delays[f] != worst_delay )
+      {
+        result = false;
+      }
+      return result;
+    } );
+  }
+
+  return result;
+}
 
 } // namespace mockturtle
