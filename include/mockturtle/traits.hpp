@@ -2088,6 +2088,21 @@ template<class Ntk>
 inline constexpr bool has_get_binding_index_v = has_get_binding_index<Ntk>::value;
 #pragma endregion
 
+#pragma region has_set_dff
+template<class Ntk, class = void>
+struct has_set_dff : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_set_dff<Ntk, std::void_t<decltype( std::declval<Ntk>().set_dff( std::declval<node<Ntk>>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_set_dff_v = has_set_dff<Ntk>::value;
+#pragma endregion
+
 #pragma region has_clear_values
 template<class Ntk, class = void>
 struct has_clear_values : std::false_type
