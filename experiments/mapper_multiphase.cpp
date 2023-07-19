@@ -718,6 +718,7 @@ std::vector<Path> extract_paths(const klut & ntk, const std::unordered_map<klut:
     {
       return;
     }
+
     const Primitive<klut> & params = sig_params.at( node );
     if (params.type != AS_GATE && params.type != SA_GATE)
     {
@@ -725,68 +726,85 @@ std::vector<Path> extract_paths(const klut & ntk, const std::unordered_map<klut:
     }
     // at this point, the node should be a AS/SA gate
 
-    // Create a path object with only a target
-    Path node_path;
-    node_path.targets.emplace( node );
-
-    std::vector<klut::signal> stack;
-    // add node predecessors to the stack
+    // Create a separate path for each fanin of the node
+    std::vector<Path> aa_paths;
+    aa_paths.reserve( ntk.fanin_size(node) );
     ntk.foreach_fanin( node, [&](const klut::signal & parent) 
     { 
-      stack.push_back( parent );
-    });
-    std::vector<klut::signal> seen;
-    while (!stack.empty())
-    {
-      klut::signal & n = stack.back();
-      stack.pop_back();
+      // Create a path object with only a target
+      Path node_path;
+      node_path.targets.emplace( node );
       
-      if ( ntk.is_constant( n ) || ntk.is_pi( n ) || sig_params.at( n ).type == AS_GATE || sig_params.at( n ).type == SA_GATE )
+      std::vector<klut::signal> stack;
+      stack.push_back( parent );
+      
+      fmt::print("Node {}, traversal for parent {}\n", node, parent);
+
+      std::vector<klut::signal> seen;
+      while (!stack.empty())
       {
-        node_path.sources.emplace( n );
-      }
-      else if ( sig_params.at( n ).type == AA_GATE )
-      {
-        node_path.internals.emplace( n );
-        ntk.foreach_fanin( n , [&](const klut::signal & sig )
+        klut::signal & n = stack.back();
+        stack.pop_back();
+
+        fmt::print("\t[Parent {}]: Analyzing node {}\n", parent, n);
+        // A constant does not have any effect on the DFF placement, we can skip it
+        if ( ntk.is_constant( n ) )
         {
-          if (std::find( seen.begin(), seen.end(), sig ) != seen.end() )
+          continue;
+        }
+        // Found a source of the path, add to sources, do not continue traversal
+        else if ( ntk.is_pi( n ) || sig_params.at( n ).type == AS_GATE || sig_params.at( n ).type == SA_GATE )
+        {
+          fmt::print("\t\t{} is a source node \n", n);
+          node_path.sources.emplace( n );
+        }
+        // Found AA gate, add to internal nodes, add parents for further traversal
+        else if ( sig_params.at( n ).type == AA_GATE )
+        {
+          fmt::print("\t\t{} is INTERNAL with function {}, adding fanins \n", n, kitty::to_hex(ntk.node_function(n)) );
+          node_path.internals.emplace( n );
+          ntk.foreach_fanin( n , [&](const klut::signal & sig )
           {
             stack.push_back( sig );
-          }
-        });
+            // if (std::find( seen.begin(), seen.end(), sig ) != seen.end() )
+            // {
+            //   fmt::print("\t\t\tAdded {} to stack \n", sig);
+            // }
+          });
+        }
+        else
+        {
+          fmt::print("Signal {}: {} is not recognized \n", n, GATE_TYPE.at( sig_params.at( n ).type ));
+          throw "Unsupported case";
+        }
+        seen.push_back( n );
       }
-      else
+      // aa_paths.push_back(node_path);
+      // Identify overlapping paths
+      std::vector<size_t> to_merge;
+      for (size_t i = 0u; i < paths.size(); ++i)
       {
-        fmt::print("Signal {}: {} is not recognized \n", n, GATE_TYPE.at( sig_params.at( n ).type ));
-        throw "Unsupported case";
+        Path & known_paths = paths[i];
+        // merge if there are sources in common
+        if( haveCommonElements( known_paths.sources, node_path.sources) )
+        {
+          to_merge.push_back(i);
+        }
       }
-      seen.push_back( n );
-    }
-    // Identify overlapping paths
-    std::vector<size_t> to_merge;
-    for (size_t i = 0u; i < paths.size(); ++i)
-    {
-      Path & known_paths = paths[i];
-      // merge if there are sources in common
-      if( haveCommonElements( known_paths.sources, node_path.sources) )
+      // Merge overlapping paths into the path object and remove the path object
+      // Iterating in reverse order to ensure seamless deletion
+      for (auto it = to_merge.rbegin(); it != to_merge.rend(); ++it) 
       {
-        to_merge.push_back(i);
+        auto idx = *it;
+        // fmt::print("Before absorption\n");
+        // node_path.print();
+        node_path.absorb(paths[idx]);
+        // fmt::print("After absorption\n");
+        // node_path.print();
+        paths.erase(paths.begin() + idx);
       }
-    }
-    // Merge overlapping paths into the path object and remove the path object
-    // Iterating in reverse order to ensure seamless deletion
-    for (auto it = to_merge.rbegin(); it != to_merge.rend(); ++it) 
-    {
-      auto idx = *it;
-      // fmt::print("Before absorption\n");
-      // node_path.print();
-      node_path.absorb(paths[idx]);
-      // fmt::print("After absorption\n");
-      // node_path.print();
-      paths.erase(paths.begin() + idx);
-    }
-    paths.push_back(node_path);
+      paths.push_back(node_path);
+    });
   });
   return paths;
 }
@@ -1109,6 +1127,10 @@ int main()  //int argc, char* argv[]
 
   for ( auto const& benchmark : benchmarks1 )
   {
+    if (benchmark == "div")
+    {
+      break;
+    }
     fmt::print( "[i] processing {}\n", benchmark );
 
     aig aig_original;
