@@ -83,6 +83,9 @@ struct functional_reduction_params
 
   /*! \brief Maximum number of simulation patterns. Discards all patterns and re-seeds with random patterns when exceeded. */
   uint32_t max_patterns{ 1024 };
+
+  /*! \brief To be implemented : one can exclude the nodes from being considered. */
+  std::vector<uint64_t> do_not_touch { 1024 };
 };
 
 struct functional_reduction_stats

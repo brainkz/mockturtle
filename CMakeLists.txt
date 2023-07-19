@@ -1,9 +1,23 @@
 cmake_minimum_required(VERSION 3.8)
 project(mockturtle LANGUAGES CXX)
 
+# add_subdirectory(ortools)
+
+# find_package(ortools CONFIG REQUIRED)
+
+# include(FetchContent)
+# FetchContent_Declare(
+#   or-tools
+#   GIT_REPOSITORY https://github.com/google/or-tools.git
+#   GIT_TAG        main
+# )
+
+# FetchContent_MakeAvailable(or-tools)
+
 set(MOCKTURTLE_CXX_STANDARD "17" CACHE STRING "C++ standard")
 set(CMAKE_CXX_STANDARD ${MOCKTURTLE_CXX_STANDARD})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 
 # Options
 option(MOCKTURTLE_EXAMPLES "Build examples" ON)

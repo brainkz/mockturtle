@@ -38,6 +38,8 @@
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
+#include <mockturtle/networks/xag.hpp>
+#include <mockturtle/networks/xmg.hpp>
 #include <mockturtle/generators/arithmetic.hpp>
 #include <mockturtle/networks/klut.hpp>
 #include <mockturtle/networks/mig.hpp>
@@ -63,10 +65,10 @@ constexpr int fSPL   = 10;
 // constexpr int fNOFUNC= 99;
 
 // constexpr std::array<int,12> COSTS = {7, 9, 8, 8, 8, 7, 11, 11, 11, 8, 7, 0};
-constexpr std::array<int,12> COSTS_CONNECT = {6, 10, 7, 7, 7, 11, 999, 999, 999, 7, 3, 0};
+// constexpr std::array<int,12> COSTS_CONNECT = {6, 10, 7, 7, 7, 11, 999, 999, 999, 7, 3, 0};
 
-const std::string header = "import numpy as np\nfrom scipy.optimize import Bounds, LinearConstraint, minimize\n";
-const std::string objfun_template = "def objective(d):\n\treturn ";
+// Removed input buffers in AND/OR gates
+constexpr std::array<int,12> COSTS_CONNECT = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
 
 template<typename Ntk, typename AdderFn>
 Ntk create_adder( uint32_t width, AdderFn&& adder )
@@ -90,14 +92,20 @@ Ntk create_adder( uint32_t width, AdderFn&& adder )
 }
 
 typedef mockturtle::klut_network klut;
+typedef mockturtle::xag_network xag;
+typedef mockturtle::xmg_network xmg;
+typedef mockturtle::aig_network aig;
 
+
+template <typename Ntk>
 std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, int, int, bool> map_with_pb 
-( const std::string & benchmark, 
-  const mockturtle::aig_network & aig, 
+( 
+  const std::string & benchmark, 
+  const Ntk & tech_indep_ntk, 
   const mockturtle::tech_library<4u, mockturtle::classification_type::p_configurations> & tech_lib, 
   std::unordered_map<std::string, int> & nDFF_global, 
   bool area_oriented = false 
-  )
+)
 {
   mockturtle::map_params ps;
   ps.cut_enumeration_ps.minimize_truth_table = true;
@@ -109,7 +117,7 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, int, int, bool
       ps.required_time = std::numeric_limits<float>::max();
   }
   mockturtle::map_stats st;
-  mockturtle::binding_view<klut> res = map( aig, tech_lib, ps, &st );
+  mockturtle::binding_view<klut> res = map( tech_indep_ntk, tech_lib, ps, &st );
   mockturtle::depth_view<mockturtle::binding_view<klut>> dv { res };
 
   std::map<klut::node, int> dff_count;
@@ -124,11 +132,13 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, int, int, bool
   mockturtle::retime( net, rps, &rst );
   auto retime_res = mockturtle::rsfq_mapped_create_from_generic_network( net );
 
-  uint32_t num_dffs = retime_res.num_dffs();
+  uint32_t num_ext_dffs = retime_res.num_dffs();
+  
+  uint32_t num_int_dffs = 0;
   retime_res.foreach_node( [&]( auto const& n ) {
     if ( !retime_res.has_binding( n ) )
       return;
-    num_dffs += nDFF_global[retime_res.get_binding( n ).name];
+    num_int_dffs += nDFF_global[retime_res.get_binding( n ).name];
   } );
 
   /* RSFQ splitter insertion */
@@ -166,8 +176,11 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, int, int, bool
   // int ext_SPL = std::accumulate(fanout_count.begin(), fanout_count.end(), 0, [](int a, const auto& p){ 
   //     return (p.second > 1)?(a + p.second - 1):(a); 
   //     });
-  int total_area = st.area + COSTS_CONNECT[fSPL] * num_splitters + COSTS_CONNECT[fDFF] * num_dffs;
-  return std::make_tuple( res, st, num_dffs, total_area, cec );
+  
+  // Internal DFF area is already counted in the library
+  int total_area = st.area + COSTS_CONNECT[fSPL] * num_splitters +  COSTS_CONNECT[fDFF] * num_ext_dffs;
+  fmt::print("\t{} : Int: {}, Ext: {}, ratio: {}\n", benchmark, num_int_dffs, num_ext_dffs, (float)num_int_dffs / (num_int_dffs + num_ext_dffs) );
+  return std::make_tuple( res, st, num_int_dffs + num_ext_dffs, total_area, cec );
 }
 
 // Function to read unordered_map from CSV file
@@ -194,27 +207,58 @@ std::unordered_map<std::string, int> readCSV(const std::string& filename)
 }
 
 /* Gate costs are based on CONNECT library (from Japan) */
-const std::string DATABASE_PATH { "LIBRARY_2023_05_08_CONNECT.genlib" } ;
+// const std::string DATABASE_PATH { "LIBRARY_2023_05_19_CONNECT.genlib" } ;
+/* CONNECT library (from Japan) */
+// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_VANILLA_CONNECT.genlib" } ;
+// LIBRARY_2023_05_19_CONNECT.genlib
+// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_2023_06_26_CONNECT_1111.genlib" } ;
+// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_2023_05_19_CONNECT.genlib" } ;
+const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/LIBRARY_2023_06_27_CONNECT_CONSERVATIVE.genlib" } ;
 /*The number of internal DFFs within each cell. 
 Some of them are necessary not only for path balancing but also 
 for synchronizing the pulses for AND gates. I include them 
 in total DFF count */
-const std::string NDFF_PATH { "nDFF_2023_05_08_CONNECT.csv" } ; 
+// const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_05_08_CONNECT.csv" } ; 
+const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
 
 int main()
 {
   using namespace experiments;
   using namespace mockturtle;
+  
+  
+    std::unordered_map<std::string, std::tuple<double,double,double>> PBMAP;
+    PBMAP["int2float"] = std::make_tuple(  270,   6432,  16);
+    PBMAP["priority"]  = std::make_tuple( 9064, 102085, 127);
+    PBMAP["sin"]       = std::make_tuple(13666, 215318, 182);
+    PBMAP["cavlc"]     = std::make_tuple(  522,  16339,  17);
+    PBMAP["dec"]       = std::make_tuple(    8,   5469,   4);
+    PBMAP["c499"]      = std::make_tuple(  476,   7758,  13);
+    PBMAP["c880"]      = std::make_tuple(  774,  12909,  22);
+    PBMAP["c1908"]     = std::make_tuple(  696,  12013,  20);
+    PBMAP["c3540"]     = std::make_tuple( 1159,  28300,  31);
+    PBMAP["c5315"]     = std::make_tuple( 2908,  52033,  23);
+    PBMAP["c7552"]     = std::make_tuple( 2429,  48482,  19);
+    
 
-  experiment<std::string, uint32_t, double, double, float, bool> exp(
-      "mapper", "benchmark", "#PB_DFF", "area_after", "delay_after", "time", "cec" );
+  experiment<std::string, 
+            double, double, double, 
+            double, double, double, 
+            double, double, double, 
+            float> exp(
+      "mapper", "benchmark", 
+      "#DFF (base)", "#DFF (our)", "#DFF (ratio)", 
+      "area (base)", "area (our)", "area (ratio)", 
+      "delay (base)", "delay (our)", "delay (ratio)", 
+      "time");
 
   fmt::print( "[i] processing technology library\n" );
 
   /* library to map to technology */
   std::vector<gate> gates;
   std::ifstream inputFile( DATABASE_PATH );
-  std::unordered_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
+  // std::unordered_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
+  std::unordered_map<std::string, int> nDFF_global;
 
   // Prints # DFF for each cell in the library
   /*
@@ -237,29 +281,59 @@ int main()
   mockturtle::tech_library_params tps; // tps.verbose = true;
   tech_library<4, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
 
-  // Where to find the MCNC benchmarks?
-  auto benchmarks1 = epfl_benchmarks( experiments::epfl & ~experiments::div & ~experiments::hyp & ~experiments::log2 & ~experiments::sqrt );
-  auto benchmarks2 = iscas_benchmarks();
-  benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+  // // Where to find the MCNC benchmarks?
+  // auto benchmarks1 = epfl_benchmarks( experiments::sin | experiments::cavlc | experiments::int2float | experiments::priority | experiments::i2c | experiments::voter | experiments::dec );
+  // //   auto benchmarks1 = epfl_benchmarks( experiments::epfl & ~experiments::div & ~experiments::hyp & ~experiments::log2 & ~experiments::sqrt );
+  // auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c499 | experiments::c880 | experiments::c1908 | experiments::c3540 | experiments::c5315 | experiments::c7552 );
+  // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
+  auto benchmarks1 = epfl_benchmarks();
+  
   for ( auto const& benchmark : benchmarks1 )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
-    mockturtle::aig_network aig;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) ) != lorina::return_code::success )
+    mockturtle::xmg_network tech_indep_ntk;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( tech_indep_ntk ) ) != lorina::return_code::success )
     {
       continue;
     }
 
-    auto [res_area , st_area , PB_DFF_area , nJJ_area , cec_area ] = map_with_pb(benchmark, aig, tech_lib, nDFF_global, true );
-    auto [res_delay, st_delay, PB_DFF_delay, nJJ_delay, cec_delay] = map_with_pb(benchmark, aig, tech_lib, nDFF_global, false);
 
-    exp( benchmark + " area" , PB_DFF_area , nJJ_area , st_area.delay , to_seconds( st_area.time_total  ), cec_area  );
-    exp( benchmark + " delay", PB_DFF_delay, nJJ_delay, st_delay.delay, to_seconds( st_delay.time_total ), cec_delay );
+    auto [res_area , st_area , PB_DFF_area , nJJ_area , cec_area ] = map_with_pb(benchmark, tech_indep_ntk, tech_lib, nDFF_global, true );
+    auto [res_delay, st_delay, PB_DFF_delay, nJJ_delay, cec_delay] = map_with_pb(benchmark, tech_indep_ntk, tech_lib, nDFF_global, false);
+
+    if (PBMAP.find(benchmark) != PBMAP.end())
+    {
+        const double ndff  = std::get<0>(PBMAP[benchmark]);
+        const double njj   = std::get<1>(PBMAP[benchmark]);
+        const double delay = std::get<2>(PBMAP[benchmark]);
+        
+//         exp( benchmark + " area" , ndff, PB_DFF_area,     PB_DFF_area/ndff, 
+//                                    njj,   nJJ_area ,        nJJ_area/njj,
+//                                    delay, st_area.delay, st_area.delay/delay,
+//                                    to_seconds( st_area.time_total  )  );
+        
+        exp( benchmark + " delay", ndff, PB_DFF_delay,     PB_DFF_delay/ndff, 
+                                   njj,   nJJ_delay ,        nJJ_delay/njj,
+                                   delay, st_delay.delay, st_delay.delay/delay,
+                                   to_seconds( st_delay.time_total * 1000 )  );
+    }    
+    else
+    {        
+//         exp( benchmark + " area" , 0xFFFFFFFF, PB_DFF_area,    0xFFFFFFFF, 
+//                                    0xFFFFFFFF,   nJJ_area ,    0xFFFFFFFF,
+//                                    0xFFFFFFFF, st_area.delay,  0xFFFFFFFF,
+//                                    to_seconds( st_area.time_total  )  );
+        
+        exp( benchmark + " delay", 0xFFFFFFFF, PB_DFF_delay,   0xFFFFFFFF, 
+                                   0xFFFFFFFF,   nJJ_delay ,   0xFFFFFFFF,
+                                   0xFFFFFFFF, st_delay.delay, 0xFFFFFFFF,  
+                                   to_seconds( st_delay.time_total * 1000 ) ); //
+    }    
     // Write .bench file for inspection
     // mockturtle::write_bench(res_area , benchmark + "_connect_area"  + ".bench");
-    // mockturtle::write_bench(res_delay, benchmark + "_connect_delay" + ".bench");
+    mockturtle::write_bench(res_delay, benchmark + "_connect_full" + ".bench");
     exp.save();
     exp.table(); // print continuously
   }

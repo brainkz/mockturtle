@@ -156,6 +156,7 @@ void write_bench( Ntk const& ntk, std::ostream& os )
 template<class Ntk>
 void write_bench( Ntk const& ntk, std::string const& filename )
 {
+  // std::cout << "WRITING: " << filename << std::endl;
   std::ofstream os( filename.c_str(), std::ofstream::out );
   write_bench( ntk, os );
   os.close();
