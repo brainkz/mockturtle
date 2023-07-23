@@ -204,19 +204,21 @@ struct Primitive
   uint16_t  func; // 4-input function
   uint8_t   type; // AA - 0, AS - 1, SA - 2
   std::vector<ntk_signal> fanins;
-  Primitive(ntk_signal _sig, uint16_t _func, uint8_t _type, std::vector<ntk_signal> _fanins) : 
-                   sig(_sig),    func(_func),   type(_type),                 fanins(_fanins) {};
+  bool is_spl = false;
 
-  // glob_phase_t latest_fanin_phase( const std::unordered_map<ntk_signal, glob_phase_t> & glob_phase ) const
-  // {
-  //   glob_phase_t phase;
-  //   for (const ntk_signal & parent_sig : fanins)
-  //   {
-  //     phase = std::max(phase, glob_phase.at(parent_sig));
-  //   }
-  //   return phase;
-  // }
-  
+  Primitive(ntk_signal _sig, uint16_t _func, uint8_t _type, std::vector<ntk_signal> _fanins) : 
+                   sig(_sig),    func(_func),   type(_type), fanins(_fanins), is_spl(false) {};
+
+  explicit Primitive(ntk_signal _sig, uint16_t _func, uint8_t _type, std::vector<ntk_signal> _fanins, bool _is_spl) : 
+                   sig(_sig),    func(_func),   type(_type), fanins(_fanins), is_spl(_is_spl) {};
+  Primitive( const Primitive & other )
+  {
+    sig = other.sig; // id of the underlying node in the network
+    func = other.func; // 4-input function
+    type = other.type; 
+    fanins = other.fanins;
+    is_spl = other.is_spl;
+  }
 };
 
 template <typename Ntk>
@@ -576,7 +578,8 @@ std::unordered_map<klut::signal, glob_phase_t> greedy_assemble(const klut & ntk,
           fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
         }
       });
-      glob_phase[node] = ++phase;
+      phase++;
+      glob_phase[node] = phase;
       if (verbose)
       {
         fmt::print("\tAS GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
@@ -1003,76 +1006,132 @@ struct Chain_REGISTRY
   }
 };
 
-
-// struct DFF_REGISTRY
+/// @brief 
+/// @param ntk - copy of the klut network 
+/// @param glob_phase - initial phase assignment
+/// @param klut_prim_params - primitive parameters
+// void insert_splitters_greedy( klut ntk, std::unordered_map<klut::signal, glob_phase_t> glob_phase, std::unordered_map<klut::signal, Primitive<klut>> klut_prim_params )
 // {
-//   std::unordered_map<uint64_t, PB_DFF> reg;
-//   PB_DFF & at( glob_phase_t _phase, klut::signal _fanout, klut::signal _fanin )
-//   {
-//     uint64_t hash = calculate_hash(_phase, _fanout, _fanin);
-//     return reg.at( hash );
-//   }
-//   PB_DFF & at( uint64_t hash )
-//   {
-//     return reg.at( hash );
-//   }
-//   uint64_t add( glob_phase_t _phase, klut::signal _fanout, klut::signal _fanin )
-//   {
-//     PB_DFF dff { _phase, _fanout, _fanin };
-//     reg.emplace( dff.hash, dff );
-//     return dff.hash;
-//   }
-//   void print() const
-//   {
-//     for (const auto & [hash, dff] : reg)
-//     {
-//       fmt::print("{} : ", hash);
-//       dff.print();
-//     }
-//   }
-// };
+//   ntk.
+// }
 
-// struct DFF_REGISTRY
+// void insert_splitter( klut ntk, klut::signal node, std::unordered_map<klut::signal, glob_phase_t> glob_phase, std::unordered_map<klut::signal, Primitive<klut>> klut_prim_params )
 // {
-//   std::unordered_map<klut::signal, std::unordered_map<klut::signal, std::unordered_map<glob_phase_t, PB_DFF>>> reg;
-//   PB_DFF & at( glob_phase_t _phase, klut::signal _fanout, klut::signal _fanin ) 
-//   {
-//     std::unordered_map<klut::signal, std::unordered_map<glob_phase_t, PB_DFF>>& fanout_map = reg.at( _fanout );
-//     std::unordered_map<glob_phase_t, PB_DFF>& fanin_map = fanout_map.at( _fanin );
-//     PB_DFF & _dff = fanin_map.at( _phase );
-//     return _dff;
-//     // return reg.at( _fanout ).at( _fanin ).at ( _phase );
-//   }
-//   // PB_DFF & at( uint64_t hash )
-//   // {
-//   //   return reg.at( hash );
-//   // }
-//   PB_DFF & add( glob_phase_t _phase, klut::signal _fanout, klut::signal _fanin )
-//   {
-//     PB_DFF dff { _phase, _fanout, _fanin };
-//     std::unordered_map<klut::signal, std::unordered_map<glob_phase_t, PB_DFF>> & fanout_map = reg[_fanout];
-//     std::unordered_map<glob_phase_t, PB_DFF> & fanin_map = fanout_map[_fanin];
-//     fanin_map.emplace(_phase, dff); 
-//     return dff;
-//     // reg.emplace( dff.hash, dff ); 
-//     // return dff.hash;
-//   }
-//   void print() const
-//   {
-//     for (const auto & [fanout, fanout_map] : reg)
-//     {
-//       for (const auto & [fanin, fanin_map] : fanout_map)
-//       {
-//         for (const auto & [phase, dff] : fanin_map)
-//         {
-//           dff.print();
-//         }
-//       }
-//     }
-//   }
-// };
+//   ntk.
+// }
 
+void insert_splitters( klut & ntk, klut::node const& node, std::unordered_map<klut::signal, glob_phase_t> & glob_phase, std::unordered_map<mockturtle::klut_network::signal, Primitive<klut>> & klut_prim_params, std::vector<klut::signal> & fanouts)
+{
+  auto buf_func = kitty::dynamic_truth_table( 1u );
+  buf_func._bits[0] = 0x2;
 
+  // fanouts.reserve( fo_size );
+
+  // // Find fanouts of the node
+  // std::vector<klut::signal> fanouts;
+  // ntk.foreach_node( [&](const klut::signal & n)
+  // {
+  //   if (ntk.is_constant(n))
+  //   {
+  //     fmt::print("\t\tNot considering fanouts of constants {}\n", n);
+  //     return;
+  //   }
+  //   ntk.foreach_fanin(n, [&](const klut::signal & p)
+  //   {
+  //     if (p == node)
+  //     {
+  //       fmt::print("\t\tAdding {} to fanouts of {} \n", n, node);
+  //       fanouts.push_back( n );
+  //     }
+  //   });
+  // });
+  // assert( fanouts.size() == fo_size ); 
+  unsigned int fo_size = fanouts.size();
+  int fanout_diff = ntk.fanout_size(node) - fo_size;
+  fmt::print("\t\tReported fanout is greater by {} \n", fanout_diff);
+
+  fmt::print("\t\tFound a total of {} fanouts \n", fo_size);
+
+  // Create splitter nodes
+  std::vector<klut::signal> splitters;
+  splitters.reserve( fo_size );
+  klut::signal last_spl_fanin = node;
+  for (auto i = 0u; i < fo_size-1; ++i)
+  {
+    klut::signal spl = ntk.create_node({ last_spl_fanin }, buf_func);
+    assert( (spl != node) && (spl != last_spl_fanin) );
+    fmt::print("\t\tConnected splitter #{} to {}\n", spl, last_spl_fanin);
+    splitters.push_back( spl );
+    last_spl_fanin = spl;
+
+    auto obj = Primitive<klut>(spl, 0xAAAA, AA_GATE, {last_spl_fanin});
+    obj.is_spl = true;
+    // (spl, 0xAAAA, AA_GATE, { last_spl_fanin }, true );
+    klut_prim_params.emplace(spl, obj);
+  }
+  // add the last splitter twice to connect the two last fanouts
+  splitters.push_back( last_spl_fanin );
+
+  std::sort(fanouts.begin(), fanouts.end(), [&](const klut::signal & a, const klut::signal & b)
+  {
+    if (ntk.is_constant( a ))
+    {
+      return false;
+    }
+    else if (ntk.is_constant( b ))
+    {
+      return true;
+    }
+
+    return (glob_phase.at( a ) - (klut_prim_params.at( a ).type == SA_GATE)) < (glob_phase.at( b ) - (klut_prim_params.at( b ).type == SA_GATE));
+  });
+  fmt::print("\t\tSorting fanouts -> {}\n", fmt::join(fanouts, ","));
+
+  // redirect the fanouts to splitters
+  for ( auto i = 0u; i < fo_size; ++i )
+  {
+    klut::signal fo = fanouts[i];
+    auto& fo_cfg = ntk._storage->nodes[fo];
+    fmt::print("\t\t\tFanout: {}\n", fo);
+
+    klut::signal spl = splitters[i];
+    auto& spl_cfg = ntk._storage->nodes[spl];
+    fmt::print("\t\t\tSplitter: {}\n", spl);
+
+    for ( auto& child : fo_cfg.children )
+    {
+      if ( child == node )
+      {
+        fmt::print("BEFORE:\tnode {} fo={}\tspl {} fo={}\n", node, static_cast<int>(ntk._storage->nodes[node].data[0].h1), spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
+        
+        fmt::print("\t\t\tAdded {} as a fanin to {}\n", spl, fo);
+        child = spl;
+        // increment fan-out of splitter
+        ntk._storage->nodes[spl].data[0].h1++;
+        // decrement fan-out of old node
+        ntk._storage->nodes[node].data[0].h1--;
+        fmt::print("AFTER :\tnode {} fo={}\tspl {} fo={}\n", node, static_cast<int>(ntk._storage->nodes[node].data[0].h1), spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
+      }
+    }
+  }
+  for ( auto i = 0u; i < fo_size-1; ++i )
+  {
+    klut::signal fo = fanouts[i];
+    klut::signal spl = splitters[i];
+    // assign splitter's phase to be equal to the fanout's phase
+    fmt::print("\t\t\tAssigned phase {} to splitter {}\n", glob_phase.at( fo ), spl);
+    glob_phase[spl] = glob_phase.at( fo );
+  }
+
+  fmt::print("\t\t\tFinal node {} fanout: {}\n", node, ntk.fanout_size( node ));
+  assert((ntk.fanout_size( node ) - fanout_diff) == 1);
+  for ( const auto & spl : splitters )
+  {
+    fmt::print("\t\t\tFinal spl {} fanout: {}\n", spl, ntk.fanout_size( spl ));
+    assert(ntk.fanout_size( spl ) == 2);
+  }
+  // return std::make_tuple( ntk, glob_phase, klut_prim_params );
+}
 
 /// @brief Fills DFFs along the path
 /// @param ntk - decomposed klut network
@@ -1100,7 +1159,7 @@ Chain_REGISTRY fill_dffs( const klut & ntk, const Path & path, const std::unorde
     stack.pop_back();
 
     const bool fanin_is_AA = (klut_prim_params.at( fanin ).type == AA_GATE);
-    const glob_phase_t fanin_phase = glob_phase.at( fanin ) + fanin_is_AA;
+    const glob_phase_t fanin_phase = glob_phase.at( fanin ); //  + fanin_is_AA;
 
     const bool fanout_is_AS = ( klut_prim_params.at( fanout ).type == AS_GATE );
     const glob_phase_t fanout_phase = glob_phase.at( fanout ) - fanout_is_AS;
@@ -1161,306 +1220,12 @@ Chain_REGISTRY fill_dffs( const klut & ntk, const Path & path, const std::unorde
   // TODO : extract chains and formulate SAT (make sure to consider special cases, like a phase with AA->AS connection)
 }
 
-
-
-#if false 
+void generate_cnf_clauses(const klut & ntk, const Chain_REGISTRY & REG, const Path & path)
 {
-  struct DFF_chain
-  {
-    std::string name;
-    glob_phase_t min_phase;
-    glob_phase_t max_phase;
-    klut::signal fanout; // successor gate (not DFF!)
-    klut::signal fanin;  // predecessor gate (not DFF!)
+  std::vector<Chain> stack;
 
-    DFF_chain (std::string _name, glob_phase_t _min_phase, glob_phase_t _max_phase, klut::signal _fanout, klut::signal _fanin) 
-      : name(_name), min_phase(_min_phase), max_phase(_max_phase), fanout(_fanout), fanin(_fanin) {};
-  };
-}
-{
-  void fill_dffs( const klut & ntk, const Path & path, const std::unordered_map<klut::signal, glob_phase_t> & glob_phase, const std::unordered_map<klut::signal, Primitive<klut>> & klut_prim_params, const uint8_t n_phases )
-  {
-
-    std::vector<DFF_chain> DFF_chains;
-
-    std::vector<klut::signal> stack;
-    std::set<klut::signal> seen;
-    stack.insert(stack.end(), path.targets.begin(), path.targets.end());
-
-    while (!stack.empty())
-    {
-      const klut::signal & sig = stack.back();
-      const Primitive<klut> & sig_params = klut_prim_params.at( sig );
-      const glob_phase_t & sig_phase = glob_phase.at( sig );
-
-      stack.pop_back();
-
-      ntk.foreach_fanin(sig, [&] (const klut::signal & parent) 
-      {
-        // check if the parent is an internal node
-        if (std::find(path.internals.begin(), path.internals.end(), parent) != path.internals.end())
-        {
-          const Primitive<klut> & parent_params = klut_prim_params.at( parent );
-          const glob_phase_t & parent_phase = glob_phase.at( parent );
-
-          DFF_chains.emplace_back(parent_phase, sig_phase, parent, sig);
-          // add parent to the stack if not already seen
-          if ( seen.count(parent) > 0 )
-          {
-            stack.push_back(parent);
-          }
-        }
-        // check if the parent is an source node
-        else if (std::find(path.sources.begin(), path.sources.end(), parent) != path.sources.end())
-        {
-          const Primitive<klut> & parent_params = klut_prim_params.at( parent );
-
-          // DFF is not required if preceded by an AS gate at the same phase
-          if (sig_params.type == SA_GATE && glob_phase.at( sig ) == glob_phase.at( parent ))
-          {
-            assert(parent_params.type == AS_GATE); //SA gate cannot be preceded by an SA source node
-            return;
-          }
-
-          const glob_phase_t & parent_phase = glob_phase.at( parent );
-          DFF_chains.emplace_back(parent_phase, sig_phase, parent, sig);
-        }
-        else
-        {
-          // parent does not belong to the path
-        }
-      });
-      seen.emplace( sig );
-    }
-    
-    std::vector<POS> clauses;
-    // Record dependencies here 
-    for (const DFF_chain & DFFs : DFF_chains)
-    {
-      // Internal dependencies
-      for (auto phase = DFFs.max_phase; phase >= DFFs.min_phase + n_phases; --phase)
-      {
-        POS pos;
-        pos.clause.emplace_back(phase, true);
-        for (auto i = 0u; i < n_phases; ++i)
-        {
-          pos.clause.emplace_back(phase - i - 1, false);
-        }
-        clauses.push_back(pos);
-      }
-      //external dependencies - need to get predecessors
-      std::vector<DFF_chain> pred_stack { DFFs };
-      while (!pred_stack.empty())
-      {
-        const DFF_chain & succ_DFFs = pred_stack.back();
-        pred_stack.pop_back();
-        // need a more efficient way to find the fanins
-        for (const DFF_chain & pred_DFFs : DFF_chains)
-        {
-          if (pred_DFFs.fanout != succ_DFFs.fanin)
-          {
-            continue;
-          }
-        }
-      }
-    }
-  }
 }
 
-struct AS_SA_path
-  {
-    klut::signal node;
-    std::vector<klut::signal> fanins;
-    AS_SA_path(klut::signal _node, const std::vector<klut::signal>& _fanins)
-      : node(_node), fanins(_fanins) {}
-  };
-{
-}
-  std::vector<AS_SA_path> AS_SA_paths(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params)
-  {
-    std::vector<AS_SA_path> paths;
-    ntk.foreach_gate([&] ( const klut::signal node ) 
-    {
-      Primitive<klut> params = sig_params.at ( node );
-      if (params.type == SA_GATE)
-      {
-        paths.emplace_back( node, params.fanins );
-      }
-    });
-  }
-  template <typename Ntk>
-  std::tuple<Ntk, std::unordered_map<typename Ntk::signal, Primitive<Ntk>>> decompose_to_ntk(
-    mockturtle::binding_view<klut> src, 
-    std::unordered_map<ULL, Node> nodemap,
-    std::unordered_map<std::string, LibEntry> entries,
-    bool add_buffers = false,
-    bool add_inverters = true
-    )
-  {
-    using signal = typename Ntk::signal;
-    std::unordered_map<signal, Primitive<Ntk>> tgt_sig_params;
-
-    std::unordered_map<klut::signal, signal> src2tgt;
-    
-    Ntk tgt;
-    src.foreach_pi( [&]( const klut::signal & src_pi ) 
-    {
-      signal tgt_pi = tgt.create_pi();
-      src2tgt.emplace(src_pi, tgt_pi);
-    } );
-
-    /* The bindings will be replaced in forward topological order.  */
-    std::vector<klut::signal> src_po;
-    src_po.reserve(src.num_pos());
-    src.foreach_po( [&] (auto src_n)
-    {
-      src_po.push_back(src_n);
-    } );
-
-    // std::vector<klut::node> src_top_order;
-    // src_top_order.reserve( src.size() );
-    mockturtle::topo_view<klut>( src ).foreach_node( [&]( auto src_node ) 
-    {
-      // fmt::print(
-      //   "\nSRC  function : 0x{0:x} with {1} fanins\n", 
-      //   src.node_function(src_node)._bits[0], 
-      //   src.fanin_size(src_node)
-      // );
-      if ( !src.has_binding( src_node ) )
-      {
-        return;
-      }
-
-      auto const& g = src.get_binding( src_node );
-
-      /* handing constants */
-      if (g.name == "one" && g.expression == "CONST1")
-      {
-        signal tgt_sig = tgt.get_constant( true );
-        src2tgt.emplace(src_node, tgt_sig);
-        return;
-      }
-      else if (g.name == "zero" && g.expression == "CONST0")
-      {
-        signal tgt_sig = tgt.get_constant( false );
-        src2tgt.emplace(src_node, tgt_sig);
-        return;
-      }
-      
-      LibEntry entry = entries.at(g.name);
-      Node & root = nodemap[entry.hash];
-
-      // fmt::print("Binding : {0}\n", entry.to_str());
-      // fmt::print("NODE function : 0x{0:{2}x}, {1}\n", root.func, root.to_str(), std::max(1 << (src.fanin_size(src_node) - 2), 1) );
-
-      // kitty::dynamic_truth_table func(src.fanin_size(src_node));
-      // func._bits = root.func;
-      // tgt._create_node(parent_tgt_1, parent_tgt_2);
-
-      /* Get the topological order of internal nodes (i.e., nodes inside the cell) */
-      std::vector<ULL> topo_order;
-      root.topo_sort(nodemap, topo_order, true);
-
-      std::vector<signal> tgt_fanins;
-      src.foreach_fanin(src_node, [&](const auto & src_fanin)
-      {
-        tgt_fanins.push_back(src2tgt.at(src_fanin));
-        // fmt::print("\tRecorded fanin of src_node {0}:\n\t\tsrc_fanin: {1}\n\t\ttgt_fanin: {2}\n", src_node, src_fanin, tgt_fanins.back().data);
-      } );
-
-      std::unordered_map<ULL, signal> node2tgt;
-      for (ULL hash : topo_order)
-      {
-        Node & node = nodemap.at(hash);
-        if (node.last_func == fPI)
-        {
-          /*determine which index of the PI is needed */
-          char letter = node.pi_letter();
-
-          auto pi_idx = std::find(entry.chars.begin(), entry.chars.end(), letter) - entry.chars.begin();
-          node2tgt.emplace(hash, tgt_fanins[pi_idx]);
-        }
-        else if (node.last_func == fDFF)
-        {
-          signal parent_tgt = node2tgt.at(node.parent_hashes.front());
-          signal tgt_sig = add_buffers ? create_buffer(tgt, parent_tgt, false) : tgt.create_buf( parent_tgt );
-          node2tgt.emplace(hash, tgt_sig);
-          tgt_sig_params.emplace(tgt_sig, Primitive<Ntk>(tgt_sig, 0xAAAAu, 1u, 1u)); //0xAAAA s simply a DFF TT
-        }
-        else if (node.last_func == fNOT)
-        {
-          signal parent_tgt = node2tgt.at(node.parent_hashes.front());
-          signal tgt_sig = add_inverters ? create_buffer(tgt, parent_tgt, true ) : tgt.create_not( parent_tgt );
-          node2tgt.emplace(hash, tgt_sig);
-          tgt_sig_params.emplace(tgt_sig, Primitive<Ntk>(tgt_sig, 0x5555u, 1u, 1u));
-        }
-        else if (node.last_func == fAND)
-        {
-          signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
-          signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-          signal tgt_sig = tgt.create_and(parent_tgt_1, parent_tgt_2);
-          // fmt::print("Created node n{0} = AND({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
-          node2tgt.emplace(hash, tgt_sig);
-          tgt_sig_params.emplace(tgt_sig, Primitive<Ntk>(tgt_sig, 0x8888u, 2u, 2u));
-        }
-        else if (node.last_func == fOR)
-        {
-          signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
-          signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-          signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2);
-          // fmt::print("Created node n{0} = OR({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
-          node2tgt.emplace(hash, tgt_sig);
-          tgt_sig_params.emplace(tgt_sig, Primitive<Ntk>(tgt_sig, 0xEEEEu, 2u, 2u));
-        }
-        else if (node.last_func == fCB)
-        {
-          signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
-          signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-          signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2);
-          // fmt::print("Created node n{0} = CB({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
-          node2tgt.emplace(hash, tgt_sig);
-          tgt_sig_params.emplace(tgt_sig, Primitive<Ntk>(tgt_sig, 0xEEEEu, 0u, 2u));
-        }
-        else if (node.last_func == fXOR)
-        {
-          signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
-          signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-          signal tgt_sig = tgt.create_xor(parent_tgt_1, parent_tgt_2);
-          // fmt::print("Created node n{0} = XOR({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
-          node2tgt.emplace(hash, tgt_sig);
-          tgt_sig_params.emplace(tgt_sig, Primitive<Ntk>(tgt_sig, 0x6666u, 1u, 2u));
-        }
-        // else if 
-        else
-        {
-          throw "Unsupported function";
-        }
-      }
-      ULL root_hash = topo_order.back();
-      signal tgt_sig = node2tgt.at(root_hash);
-      src2tgt.emplace(src_node, tgt_sig);
-    } );
-
-    src.foreach_po([&](auto const & src_po)
-    {
-      tgt.create_po(src2tgt.at(src_po));
-    } );
-    
-    tgt.foreach_node([&](auto const & node) 
-    {
-      tgt.foreach_fanin(node, [&] (auto const & sig )
-      {
-        if (tgt.is_complemented(sig) && !tgt.is_constant(tgt.get_node( sig )))
-        {
-          fmt::print("Signal: {0} is complemented. [fanin of {1}]\n", sig.data, node);
-        }
-      });
-    });
-
-    return std::make_pair(tgt, tgt_sig_params);
-  }
-}
-#endif
 
 void write_klut_specs(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params, const std::string & filename)
 {
@@ -1585,6 +1350,11 @@ int main()  //int argc, char* argv[]
     {
       break;
     }
+
+    if (benchmark != "div")
+    {
+      continue;
+    }
     fmt::print( "[i] processing {}\n", benchmark );
 
     aig aig_original;
@@ -1600,16 +1370,82 @@ int main()  //int argc, char* argv[]
     fmt::print("Decomposition complete\n");
 
     std::unordered_map<klut::signal, glob_phase_t> glob_phase = greedy_assemble(klut_decomposed, klut_prim_params, n_phases, true);
-    
-    // write_klut_specs(klut_decomposed, klut_prim_params, fmt::format("{0}_specs.csv", benchmark));
 
-    // 1. AS -> SA
-    // 2. AS/SA -> AS
-    std::vector<Path> paths = extract_paths(klut_decomposed, klut_prim_params);
+    fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
+
+    klut spl_klut = klut_decomposed;
+    std::unordered_map<klut::signal, glob_phase_t> spl_phase = glob_phase;
+    std::unordered_map<mockturtle::klut_network::signal, Primitive<klut>> spl_params = klut_prim_params;
+
+    std::map<klut::signal, unsigned int> multifanouts;
+    spl_klut.foreach_node([&] (const klut::signal & n)
+    {
+      if ( !(spl_klut.is_constant( n )) && !( spl_params.at( n ).is_spl ) && spl_klut.fanout_size( n ) > 1)
+      {
+        multifanouts.emplace(n, spl_klut.fanout_size( n ));
+      }
+    });
+
+    auto size_before = spl_klut.size();
+
+    // Find fanouts of each node
+    std::map<klut::signal, std::vector<klut::signal>> fanout_map;
+    spl_klut.foreach_node( [&](const klut::signal & n)
+    {
+      if (spl_klut.is_constant(n))
+      {
+        fmt::print("\t\tNot considering fanouts of constants {}\n", n);
+        return;
+      }
+      spl_klut.foreach_fanin(n, [&](const klut::signal & p)
+      {
+        fmt::print("\t\tAdding {} to fanouts of {} \n", n, p);
+        fanout_map[p].push_back( n );
+      });
+    });
+
+    auto ctr = 0u;
+    for (auto & [n, fo_size] : multifanouts)
+    {
+      fmt::print("Splitter insertion #{} out of {}\n", ++ctr, multifanouts.size());
+      insert_splitters(spl_klut, n, spl_phase, spl_params, fanout_map[n]);
+    }
+
+    std::map<klut::signal, unsigned int> multifanouts_after;
+    spl_klut.foreach_node([&] (const klut::signal & n)
+    {
+      if ( !(spl_klut.is_constant( n )) && !( spl_params.at( n ).is_spl ) && spl_klut.fanout_size( n ) > 1)
+      {
+        multifanouts_after.emplace(n, spl_klut.fanout_size( n ));
+      }
+    });
+
+    bool spl_cec = experiments::abc_cec( spl_klut, benchmark );
+    if (!(spl_cec))
+    {
+      throw "Networks are not equivalent\n";
+    }
+
+    if (multifanouts_after.size() > 0)
+    {
+      for (auto & [k,v]:multifanouts_after)
+      {
+        fmt::print("Warning - reported fanout of node {} is {}\n", k, v);
+      }
+      // throw "Splitters not inserted\n";
+    }
+
+    // std::vector<Path> paths = extract_paths(klut_decomposed, klut_prim_params);
+    // for (const Path & path : paths)
+    // {
+    //   path.print();
+    //   Chain_REGISTRY path_reg = fill_dffs( klut_decomposed, path, glob_phase, klut_prim_params, n_phases );
+    // }
+    std::vector<Path> paths = extract_paths(spl_klut, spl_params);
     for (const Path & path : paths)
     {
       path.print();
-      Chain_REGISTRY path_reg = fill_dffs( klut_decomposed, path, glob_phase, klut_prim_params, n_phases );
+      Chain_REGISTRY path_reg = fill_dffs( spl_klut, path, spl_phase, spl_params, n_phases );
     }
   }
   // TODO : now, count #DFFs in extracted paths. Perhaps, the function can be written within the Path object.

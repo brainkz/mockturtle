@@ -1236,15 +1236,31 @@ std::string get_formula( TT4 _tt, const bool reverse = false, const std::vector<
   return expression;
 }
 
+// std::unordered_map<ULL, Node> mergeMaps(const std::vector<std::unordered_map<ULL, Node>>& maps) 
+// {
+//     std::unordered_map<ULL, Node> mergedMap;
+
+//     for (const auto& map : maps) {
+//         mergedMap.insert(map.begin(), map.end());
+//     }
+
+//     return mergedMap;
+// }
+
 std::unordered_map<ULL, Node> mergeMaps(const std::vector<std::unordered_map<ULL, Node>>& maps) 
 {
-    std::unordered_map<ULL, Node> mergedMap;
+  std::unordered_map<ULL, Node> mergedMap;
 
-    for (const auto& map : maps) {
-        mergedMap.insert(map.begin(), map.end());
-    }
+  for (const auto& map : maps) {
+    // for (const auto & [key, value] : map)
+    // {
+    //   // mergedMap[key] = std::move(value);
+    //   mergedMap.emplace(std::move(key), std::move(value));
+    // }
+    mergedMap.insert(map.begin(), map.end());
+  }
 
-    return mergedMap;
+  return mergedMap;
 }
 
 std::unordered_map<ULL, Node> read_global_gnm(
