@@ -26,6 +26,7 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <cstdio>
 
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
@@ -120,7 +121,7 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
 )
 {
   fmt::print("Started mapping of {}\n", benchmark);
-  auto [res, st] = map_wo_pb(benchmark, input_ntk, tech_lib, area_oriented);
+  auto [res, st] = map_wo_pb(input_ntk, tech_lib, area_oriented);
   fmt::print("Finished mapping of {}\n", benchmark);
 
   std::map<klut::node, int> dff_count;
@@ -477,12 +478,13 @@ std::unordered_map<klut::signal, glob_phase_t> greedy_assemble(const klut & ntk,
       return;
     }
     const Primitive<klut> & node_params = sig_params.at( node );
+    if (verbose)
+    {
+      fmt::print("{} GATE {}:\n", GATE_TYPE.at(node_params.type), node);
+    }
+
     if ( node_params.type == AA_GATE )
     {
-      if (verbose)
-      {
-        fmt::print("AA GATE {}:\n", node);
-      }
       // place at the same phase as the latest fanin
       glob_phase_t phase = 0u;
       ntk_topo.foreach_fanin(node, [&] ( const klut::signal & parent )
@@ -511,10 +513,6 @@ std::unordered_map<klut::signal, glob_phase_t> greedy_assemble(const klut & ntk,
     }
     else if ( node_params.type == SA_GATE )
     {
-      if (verbose)
-      {
-        fmt::print("SA GATE {}:\n", node);
-      }
       // Place at the earliest feasible phase
       glob_phase_t phase = 0u;
       ntk_topo.foreach_fanin(node, [&] (const klut::signal & parent)
@@ -530,10 +528,10 @@ std::unordered_map<klut::signal, glob_phase_t> greedy_assemble(const klut & ntk,
         // if d==false, SA gate can be directly connected to fanin
         //cannot directly connect PI
         //cannot directly connect split signal 
-        //cannot directly connect AA and SA gates
+        //cannot directly connect SA/AA gates to SA gates
         bool d = (ntk_topo.is_pi(parent)) || (ntk_topo.fanout_size(parent) > 1) || (sig_params.at(parent).type != AS_GATE);                     
 
-        phase = std::max(phase, glob_phase.at( parent ) + d );
+        phase = std::max(phase, glob_phase.at( parent ) + static_cast<int>(d) );
         if (verbose)
         {
           glob_phase_t gp = glob_phase.at( parent );
@@ -555,10 +553,6 @@ std::unordered_map<klut::signal, glob_phase_t> greedy_assemble(const klut & ntk,
     }
     else if ( node_params.type == AS_GATE )
     {
-      if (verbose)
-      {
-        fmt::print("AS GATE {}:\n", node);
-      }
       // Place at the earliest feasible phase
       glob_phase_t phase = 0u;
       ntk_topo.foreach_fanin(node, [&] (const klut::signal & parent)
@@ -655,7 +649,6 @@ struct Path
     out.insert(out.end(), targets.begin(), targets.end());
     return out;
   }
-
 
   void dff_cost(klut ntk, std::unordered_map<klut::signal, glob_phase_t> glob_phase)
   {
@@ -859,69 +852,6 @@ std::vector<Path> extract_paths(const klut & ntk, const std::unordered_map<klut:
   return paths;
 }
 
-#if false
-  struct DFF_var
-  {
-    // uniquely represents a binary variable
-    glob_phase_t phase;
-    klut::signal fanout; // successor gate (not DFF!, can even be a splitter)
-    klut::signal fanin;  // predecessor gate (not DFF!, can even be a splitter)
-
-    DFF_var (glob_phase_t _phase, klut::signal _fanout, klut::signal _fanin) 
-      : phase(_phase), fanout(_fanout), fanin(_fanin) {};
-  };
-
-  class DAG_Node 
-  {
-    private:
-      glob_phase_t phase;
-      klut::signal fanout; // successor gate (not DFF!, can even be a splitter)
-      klut::signal fanin;  // predecessor gate (not DFF!, can even be a splitter)
-      std::vector<std::shared_ptr<DAG_Node>> parents;
-
-    public:
-      explicit DAG_Node (glob_phase_t _phase, klut::signal _fanout, klut::signal _fanin) 
-      : phase(_phase), fanout(_fanout), fanin(_fanin), parents({}) {};
-      explicit DAG_Node (glob_phase_t _phase, klut::signal _fanout, klut::signal _fanin, std::vector<std::shared_ptr<DAG_Node>> _parents) 
-      : phase(_phase), fanout(_fanout), fanin(_fanin), parents(_parents) {};
-      void addParent(std::shared_ptr<DAG_Node> parent) 
-      {
-          parents.push_back(parent);
-      }
-      const std::vector<std::shared_ptr<DAG_Node>>& getParents() const 
-      {
-          return parents;
-      }
-      const int getPhase() const 
-      {
-          return phase;
-      }
-      const int getFanin() const 
-      {
-          return fanin;
-      }
-      const int getFanout() const 
-      {
-          return fanout;
-      }
-  };
-  // Product of sums
-  struct POS
-  {
-    // All of the clauses should evaluate to TRUE for SAT to succeed
-    // the bool flag indicates whether the DFF_var is inverted
-    std::vector<std::pair<DFF_var, bool>> clause;
-    POS () :  clause({}) {};
-    POS (std::vector<std::pair<DFF_var, bool>> _clause) : clause(_clause) {};
-  };
-#endif
-
-// // Hash combiner
-// template <typename T>
-// static void hash_combine(std::size_t& seed, const T& val) {
-//     seed ^= std::hash<T>{}(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-// }
-
 uint64_t calculate_hash(glob_phase_t phase, klut::signal fanout, klut::signal fanin)
 {
     std::size_t seed = 0;
@@ -977,16 +907,16 @@ struct PB_DFF
 struct Chain_REGISTRY
 {
   std::unordered_map<uint64_t, Chain> reg;
-  std::unordered_map<uint64_t, uint64_t> adjacent_hashes;
+  // std::unordered_map<uint64_t, uint64_t> adjacent_hashes;
 
-  Chain & at( klut::signal _fanout, klut::signal _fanin )
+  const Chain & at( klut::signal _fanout, klut::signal _fanin ) const
   {
     std::size_t hash = 0;
     hash_combine(hash, _fanout);
     hash_combine(hash, _fanin);
     return reg.at( hash );
   }
-  Chain & at( uint64_t hash )
+  const Chain & at( uint64_t hash ) const
   {
     return reg.at( hash );
   }
@@ -1006,46 +936,11 @@ struct Chain_REGISTRY
   }
 };
 
-/// @brief 
-/// @param ntk - copy of the klut network 
-/// @param glob_phase - initial phase assignment
-/// @param klut_prim_params - primitive parameters
-// void insert_splitters_greedy( klut ntk, std::unordered_map<klut::signal, glob_phase_t> glob_phase, std::unordered_map<klut::signal, Primitive<klut>> klut_prim_params )
-// {
-//   ntk.
-// }
-
-// void insert_splitter( klut ntk, klut::signal node, std::unordered_map<klut::signal, glob_phase_t> glob_phase, std::unordered_map<klut::signal, Primitive<klut>> klut_prim_params )
-// {
-//   ntk.
-// }
-
 void insert_splitters( klut & ntk, klut::node const& node, std::unordered_map<klut::signal, glob_phase_t> & glob_phase, std::unordered_map<mockturtle::klut_network::signal, Primitive<klut>> & klut_prim_params, std::vector<klut::signal> & fanouts)
 {
   auto buf_func = kitty::dynamic_truth_table( 1u );
   buf_func._bits[0] = 0x2;
 
-  // fanouts.reserve( fo_size );
-
-  // // Find fanouts of the node
-  // std::vector<klut::signal> fanouts;
-  // ntk.foreach_node( [&](const klut::signal & n)
-  // {
-  //   if (ntk.is_constant(n))
-  //   {
-  //     fmt::print("\t\tNot considering fanouts of constants {}\n", n);
-  //     return;
-  //   }
-  //   ntk.foreach_fanin(n, [&](const klut::signal & p)
-  //   {
-  //     if (p == node)
-  //     {
-  //       fmt::print("\t\tAdding {} to fanouts of {} \n", n, node);
-  //       fanouts.push_back( n );
-  //     }
-  //   });
-  // });
-  // assert( fanouts.size() == fo_size ); 
   unsigned int fo_size = fanouts.size();
   int fanout_diff = ntk.fanout_size(node) - fo_size;
   fmt::print("\t\tReported fanout is greater by {} \n", fanout_diff);
@@ -1139,7 +1034,7 @@ void insert_splitters( klut & ntk, klut::node const& node, std::unordered_map<kl
 /// @param glob_phase - contains information about all phases in network
 /// @param klut_prim_params - has gate parameters for each gate 
 /// @param n_phases - number of phases in the network
-Chain_REGISTRY fill_dffs( const klut & ntk, const Path & path, const std::unordered_map<klut::signal, glob_phase_t> & glob_phase, const std::unordered_map<klut::signal, Primitive<klut>> & klut_prim_params, const uint8_t n_phases )
+Chain_REGISTRY fill_dffs( const klut & ntk, const Path & path, const std::unordered_map<klut::signal, glob_phase_t> & glob_phase, const std::unordered_map<klut::signal, Primitive<klut>> & klut_prim_params)
 {
   Chain_REGISTRY REG;
 
@@ -1219,13 +1114,360 @@ Chain_REGISTRY fill_dffs( const klut & ntk, const Path & path, const std::unorde
   return REG;
   // TODO : extract chains and formulate SAT (make sure to consider special cases, like a phase with AA->AS connection)
 }
-
-void generate_cnf_clauses(const klut & ntk, const Chain_REGISTRY & REG, const Path & path)
+#if false
+struct DFF_var 
 {
-  std::vector<Chain> stack;
+  klut::signal fanin;
+  klut::signal fanout;
+  glob_phase_t phase;
+  bool negated = false;
+
+  DFF_var(klut::signal _fanin, klut::signal _fanout, glob_phase_t _phase)
+      : fanin(_fanin), fanout(_fanout), phase(_phase) {}
+
+  DFF_var(klut::signal _fanin, klut::signal _fanout, glob_phase_t _phase, bool _negated)
+      : fanin(_fanin), fanout(_fanout), phase(_phase), negated(_negated) {}
+
+  DFF_var(const DFF_var& other)
+      : fanin(other.fanin), fanout(other.fanout), phase(other.phase), negated(other.negated) {}
+
+  std::string str()
+  {
+    if (negated)
+    {
+      return fmt::format( "var_{}_{}_{}.Not()", fanin, fanout, phase );
+    }
+    return fmt::format( "var_{}_{}_{}", fanin, fanout, phase );
+  }
+};
+#endif
+struct DFF_var 
+{
+  klut::signal fanin;
+  klut::signal fanout;
+  glob_phase_t phase;
+  std::vector<uint64_t> parent_hashes;
+  uint64_t hash;
+
+  DFF_var(klut::signal _fanin, klut::signal _fanout, glob_phase_t _phase)
+      : fanin(_fanin), fanout(_fanout), phase(_phase), parent_hashes({}) 
+      {
+        hash = calculate_hash(phase, fanout, fanin);
+      }
+
+  DFF_var(klut::signal _fanin, klut::signal _fanout, glob_phase_t _phase, std::vector<uint64_t> _parent_hashes, uint64_t _hash)
+      : fanin(_fanin), fanout(_fanout), phase(_phase), parent_hashes(_parent_hashes), hash(_hash) {}
+
+  DFF_var(const DFF_var& other)
+      : fanin(other.fanin), fanout(other.fanout), phase(other.phase),parent_hashes(other.parent_hashes), hash(other.hash) {}
+
+  std::string str(bool negated = false)
+  {
+    if (negated)
+    {
+      return fmt::format( "var_{}_{}_{}.Not()", fanin, fanout, phase );
+    }
+    return fmt::format( "var_{}_{}_{}", fanin, fanout, phase );
+  }
+};
+
+struct DFF_registry
+{
+  std::unordered_map<uint64_t, DFF_var> variables;
+
+  DFF_var & at(klut::signal _fanin, klut::signal _fanout, glob_phase_t _phase)
+  {
+    return variables.at( calculate_hash(_phase, _fanout, _fanin) );
+  } 
+  DFF_var & at(uint64_t _hash)
+  {
+    return variables.at( _hash );
+  } 
+  uint64_t add(klut::signal _fanin, klut::signal _fanout, glob_phase_t _phase, std::vector<uint64_t> _parent_hashes = {})
+  {
+    uint64_t _hash = calculate_hash(_phase, _fanout, _fanin);
+    DFF_var temp { _fanin, _fanout, _phase, _parent_hashes, _hash };
+    // variables.emplace(_hash, std::move(temp));
+    variables.insert(std::make_pair(_hash, temp));
+    return _hash;
+  } 
+  std::vector<uint64_t> from_chain(const Chain & chain, const std::unordered_map<klut::signal, glob_phase_t> & glob_phase, const std::unordered_map<mockturtle::klut_network::signal, Primitive<klut>> & klut_prim_params, uint64_t & precalc_ndff)
+  {
+    const glob_phase_t fanin_phase = glob_phase.at( chain.fanin );
+    const uint8_t fanin_type = klut_prim_params.at( chain.fanin ).type;
+
+    const glob_phase_t fanout_phase = glob_phase.at( chain.fanout );
+    const uint8_t fanout_type = klut_prim_params.at( chain.fanout ).type;
+
+    // check if the chain is straight - #DFF is just floor(delta-phase)
+    if (fanout_type != AA_GATE && fanin_type != AA_GATE)
+    {
+      if (fanout_phase == fanin_phase)
+      {
+        // special case when an AS gate feeds directly into SA gate
+        assert(fanin_type == AS_GATE && fanout_type == SA_GATE);
+        // do nothing, no additional DFFs needed
+      }
+      else
+      {
+        // straight chain, just floor the difference!
+        precalc_ndff += (glob_phase.at( chain.fanout ) - glob_phase.at( chain.fanin ))/3 + (fanout_type == SA_GATE); //extra DFF before SA gate
+      }
+      return {};
+    }
+    // create the earliest DFF
+    glob_phase_t earliest_phase = fanin_phase + (fanin_type != AA_GATE);
+    glob_phase_t latest_phase = fanout_phase - (fanout_type == AS_GATE);
+    std::vector<uint64_t> out_hashes;
+    uint64_t last_hash = add(chain.fanin, chain.fanout, earliest_phase);
+    out_hashes.push_back(last_hash);
+    for (glob_phase_t phase = fanin_phase+1; phase <= latest_phase; ++phase)
+    {
+      last_hash = add(chain.fanin, chain.fanout, phase, {last_hash});
+      out_hashes.push_back(last_hash);
+    }
+    return out_hashes;
+  }
+  std::vector<uint64_t> preds_at_phase(uint64_t hash, glob_phase_t phase)
+  {
+    std::vector<uint64_t> out;
+    preds_at_phase(hash, phase, out);
+    return out;
+  }
+
+  void preds_at_phase(uint64_t hash, glob_phase_t phase, std::vector<uint64_t> & out)
+  {
+    DFF_var & dff = variables.at( hash );
+    if (dff.phase < phase)
+    {
+      return;
+    }
+    for (const uint64_t & phash: dff.parent_hashes)
+    {
+      const DFF_var & p = variables.at( phash );
+      if (p.phase == phase)
+      {
+        out.push_back(p.hash);
+        preds_at_phase(p.hash, phase, out);
+      }
+    }
+  }
+  std::string str(uint64_t hash, bool negated = false)
+  {
+    DFF_var & dff = variables.at(hash);
+    if (negated)
+    {
+      return fmt::format( "var_{}_{}_{}.Not()", dff.fanin, dff.fanout, dff.phase );
+    }
+    return fmt::format( "var_{}_{}_{}", dff.fanin, dff.fanout, dff.phase );
+  }
+};
+
+std::pair<DFF_registry, uint64_t> generate_dff_vars(const klut & ntk, const Chain_REGISTRY & REG, const Path & path, const std::unordered_map<klut::signal, glob_phase_t> & glob_phase, const std::unordered_map<mockturtle::klut_network::signal, Primitive<klut>> & klut_prim_params)
+{
+  std::unordered_map<klut::signal, std::vector<uint64_t>> node2chains;
+  for (const auto & [hash, chain] : REG.reg)
+  {
+    node2chains[chain.fanout].push_back(hash);
+  }
+  
+  DFF_registry DFF_REG;
+
+  uint64_t precalc_ndff = 0; //precalculated number of DFFs for trivial cases
+
+  //map from fanin 
+  std::unordered_map<klut::signal, std::unordered_set<uint64_t>> earliest_dffs; 
+  std::unordered_map<klut::signal, std::unordered_set<uint64_t>> latest_dffs;
+  std::vector<uint64_t> stack;
+  std::unordered_set<uint64_t> seen;
+  for (const klut::signal & fanout : path.targets)
+  {
+    for (const uint64_t chain_hash : node2chains[ fanout ]) //changed to brackets
+    {
+      stack.push_back(chain_hash);
+    }
+  }
+  while (!stack.empty())
+  {
+    uint64_t chain_hash = stack.back();
+    stack.pop_back();
+    seen.emplace(chain_hash);
+
+    const Chain & chain = REG.at( chain_hash );
+    //create local dffs
+    fmt::print("[generate_dff_vars]: Adding hashes from chain ");
+    chain.print();
+    fmt::print("[generate_dff_vars]: Old DFF_REG.size = {}\n", DFF_REG.variables.size());
+    std::vector<uint64_t> new_hashes = DFF_REG.from_chain(chain, glob_phase, klut_prim_params, precalc_ndff);
+    fmt::print("[generate_dff_vars]: Added {} new hashes\n", new_hashes.size());
+    fmt::print("[generate_dff_vars]: NEW DFF_REG.size = {}\n", DFF_REG.variables.size());
+    if (new_hashes.empty()) 
+    {
+      continue;
+    }
+    earliest_dffs[chain.fanin].insert( new_hashes.front() );
+    latest_dffs[chain.fanout].insert( new_hashes.back() );
+    for (const uint64_t parent_chain_hash : node2chains[chain.fanin])
+    {
+      // add the new chain to stack for further processing 
+      if (seen.count(parent_chain_hash) == 0)
+      {
+        stack.push_back(parent_chain_hash);
+      }
+    }
+  }
+
+  for (const klut::signal & mid : path.internals)
+  {
+    for ( const uint64_t & hash_after_mid : earliest_dffs[ mid ] )
+    {
+      DFF_var & dff_after_mid = DFF_REG.at( hash_after_mid );
+      for (const uint64_t & hash_before_mid : latest_dffs[ mid ] )
+      {
+        // DFF_var & dff_before_mid = DFF_REG.at( hash_before_mid );
+        dff_after_mid.parent_hashes.push_back( hash_before_mid );
+      }
+    }
+  }
+  for (const auto & [hash, dff]: DFF_REG.variables)
+  {
+    if (dff.parent_hashes.empty())
+    {
+      auto it = std::find(path.sources.begin(), path.sources.end(), dff.fanin);
+      assert(it != path.sources.end());
+    }
+  }
+
+  return std::make_pair(DFF_REG, precalc_ndff);
+}
+
+std::vector<std::vector<uint64_t>> worm_snake_2(DFF_registry & DFF_REG, const std::unordered_map<klut::signal, glob_phase_t> & glob_phase, const Path & path, const uint8_t n_phases)
+{
+  fmt::print("Starting extraction of worms \n");
+  std::vector<std::vector<uint64_t>> worms;
+  std::vector<std::vector<uint64_t>> stack;
+  std::vector<std::vector<uint64_t>> seen;
+
+  // Add variables near the targets
+  for (const auto & [hash, dff]: DFF_REG.variables)
+  {
+    auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
+    if (it != path.targets.end() && (dff.phase == glob_phase.at( dff.fanout )))
+    {
+      stack.push_back( { { hash } } );
+    }
+  }
 
 }
 
+
+std::vector<std::vector<uint64_t>> worm_snake(DFF_registry & DFF_REG, const std::unordered_map<klut::signal, glob_phase_t> & glob_phase, const Path & path, const uint8_t n_phases, const std::string cfg_name)
+{
+  fmt::print("[{}]: Starting extraction of worms \n", cfg_name);
+  std::vector<std::vector<uint64_t>> worms;
+  std::vector<std::vector<uint64_t>> stack;
+  std::vector<uint64_t> pi_dffs;
+  std::vector<std::vector<uint64_t>> seen;
+  for (const auto & [hash, dff]: DFF_REG.variables)
+  {
+    auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
+    if (it != path.targets.end() && (dff.phase == glob_phase.at( dff.fanout )))
+    {
+      stack.push_back( { { hash } } );
+    }
+  }
+  fmt::print("Stack size is {} \n", stack.size());
+  while (!stack.empty())
+  {
+    std::vector<uint64_t> worm = stack.back();
+    stack.pop_back();
+    seen.push_back(worm);
+
+    // DFF_var & worm_tail = DFF_REG.at( worm.front() );
+    DFF_var & worm_head = DFF_REG.at( worm.back() );
+    glob_phase_t old_head_phase = worm_head.phase;
+    DFF_var & worm_tail = DFF_REG.at( worm.front() );
+    glob_phase_t old_tail_phase = worm_tail.phase;
+    bool is_full_diff = ((old_tail_phase - old_head_phase) == (n_phases - 1));
+
+    fmt::print("\tCurrent worm size {}, between phases {} and {} \n", worm.size(), DFF_REG.str(worm.front()), DFF_REG.str(worm.back()));
+
+    bool the_worm_is_good = worm_head.parent_hashes.empty() && is_full_diff;
+
+    for (const uint64_t phash : worm_head.parent_hashes)
+    {
+      DFF_var & new_head = DFF_REG.at( phash );
+
+      glob_phase_t head_phase = new_head.phase;
+      glob_phase_t tail_phase = head_phase + n_phases - 1;
+      
+      the_worm_is_good |= (head_phase < old_head_phase && is_full_diff );
+
+      std::vector<uint64_t> new_worm;
+      for (auto it = worm.begin(); it < worm.end(); ++it)
+      {
+        DFF_var & dff = DFF_REG.at( *it );
+        if (dff.phase <= tail_phase)
+        {
+          new_worm.insert(new_worm.end(), it, worm.end());
+          fmt::print("\tAdding new worm with size {}, between phases {} and {} \n", worm.size(), dff.phase, head_phase);
+          break;
+        }
+      }
+      new_worm.push_back( phash );
+      
+      auto it = std::find(seen.begin(), seen.end(), new_worm);
+      if (it == seen.end())
+      {
+        stack.push_back( new_worm );
+      }
+    }
+    if (the_worm_is_good)
+    {
+      fmt::print("\tAdding the worm with size {}, between phases {} and {} to the output vector\n", worm.size(), old_tail_phase, old_head_phase);
+      worms.push_back(worm);
+    }
+  }
+  if (worms.size() > 0)
+  {
+    std::ofstream spec_file (cfg_name);
+
+    std::vector<std::vector<uint64_t>> single_phase_conflicts;
+    for (const auto & worm : worms)
+    {
+      std::map<glob_phase_t, std::vector<uint64_t>> buckets;
+      for (auto it = worm.begin(); it < worm.end(); ++it)
+      {
+        DFF_var & dff = DFF_REG.at(*it);
+        buckets[dff.phase].push_back(*it);
+      }
+
+      std::vector<std::string> vars_bucket;
+      for (const auto & [phase, bucket] : buckets)
+      {
+        std::vector<std::string> vars;
+        for (uint64_t hash : bucket)
+        {
+          vars.push_back(DFF_REG.str(hash));
+        }
+        vars_bucket.push_back(fmt::format(vars.size()>1?"({})":"{}", fmt::join(vars, "+")));
+
+        auto it = std::find(single_phase_conflicts.begin(), single_phase_conflicts.end(), bucket);
+        if (it == single_phase_conflicts.end() && vars.size() > 1)
+        {
+          single_phase_conflicts.push_back(bucket);
+          fmt::print("New single phase conflict : {}≤1\n", fmt::join(vars, "+"));
+          spec_file << fmt::format("PHASE,{}\n", fmt::join(vars, ","));
+        }
+      }
+      std::reverse(vars_bucket.begin(), vars_bucket.end());
+      fmt::print("New buffer requirement : ~({})\n", fmt::join(vars_bucket, "|"));
+      spec_file << fmt::format("BUFFER,{}\n", fmt::join(vars_bucket, ","));
+    }
+  }
+
+  return worms;
+}
 
 void write_klut_specs(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params, const std::string & filename)
 {
@@ -1271,6 +1513,49 @@ std::unordered_map<std::string, int> readCSV(const std::string& filename)
     }
     infile.close(); // Close the input file stream
     return map;
+}
+
+int cpsat_ortools(const std::string & cfg_name) 
+{
+  std::string command = fmt::format("/Users/brainkz/anaconda3/bin/python /Users/brainkz/Documents/GitHub/ortools_python/config_solver.py {}", cfg_name);
+  std::string pattern = "Objective value: (\\d+)";
+
+  // Run the command and capture its output
+  FILE* pipe = popen(command.c_str(), "r");
+  if (!pipe) 
+  {
+    std::cerr << "Error running the command." << std::endl;
+    return -1;
+  }
+
+  char buffer[128];
+  std::string output;
+  while (fgets(buffer, sizeof(buffer), pipe) != nullptr) 
+  {
+    output += buffer;
+  }
+  fmt::print(output);
+
+  int result = pclose(pipe);
+  if (result == -1) 
+  {
+    std::cerr << "Error closing the command pipe." << std::endl;
+    return -1;
+  }
+
+  // Use regex to find the objective value in the output
+  std::regex regex(pattern);
+  std::smatch match;
+  if (std::regex_search(output, match, regex) && match.size() > 1) 
+  {
+    std::string value_str = match[1];
+    return std::stoi(value_str);
+  } 
+  else 
+  {
+    std::cerr << "Objective value not found in the output." << std::endl;
+    return -1;
+  }
 }
 
 
@@ -1330,10 +1615,18 @@ int main()  //int argc, char* argv[]
   // tps.verbose = true;
   tech_library<4, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
 
-  auto benchmarks1 = epfl_benchmarks(); //0xFFFFFFFFFFFFFFFF ^ experiments::div
-  //   auto benchmarks1 = epfl_benchmarks( experiments::epfl & ~experiments::div & ~experiments::hyp & ~experiments::log2 & ~experiments::sqrt );
-  auto benchmarks2 = iscas_benchmarks();
+  // auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::sin | experiments::cavlc | experiments::int2float | experiments::priority | experiments::i2c | experiments::voter | experiments::dec );
+  // experiments::adder | experiments::sin | experiments::cavlc | | experiments::dec | experiments::i2c | experiments::adder | experiments::int2float | | experiments::voter | experiments::c432 | experiments::c499 | | experiments::priority
+  auto benchmarks1 = epfl_benchmarks(  experiments::dec  );
+  // //   auto benchmarks1 = epfl_benchmarks( experiments::epfl & ~experiments::div & ~experiments::hyp & ~experiments::log2 & ~experiments::sqrt );
+  // experiments::c880 | experiments::c1908 | experiments::c3540 |
+  auto benchmarks2 = iscas_benchmarks(   experiments::c5315 | experiments::c7552 );
+
   benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+
+
+
+  fmt::print("{}\n", fmt::join(benchmarks1, "\n"));
 
   // TODO :  Debug experiments::c5315 with GATE 0x9696_112_0 not showing up in GNM . 
   // TODO :  Perhaps genlib_hierarchical.cpp is broken, need to debug
@@ -1346,27 +1639,20 @@ int main()  //int argc, char* argv[]
 
   for ( auto const& benchmark : benchmarks1 )
   {
-    if (benchmark == "hyp")
-    {
-      break;
-    }
-
-    if (benchmark != "div")
-    {
-      continue;
-    }
     fmt::print( "[i] processing {}\n", benchmark );
 
     aig aig_original;
     if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig_original ) ) != lorina::return_code::success )
     {
+      fmt::print("Failed to read {}\n", benchmark);
       continue;
     }
     fmt::print("Started mapping of {}\n", benchmark);
-    auto [res_no_pb, st_no_pb] = map_wo_pb(aig_original, tech_lib, false, true);
+    // auto [res_no_pb, st_no_pb] = 
+    auto [res_w_pb, st_w_pb, total_ndff_w_pb, total_area_w_pb, cec_w_pb ] = map_with_pb(benchmark, aig_original, tech_lib, nDFF_global, false); //, true
     fmt::print("Finished mapping of {}\n", benchmark);
 
-    auto [klut_decomposed, klut_prim_params] = decompose_to_klut(res_no_pb, GNM_global, entries);
+    auto [klut_decomposed, klut_prim_params] = decompose_to_klut(res_w_pb, GNM_global, entries);
     fmt::print("Decomposition complete\n");
 
     std::unordered_map<klut::signal, glob_phase_t> glob_phase = greedy_assemble(klut_decomposed, klut_prim_params, n_phases, true);
@@ -1435,19 +1721,41 @@ int main()  //int argc, char* argv[]
       // throw "Splitters not inserted\n";
     }
 
-    // std::vector<Path> paths = extract_paths(klut_decomposed, klut_prim_params);
-    // for (const Path & path : paths)
-    // {
-    //   path.print();
-    //   Chain_REGISTRY path_reg = fill_dffs( klut_decomposed, path, glob_phase, klut_prim_params, n_phases );
-    // }
     std::vector<Path> paths = extract_paths(spl_klut, spl_params);
+
+    uint64_t total_num_dff = 0u;
+    auto file_ctr = 0u;
     for (const Path & path : paths)
     {
       path.print();
-      Chain_REGISTRY path_reg = fill_dffs( spl_klut, path, spl_phase, spl_params, n_phases );
+      Chain_REGISTRY path_reg = fill_dffs( spl_klut, path, spl_phase, spl_params );
+
+      auto [DFF_REG, precalc_ndff] = generate_dff_vars(spl_klut, path_reg, path, spl_phase, spl_params);
+      fmt::print("Precalculated {} DFFs!\n", precalc_ndff);
+
+      std::string cfg_name = fmt::format("/Users/brainkz/Documents/GitHub/ortools_python/{}_cfg_{}.csv", benchmark, file_ctr++);
+
+      std::vector<std::vector<uint64_t>> worms = worm_snake(DFF_REG, spl_phase, path, n_phases, cfg_name);
+      
+      int num_dff = 0u;
+      if (!worms.empty())
+      {
+        num_dff = cpsat_ortools(cfg_name);
+        // std::string command_str = fmt::format("/Users/brainkz/anaconda3/bin/python /Users/brainkz/Documents/GitHub/ortools_python/config_solver.py {}", cfg_name);
+        // const char* command = command_str.c_str();
+
+        // std::string pattern = "Objective value: (\\d+)";
+
+        // num_dff = std::system(command);
+        fmt::print("OR Tools optimized to {} DFF\n", num_dff);
+      }
+
+      total_num_dff += precalc_ndff + num_dff;
     }
+    fmt::print("#DFF for {} is {}\n", benchmark, total_num_dff);
   }
   // TODO : now, count #DFFs in extracted paths. Perhaps, the function can be written within the Path object.
   return 0;
 }
+
+// Adder 18542 vs 24384
