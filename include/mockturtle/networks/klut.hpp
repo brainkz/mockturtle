@@ -319,21 +319,22 @@ public:
 #pragma endregion
 
 #pragma region Create arbitrary functions
-  signal _create_node( std::vector<signal> const& children, uint32_t literal )
+  signal _create_node( std::vector<signal> const& children, uint32_t literal) // , bool force = false, uint32_t h2 = 0u 
   {
     storage::element_type::node_type node;
     std::copy( children.begin(), children.end(), std::back_inserter( node.children ) );
     node.data[1].h1 = literal;
-
+    
+    // node.data[0].h2 = h2;
     const auto it = _storage->hash.find( node );
     if ( it != _storage->hash.end() )
     {
       return it->second;
     }
-
+    
     const auto index = _storage->nodes.size();
     _storage->nodes.push_back( node );
-    _storage->hash[node] = index;
+    // _storage->hash[node] = (node.data[0].h2 << 32) + index;
 
     /* increase ref-count to children */
     for ( auto c : children )
