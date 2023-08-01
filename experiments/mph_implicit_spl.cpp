@@ -38,6 +38,7 @@
 #include <mockturtle/algorithms/node_resynthesis.hpp>
 #include <mockturtle/algorithms/node_resynthesis/mig_npn.hpp>
 #include <mockturtle/algorithms/retiming.hpp>
+#include <mockturtle/algorithms/refactoring.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
@@ -50,6 +51,8 @@
 #include <mockturtle/views/depth_view.hpp>
 #include <mockturtle/views/rsfq_view.hpp>
 #include <mockturtle/algorithms/functional_reduction.hpp>
+
+// mockturtle/algorithms/mig_algebraic_rewriting.hpp
 
 #include <mockturtle/io/auxiliary_genlib.hpp>
 
@@ -663,7 +666,7 @@ void splitter_insertion( std::unordered_map<node_t, NtkNode> & NR , bool verbose
     {
       phases.push_back(NR.at( fo_id ).phase);
     }
-    glob_phase_t phase = std::min(phases);
+    glob_phase_t phase = *(std::min_element(phases.begin(), phases.end()));
 
     // Set splitter parameters
     if (verbose) fmt::print("\tAssigning phase {}\n", phase);
@@ -1517,6 +1520,7 @@ int main()  //int argc, char* argv[]
 
   // auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::sin | experiments::cavlc | experiments::int2float | experiments::priority | experiments::i2c | experiments::voter | experiments::dec );
   // experiments::adder | experiments::sin | experiments::cavlc | | experiments::dec | experiments::i2c | experiments::adder | experiments::int2float | | experiments::voter | experiments::c432 | experiments::c499 | | |experiments::dec |
+  // auto benchmarks1 = epfl_benchmarks(   experiments::sin | experiments::priority | experiments::voter | experiments::int2float | experiments::i2c  );
   auto benchmarks1 = epfl_benchmarks(   experiments::sin | experiments::priority | experiments::voter | experiments::int2float | experiments::i2c  );
   // //   auto benchmarks1 = epfl_benchmarks( experiments::epfl & ~experiments::div & ~experiments::hyp & ~experiments::log2 & ~experiments::sqrt );
   // experiments::c880 | experiments::c1908 | experiments::c3540 |
@@ -1542,15 +1546,19 @@ int main()  //int argc, char* argv[]
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
-    aig aig_original;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig_original ) ) != lorina::return_code::success )
+    xmg ntk_original;
+    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( ntk_original ) ) != lorina::return_code::success )
     {
       fmt::print("Failed to read {}\n", benchmark);
       continue;
     }
 
+    // refactoring_params resyn;
+    // refactoring( ntk_original, resyn );
+    // ntk_original = cleanup_dangling( ntk_original );
+
     fmt::print("Started mapping of {}\n", benchmark);
-    auto [res_w_pb, st_w_pb] = map_wo_pb(aig_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
+    auto [res_w_pb, st_w_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
     fmt::print("Finished mapping of {}\n", benchmark);
 
     auto [klut_decomposed, klut_prim_params] = decompose_to_klut(res_w_pb, GNM_global, entries);

@@ -138,7 +138,9 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, int, int, bool
   retime_res.foreach_node( [&]( auto const& n ) {
     if ( !retime_res.has_binding( n ) )
       return;
-    num_int_dffs += nDFF_global[retime_res.get_binding( n ).name];
+    auto ndff = nDFF_global[retime_res.get_binding( n ).name];
+    fmt::print("Adding {} internal DFFs from {}\n", ndff,  retime_res.get_binding( n ).name);
+    num_int_dffs += ndff;
   } );
 
   /* RSFQ splitter insertion */
@@ -192,6 +194,7 @@ std::unordered_map<std::string, int> readCSV(const std::string& filename)
     std::string line;
     std::getline(infile, line);                 // Ignore the header row
 
+    fmt::print("READING CSV : {}\n", filename);
     // Read each subsequent row and add the key-value pair to the unordered_map
     while (std::getline(infile, line)) 
     {
@@ -201,6 +204,7 @@ std::unordered_map<std::string, int> readCSV(const std::string& filename)
         std::getline(ss, key, ',');
         ss >> value;
         map[key] = value;
+        fmt::print("READ {} : {}\n", key, value);
     }
     infile.close(); // Close the input file stream
     return map;
@@ -219,7 +223,8 @@ Some of them are necessary not only for path balancing but also
 for synchronizing the pulses for AND gates. I include them 
 in total DFF count */
 // const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_05_08_CONNECT.csv" } ; 
-const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
+// const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/nDFF_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
+const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/NDFF_PARSED_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
 
 int main()
 {
@@ -257,11 +262,11 @@ int main()
   /* library to map to technology */
   std::vector<gate> gates;
   std::ifstream inputFile( DATABASE_PATH );
-  // std::unordered_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
-  std::unordered_map<std::string, int> nDFF_global;
+  std::unordered_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
+  // std::unordered_map<std::string, int> nDFF_global;
 
   // Prints # DFF for each cell in the library
-  /*
+  // /*
     int ctr = 0;
     for (auto & [key, value]: nDFF_global)
     {
@@ -271,7 +276,7 @@ int main()
         std::cout << std::endl;
       }
     }
-  */
+  // */
   
   if ( lorina::read_genlib( inputFile, genlib_reader( gates ) ) != lorina::return_code::success )
   {
