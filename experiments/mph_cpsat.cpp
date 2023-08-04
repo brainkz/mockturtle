@@ -27,10 +27,13 @@
 #include <vector>
 #include <set>
 #include <cstdio>
+#include <filesystem>
 
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
+#include <lorina/blif.hpp>
 #include <lorina/genlib.hpp>
+#include <lorina/bench.hpp>
 #include <mockturtle/algorithms/rsfq/rsfq_network_conversion.hpp>
 #include <mockturtle/algorithms/rsfq/rsfq_path_balancing.hpp>
 #include <mockturtle/algorithms/mapper.hpp>
@@ -40,7 +43,9 @@
 #include <mockturtle/algorithms/retiming.hpp>
 // #include <mockturtle/algorithms/refactoring.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
+#include <mockturtle/io/blif_reader.hpp>
 #include <mockturtle/io/genlib_reader.hpp>
+#include <mockturtle/io/bench_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/generators/arithmetic.hpp>
 #include <mockturtle/networks/klut.hpp>
@@ -51,6 +56,8 @@
 #include <mockturtle/views/depth_view.hpp>
 #include <mockturtle/views/rsfq_view.hpp>
 #include <mockturtle/algorithms/functional_reduction.hpp>
+#include <mockturtle/algorithms/klut_to_graph.hpp>
+
 
 // mockturtle/algorithms/mig_algebraic_rewriting.hpp
 
@@ -84,7 +91,10 @@ bool haveCommonElements(const std::set<elem>& set1, const std::set<elem>& set2)
 // constexpr std::array<int,12> COSTS_CONNECT = {6, 10, 7, 7, 7, 11, 999, 999, 999, 7, 3, 0};
 
 // Removed input buffers in AND/OR gates
-constexpr std::array<int,12> COSTS_CONNECT = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
+// constexpr std::array<int,12> COSTS_CONNECT = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
+
+// Sunmagnetics Technology Library
+constexpr std::array<int,12> COSTS_MAP = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0};
 
 template <typename Ntk>
 std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats> map_wo_pb 
@@ -178,8 +188,8 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
   // Internal DFF area is already counted in the library
   // External DFF area is already counted after retiming
   double total_ndff = num_int_dffs + num_ext_dffs;
-  double total_area = st.area + COSTS_CONNECT[fSPL] * num_splitters;
-  //  +  COSTS_CONNECT[fDFF] * num_ext_dffs;
+  double total_area = st.area + COSTS_MAP[fSPL] * num_splitters;
+  //  +  COSTS_MAP[fDFF] * num_ext_dffs;
   fmt::print("\t{} : Int: {}, Ext: {}, ratio: {}\n", benchmark, num_int_dffs, num_ext_dffs, (float)num_int_dffs / (num_int_dffs + num_ext_dffs) );
   return std::make_tuple( res, st, total_ndff, total_area, cec );
 }
@@ -338,8 +348,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
         klut::signal tgt_sig = tgt.create_not( parent_tgt );
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x5555u, AS_GATE, { parent_tgt }));
-        area += COSTS_CONNECT[fNOT];
-        fmt::print("ADDED NOT = {}\n", area);
+        area += COSTS_MAP[fNOT];
+        if (verbose) fmt::print("ADDED NOT = {}\n", area);
       }
       else if (node.last_func == fAND)
       {
@@ -349,8 +359,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
         // fmt::print("Created node n{0} = AND({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x8888u, SA_GATE, { parent_tgt_1, parent_tgt_2 }));
-        area += COSTS_CONNECT[fAND];
-        fmt::print("ADDED AND = {}\n", area);
+        area += COSTS_MAP[fAND];
+        if (verbose) fmt::print("ADDED AND = {}\n", area);
       }
       else if (node.last_func == fOR) 
       {
@@ -361,8 +371,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0xEEEEu, SA_GATE, { parent_tgt_1, parent_tgt_2 }));
         OR_replacement_candidates.emplace(tgt_sig);
-        area += COSTS_CONNECT[fOR];
-        fmt::print("ADDED OR  = {}\n", area);
+        area += COSTS_MAP[fOR];
+        if (verbose) fmt::print("ADDED OR  = {}\n", area);
       }
       else if (node.last_func == fCB)
       {
@@ -372,8 +382,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
         // fmt::print("Created node n{0} = CB({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0xEEEEu, AA_GATE, { parent_tgt_1, parent_tgt_2 }));
-        area += COSTS_CONNECT[fCB];
-        fmt::print("ADDED CB  = {}\n", area);
+        area += COSTS_MAP[fCB];
+        if (verbose) fmt::print("ADDED CB  = {}\n", area);
       }
       else if (node.last_func == fXOR)
       {
@@ -384,8 +394,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x6666u, AS_GATE, { parent_tgt_1, parent_tgt_2 }));
         XOR_gates.push_back(tgt_sig);
-        area += COSTS_CONNECT[fXOR];
-        fmt::print("ADDED XOR = {}\n", area);
+        area += COSTS_MAP[fXOR];
+        if (verbose) fmt::print("ADDED XOR = {}\n", area);
       }
       // else if 
       else
@@ -420,9 +430,9 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
   {
     Primitive<klut> & prim = tgt_sig_params.at(sig);
     prim.type = AA_GATE;
-    area += COSTS_CONNECT[fCB];
-    area -= COSTS_CONNECT[fOR];
-    fmt::print("REPLACED OR WITH CB = {}\n", area);
+    area += COSTS_MAP[fCB];
+    area -= COSTS_MAP[fOR];
+    if (verbose) fmt::print("REPLACED OR WITH CB = {}\n", area);
   }
 
   src.foreach_po([&](auto const & src_po)
@@ -993,7 +1003,7 @@ std::vector<Path> async_datapaths(const std::unordered_map<node_t, NtkNode> & NR
     return NR;
   }
 // #else
-  std::unordered_map<klut::signal, glob_phase_t> greedy_assemble(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params, const uint8_t n_phases, const bool verbose = false)
+  std::unordered_map<klut::signal, glob_phase_t> greedy_assemble(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params,  const bool verbose = false) //const uint8_t n_phases,
   {
     mockturtle::topo_view<klut> ntk_topo ( ntk );
     std::unordered_map<klut::signal, glob_phase_t> glob_phase;
@@ -1042,14 +1052,16 @@ std::vector<Path> async_datapaths(const std::unordered_map<node_t, NtkNode> & NR
           if (verbose)
           {
             glob_phase_t gp = glob_phase.at( parent );
-            fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
+            fmt::print("\t\tfanin {} ɸ={}\n", parent, gp);
+            // fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
           }
 
         });
         glob_phase[node] = phase;
         if (verbose)
         {
-          fmt::print("\tAA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
+          fmt::print("\tAA GATE {} placed at ɸ={}\n", node, phase);
+          // fmt::print("\tAA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
         }
       }
       else if ( node_params.type == SA_GATE )
@@ -1077,19 +1089,22 @@ std::vector<Path> async_datapaths(const std::unordered_map<node_t, NtkNode> & NR
           {
             glob_phase_t gp = glob_phase.at( parent );
             std::string gt;
-            fmt::print("\t\tfanin: {4} {0} ɸ={1} [S={2}, φ={3}], fanout={5} \n", 
-            parent, 
-            gp, 
-            gp/n_phases, 
-            gp%n_phases, 
-            ntk_topo.is_pi(parent) ? "PI" : GATE_TYPE.at( sig_params.at(parent).type ),
-            ntk_topo.fanout_size(parent));
+            // fmt::print("\t\tfanin: {4} {0} ɸ={1} [S={2}, φ={3}], fanout={5} \n",
+            fmt::print("\t\tfanin: {2} {0} ɸ={1}, fanout={3} \n", 
+              parent, 
+              gp, 
+              // gp/n_phases, 
+              // gp%n_phases, 
+              ntk_topo.is_pi(parent) ? "PI" : GATE_TYPE.at( sig_params.at(parent).type ),
+              ntk_topo.fanout_size(parent)
+            );
           }
         });
         glob_phase[node] = phase;
         if (verbose)
         {
-          fmt::print("\tSA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
+          // fmt::print("\tSA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
+          fmt::print("\tSA GATE {} placed at ɸ={}\n", node, phase);
         }
       }
       else if ( node_params.type == AS_GATE )
@@ -1110,14 +1125,16 @@ std::vector<Path> async_datapaths(const std::unordered_map<node_t, NtkNode> & NR
           if (verbose)
           {
             glob_phase_t gp = glob_phase.at( parent );
-            fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
+            // fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
+            fmt::print("\t\tfanin {} ɸ={}\n", parent, gp);
           }
         });
         phase++;
         glob_phase[node] = phase;
         if (verbose)
         {
-          fmt::print("\tAS GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
+          fmt::print("\tAS GATE {} placed at ɸ={}\n", node, phase);
+          // fmt::print("\tAS GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
         }
       }
       else 
@@ -1814,8 +1831,9 @@ void write_klut_specs(const klut & ntk, const std::unordered_map<klut::signal, P
 
 std::tuple<int, std::unordered_map<unsigned int, unsigned int>, std::string>  cpsat_macro_opt(const std::string & cfg_name, uint8_t n_phases) 
 {
-  // std::string command = fmt::format("/Users/brainkz/anaconda3/bin/python /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp.py {} {}", n_phases, cfg_name);
-  std::string command = fmt::format("/Users/brainkz/anaconda3/bin/ipython --pdb --no-banner /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp.py {} {}", n_phases, cfg_name);
+  std::string command = fmt::format("/Users/brainkz/anaconda3/bin/python /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp_2.py {} {}", n_phases, cfg_name);
+  // std::string command = fmt::format("/Users/brainkz/anaconda3/bin/ipython --pdb --no-banner /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp.py {} {}", n_phases, cfg_name);
+  // std::string command = fmt::format("/Users/brainkz/anaconda3/bin/ipython -i --pdb --no-banner /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp.py {} {}", n_phases, cfg_name);
   
   std::string pattern = "Objective value: (\\d+)";
 
@@ -1856,7 +1874,7 @@ std::tuple<int, std::unordered_map<unsigned int, unsigned int>, std::string>  cp
     {
       if (line.find("OPTIMAL") || line.find("FEASIBLE"))
       {
-        solve_status = "OPTIMAL";
+        solve_status = "SUCCESS";
         break;
       }
       else
@@ -1991,24 +2009,23 @@ in total DFF count */
 const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
 
 
+
 int main(int argc, char* argv[])  //
 {
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, 
-            double, double, double, 
-            double, double, double, 
-            double, double, double, 
-            double, double, double> exp(
-      "mapper", "benchmark", 
-      "#DFF (AIG)", "#DFF (XMG0)", "#DFF (XMG_FR)", 
-      "area (AIG)", "area (XMG0)", "area (XMG_FR)", 
-      "delay (AIG)", "delay (XMG0)", "delay (XMG_FR)", 
-      "time (AIG)", "time (XMG0)", "time (XMG_FR)" 
-      );
+  experiment<std::string, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay");
 
-  uint8_t N_PHASES = std::stoi(argv[1]);
+  // uint8_t MIN_N_PHASES = std::stoi(argv[1]);
+  // uint8_t MAX_N_PHASES = std::stoi(argv[2]);
+
+  std::vector<uint8_t> PHASES;
+  for (auto i = 1; i < argc; ++i)
+  {
+    PHASES.push_back(std::stoi(argv[i]));
+  }
+  fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
 
   fmt::print( "[i] processing technology library\n" );
 
@@ -2023,7 +2040,6 @@ int main(int argc, char* argv[])  //
   // std::unordered_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
   std::unordered_map<std::string, int> nDFF_global;
 
-
   // const std::vector<std::vector<UI>> sets_of_levels { { {0,1,2,3} } };
   const std::string LibEntry_file = "/Users/brainkz/Documents/GitHub/mockturtle/build/LibEntry_2023_06_27_CONNECT_CONSERVATIVE.csv";
 
@@ -2032,21 +2048,28 @@ int main(int argc, char* argv[])  //
   // tps.verbose = true;
   tech_library<4, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
 
-  // auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::sin | experiments::cavlc | experiments::int2float | experiments::priority | experiments::i2c | experiments::voter | experiments::dec );
-  // experiments::adder | experiments::sin | experiments::cavlc | | experiments::dec | experiments::i2c | experiments::adder | experiments::int2float | | experiments::voter | experiments::c432 | experiments::c499 | | |experiments::dec |
-  auto benchmarks1 = epfl_benchmarks(   experiments::sin | experiments::cavlc | experiments::dec | experiments::priority | experiments::voter | experiments::int2float | experiments::i2c );
-
-  // auto benchmarks1 = epfl_benchmarks( experiments::voter );
-  // //   auto benchmarks1 = epfl_benchmarks( experiments::epfl & ~experiments::div & ~experiments::hyp & ~experiments::log2 & ~experiments::sqrt );
-  // experiments::c880 | experiments::c1908 | experiments::c3540 |
-  auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c499 | experiments::c880 | experiments::c1908 | experiments::c3540 | experiments::c5315 | experiments::c7552 );
-
+  auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
+  auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
   benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
-  fmt::print("{}\n", fmt::join(benchmarks1, "\n"));
+  const std::string blif_folder = "/Users/brainkz/Downloads/ReleaseBench/K6/opt/blif/";
+  const std::vector<std::string> BEEREL_BENCHMARKS 
+  {
+    "simple_spi-gates",
+    "des_area-gates",
+    "pci_bridge32-gates",
+    "spi-gates",
+    "mem_ctrl-gates"
+  };
+  // benchmarks1.insert(benchmarks1.end(), BEEREL_BENCHMARKS.begin(), BEEREL_BENCHMARKS.end());
 
-  // TODO :  Debug experiments::c5315 with GATE 0x9696_112_0 not showing up in GNM . 
-  // TODO :  Perhaps genlib_hierarchical.cpp is broken, need to debug
+  const std::string iscas89_folder = "/Users/brainkz/Downloads/IWLS_benchmarks_2005_V_1.0 2/iscas/blif/";
+  const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
+  benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
+
+  std::reverse(benchmarks1.begin(), benchmarks1.end());
+
+  fmt::print("Benchmarks:\n{}\n", fmt::join(benchmarks1, "\n\t"));
   
   const std::string nodemap_prefix = "/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_20230427/x3";
   const std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,2,2}, {0,1,2,3} } }; //  {0,1,1,3},
@@ -2059,11 +2082,42 @@ int main(int argc, char* argv[])  //
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
-    xmg ntk_original;
-    if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( ntk_original ) ) != lorina::return_code::success )
+    mig ntk_original;
+    if (benchmark.find("-gates") != std::string::npos) 
     {
-      fmt::print("Failed to read {}\n", benchmark);
-      continue;
+      fmt::print("USING THE BLIF READER\n");
+
+      std::string abc_command = fmt::format("abc -c \"read_blif {}{}.blif\" -c strash -c \"write_aiger temp.aig\" ", blif_folder, benchmark);
+
+      std::system(abc_command.c_str());
+
+      klut temp_klut;
+      if ( lorina::read_aiger( "temp.aig", aiger_reader( ntk_original ) ) != lorina::return_code::success )
+      {
+        fmt::print("Failed to read {}\n", benchmark);
+        continue;
+      }
+    }
+    else if (benchmark.find(".aig") != std::string::npos) // ISCAS89 benchmark
+    {
+      fmt::print("USING THE BENCH READER\n");
+      std::string path = fmt::format("{}{}", iscas89_folder, benchmark);
+      if ( lorina::read_aiger( path, aiger_reader( ntk_original ) ) != lorina::return_code::success )
+      {
+        fmt::print("Failed to read {}\n", benchmark);
+        continue;
+      }
+      // convert_klut_to_graph<mig>(ntk_original, temp_klut);
+    }
+    else // regular benchmark
+    {
+      fmt::print("USING THE AIGER READER\n");
+      if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( ntk_original ) ) != lorina::return_code::success )
+      {
+        fmt::print("Failed to read {}\n", benchmark);
+        continue;
+      }
+      // convert_klut_to_graph<mig>(ntk_original, temp_klut);
     }
 
     // refactoring_params resyn;
@@ -2079,84 +2133,105 @@ int main(int argc, char* argv[])  //
 
     // std::vector<AsyncPath> async_paths = extract_async_paths(klut_decomposed, klut_prim_params);
 
-    std::unordered_map<klut::signal, glob_phase_t> glob_phase = greedy_assemble(klut_decomposed, klut_prim_params, N_PHASES, true);
-
+    std::unordered_map<klut::signal, glob_phase_t> glob_phase = greedy_assemble(klut_decomposed, klut_prim_params, false);
 
     std::string ilp_filename = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/{}.csv", benchmark);
     write_klut_specs(klut_decomposed, klut_prim_params, glob_phase, ilp_filename);
 
-    // auto [obj_val, assignment, status] = cpsat_macro_opt(ilp_filename, N_PHASES);
-    
-    // if (status != "OPTIMAL") // (true) // 
-    // {
-    //   assignment.erase(assignment.begin(), assignment.end());
-    // }
-    std::unordered_map<unsigned int, unsigned int> assignment { };
-    
-    std::unordered_map<node_t, NtkNode> NR = greedy_ntknode_assemble(klut_decomposed, klut_prim_params, N_PHASES, assignment, true);
-
-#if false
-    std::unordered_map<node_t, NtkNode> NR = greedy_assemble(klut_decomposed, klut_prim_params, N_PHASES, true);
-#endif
-
-    splitter_insertion( NR );
-
-    for (auto & [id, ntk_node] : NR)
+    // for (auto n_phases = MIN_N_PHASES; n_phases <= MAX_N_PHASES; ++n_phases)
+    for (const auto n_phases : PHASES)
     {
-      if (ntk_node.is_spl)
+      fmt::print("[i] Mapping with {} phases\n", n_phases);
+      for (auto i = 0; i < 2; ++i)
       {
-        assert(ntk_node.fanouts.size() == 2);
-      }
-      else
-      {
-        assert(ntk_node.fanouts.size() <= 1);
+        std::unordered_map<unsigned int, unsigned int> assignment;
+
+        if (i == 0)
+        {
+          fmt::print("\tCalling OR-Tools\n");
+          auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_filename, n_phases);
+
+          if (status == "SUCCESS") // (true) // 
+          {
+            assignment.insert(std::make_move_iterator(assignment_local.begin()), std::make_move_iterator(assignment_local.end()));
+          }
+          else
+          {
+            fmt::print("[i] CP-SAT PHASE ASSIGNMENT UNSUCCESSFUL\n");
+            continue;
+          }
+        }
+        
+        std::unordered_map<node_t, NtkNode> NR = greedy_ntknode_assemble(klut_decomposed, klut_prim_params, n_phases, assignment, false);
+
+        splitter_insertion( NR );
+
+        for (auto & [id, ntk_node] : NR)
+        {
+          if (ntk_node.is_spl)
+          {
+            assert(ntk_node.fanouts.size() == 2);
+          }
+          else
+          {
+            assert(ntk_node.fanouts.size() <= 1);
+          }
+        }
+        fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
+
+        fmt::print("[i] EXTRACTING PATHS\n");
+        std::vector<Path> paths = extract_paths(NR, false);
+        // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
+
+        auto total_num_dff = 0u;
+        auto file_ctr = 0u;
+        auto path_ctr = 0u;
+        for (const Path & path : paths)
+        {
+          fmt::print("\tAnalyzing the path {} out of {}\r", ++path_ctr, paths.size());
+          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single(path, NR, n_phases);
+          total_num_dff += precalc_ndff;
+          // fmt::print("[i]: Precalculated {} DFFs\n", precalc_ndff);
+
+          std::vector<Snake> snakes = sectional_snake(path, NR, DFF_REG, n_phases);
+
+          // fmt::print("\tCreated {} snakes\n", snakes.size());
+          if (!snakes.empty())
+          {
+            std::string cfg_file = fmt::format("/Users/brainkz/Documents/GitHub/ortools_python/{}_cfgNR_{}.csv", benchmark, file_ctr++);
+            write_snakes(snakes, NR, DFF_REG, required_SA_DFFs, cfg_file, n_phases);
+            auto num_dff = cpsat_ortools(cfg_file);
+            // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
+            total_num_dff += num_dff;
+          }
+        }
+
+        auto phase_it = std::max_element(NR.begin(), NR.end(), [&](const auto & a, const auto & b) {return a.second.phase < b.second.phase;});
+        int64_t max_phase = phase_it->second.phase;
+        
+        uint64_t total_num_spl = 0;
+        for (const auto & [node, node_obj] : NR)
+        {
+          if (!node_obj.fanouts.empty())
+          {
+            total_num_spl += node_obj.fanouts.size() - 1;
+          }
+          if (node_obj.fanouts.empty() && node_obj.phase != max_phase) // node is fanout
+          {
+            total_num_dff += (max_phase - node_obj.phase) / n_phases;
+          }
+        }
+        
+        fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
+        int total_area = raw_area + total_num_dff * COSTS_MAP[fDFF] + total_num_spl * COSTS_MAP[fSPL];
+        fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
+        fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_phase);
+
+        exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_phase - 1) / n_phases + 1 ));
+        exp.save();
+        exp.table();
       }
     }
-    fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
-
-    fmt::print("[i] EXTRACTING PATHS\n");
-    std::vector<Path> paths = extract_paths(NR, true);
-    // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
-
-    auto total_num_dff = 0u;
-    auto file_ctr = 0u;
-    for (const Path & path : paths)
-    {
-      auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single(path, NR, N_PHASES);
-      total_num_dff += precalc_ndff;
-      fmt::print("[i]: Precalculated {} DFFs\n", precalc_ndff);
-
-      std::vector<Snake> snakes = sectional_snake(path, NR, DFF_REG, N_PHASES);
-      fmt::print("\tCreated {} snakes\n", snakes.size());
-      if (!snakes.empty())
-      {
-        std::string cfg_file = fmt::format("/Users/brainkz/Documents/GitHub/ortools_python/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-        write_snakes(snakes, NR, DFF_REG, required_SA_DFFs, cfg_file, N_PHASES);
-        auto num_dff = cpsat_ortools(cfg_file);
-        fmt::print("OR Tools optimized to {} DFF\n", num_dff);
-        total_num_dff += num_dff;
-      }
-    }
-
-    auto phase_it = std::max_element(NR.begin(), NR.end(), [&](const auto & a, const auto & b) {return a.second.phase < b.second.phase;});
-    int64_t max_phase = phase_it->second.phase;
-    
-    uint64_t total_num_spl = 0;
-    for (const auto & [node, node_obj] : NR)
-    {
-      if (!node_obj.fanouts.empty())
-      {
-        total_num_spl += node_obj.fanouts.size() - 1;
-      }
-      if (node_obj.fanouts.empty() && node_obj.phase != max_phase) // node is fanout
-      {
-        total_num_dff += (max_phase - node_obj.phase) / N_PHASES;
-      }
-    }
-    
-    fmt::print("{} PHASES: #DFF   for {} is {}\n", N_PHASES, benchmark, total_num_dff);
-    fmt::print("{} PHASES: #AREA  for {} is {}\n", N_PHASES, benchmark, raw_area + total_num_dff * COSTS_CONNECT[fDFF] + total_num_spl * COSTS_CONNECT[fSPL]);
-    fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", N_PHASES, benchmark, max_phase);
   }
   // TODO : now, count #DFFs in extracted paths. Perhaps, the function can be written within the Path object.
   return 0;

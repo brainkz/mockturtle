@@ -216,5 +216,318 @@
       }
     ],
     "version": "e5e1e615"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 1837.0,
+        "N_PHASES": 7.0,
+        "area": 42382.0,
+        "benchmark": "s13207.aig_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 2223.0,
+        "N_PHASES": 7.0,
+        "area": 45084.0,
+        "benchmark": "s13207.aig_GREEDY",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 1082.0,
+        "N_PHASES": 12.0,
+        "area": 37097.0,
+        "benchmark": "s13207.aig_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 1614.0,
+        "N_PHASES": 12.0,
+        "area": 40821.0,
+        "benchmark": "s13207.aig_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 808.0,
+        "N_PHASES": 7.0,
+        "area": 21761.0,
+        "benchmark": "s5378.aig_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 957.0,
+        "N_PHASES": 7.0,
+        "area": 22804.0,
+        "benchmark": "s5378.aig_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 368.0,
+        "N_PHASES": 12.0,
+        "area": 18681.0,
+        "benchmark": "s5378.aig_CPSAT",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 498.0,
+        "N_PHASES": 12.0,
+        "area": 19591.0,
+        "benchmark": "s5378.aig_GREEDY",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 89.0,
+        "N_PHASES": 7.0,
+        "area": 2411.0,
+        "benchmark": "s382.aig_CPSAT",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 99.0,
+        "N_PHASES": 7.0,
+        "area": 2481.0,
+        "benchmark": "s382.aig_GREEDY",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 48.0,
+        "N_PHASES": 12.0,
+        "area": 2124.0,
+        "benchmark": "s382.aig_CPSAT",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 58.0,
+        "N_PHASES": 12.0,
+        "area": 2194.0,
+        "benchmark": "s382.aig_GREEDY",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 589.0,
+        "N_PHASES": 7.0,
+        "area": 17016.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 670.0,
+        "N_PHASES": 7.0,
+        "area": 17583.0,
+        "benchmark": "c3540_GREEDY",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 440.0,
+        "N_PHASES": 12.0,
+        "area": 15973.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 524.0,
+        "N_PHASES": 12.0,
+        "area": 16561.0,
+        "benchmark": "c3540_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 125.0,
+        "N_PHASES": 7.0,
+        "area": 3529.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 146.0,
+        "N_PHASES": 7.0,
+        "area": 3676.0,
+        "benchmark": "c1908_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 69.0,
+        "N_PHASES": 12.0,
+        "area": 3137.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 79.0,
+        "N_PHASES": 12.0,
+        "area": 3207.0,
+        "benchmark": "c1908_GREEDY",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 46.0,
+        "N_PHASES": 7.0,
+        "area": 4515.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 178.0,
+        "N_PHASES": 7.0,
+        "area": 5439.0,
+        "benchmark": "c1355_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 44.0,
+        "N_PHASES": 12.0,
+        "area": 4501.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 112.0,
+        "N_PHASES": 12.0,
+        "area": 4977.0,
+        "benchmark": "c1355_GREEDY",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 254.0,
+        "N_PHASES": 7.0,
+        "area": 6190.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 286.0,
+        "N_PHASES": 7.0,
+        "area": 6414.0,
+        "benchmark": "c880_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 119.0,
+        "N_PHASES": 12.0,
+        "area": 5245.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 147.0,
+        "N_PHASES": 12.0,
+        "area": 5441.0,
+        "benchmark": "c880_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 342.0,
+        "N_PHASES": 7.0,
+        "area": 5116.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 380.0,
+        "N_PHASES": 7.0,
+        "area": 5382.0,
+        "benchmark": "c432_GREEDY",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 240.0,
+        "N_PHASES": 12.0,
+        "area": 4402.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 266.0,
+        "N_PHASES": 12.0,
+        "area": 4584.0,
+        "benchmark": "c432_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 2180.0,
+        "N_PHASES": 7.0,
+        "area": 162804.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 6.0
+      },
+      {
+        "#DFF": 3168.0,
+        "N_PHASES": 7.0,
+        "area": 169720.0,
+        "benchmark": "voter_GREEDY",
+        "delay": 6.0
+      },
+      {
+        "#DFF": 1568.0,
+        "N_PHASES": 12.0,
+        "area": 158520.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 4.0
+      },
+      {
+        "#DFF": 2670.0,
+        "N_PHASES": 12.0,
+        "area": 166234.0,
+        "benchmark": "voter_GREEDY",
+        "delay": 4.0
+      },
+      {
+        "#DFF": 3285.0,
+        "N_PHASES": 7.0,
+        "area": 45094.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 12.0
+      },
+      {
+        "#DFF": 5560.0,
+        "N_PHASES": 7.0,
+        "area": 61019.0,
+        "benchmark": "priority_GREEDY",
+        "delay": 12.0
+      },
+      {
+        "#DFF": 1775.0,
+        "N_PHASES": 12.0,
+        "area": 34524.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 7.0
+      },
+      {
+        "#DFF": 3448.0,
+        "N_PHASES": 12.0,
+        "area": 46235.0,
+        "benchmark": "priority_GREEDY",
+        "delay": 7.0
+      },
+      {
+        "#DFF": 217.0,
+        "N_PHASES": 7.0,
+        "area": 5136.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 232.0,
+        "N_PHASES": 7.0,
+        "area": 5241.0,
+        "benchmark": "int2float_GREEDY",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 46.0,
+        "N_PHASES": 12.0,
+        "area": 3939.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 56.0,
+        "N_PHASES": 12.0,
+        "area": 4009.0,
+        "benchmark": "int2float_GREEDY",
+        "delay": 1.0
+      }
+    ],
+    "version": "8e7e0ab2"
   }
 ]
