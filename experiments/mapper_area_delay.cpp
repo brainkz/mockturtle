@@ -224,7 +224,9 @@ for synchronizing the pulses for AND gates. I include them
 in total DFF count */
 // const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_05_08_CONNECT.csv" } ; 
 // const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/nDFF_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
-const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/NDFF_PARSED_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
+// const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/NDFF_PARSED_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; //updated costs here
+const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/NDFF_PARSED_CONNECT.csv" } ; //updated costs with filtering here
+
 
 int main()
 {
@@ -289,7 +291,7 @@ int main()
   // // Where to find the MCNC benchmarks?
   auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::sin | experiments::cavlc | experiments::int2float | experiments::priority | experiments::i2c | experiments::voter | experiments::dec );
   // //   auto benchmarks1 = epfl_benchmarks( experiments::epfl & ~experiments::div & ~experiments::hyp & ~experiments::log2 & ~experiments::sqrt );
-  auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c499 | experiments::c880 | experiments::c1908 | experiments::c3540 | experiments::c5315 | experiments::c7552 );
+  auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c499 | experiments::c880 | experiments::c1355 | experiments::c1908 | experiments::c3540 | experiments::c5315 | experiments::c7552 );
   benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
   for ( auto const& benchmark : benchmarks1 )

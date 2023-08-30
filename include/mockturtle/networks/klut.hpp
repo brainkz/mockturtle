@@ -65,11 +65,11 @@ struct klut_storage_data
  * `data[1].h1`: Function literal in truth table cache
  * `data[1].h2`: Visited flags
  */
-struct klut_storage_node : mixed_fanin_node<2>
+struct klut_storage_node : mixed_fanin_node<3>
 {
   bool operator==( klut_storage_node const& other ) const
   {
-    return data[1].h1 == other.data[1].h1 && children == other.children;
+    return data[2].h1 == other.data[2].h1 && data[1].h1 == other.data[1].h1 && children == other.children;
   }
 };
 
@@ -319,11 +319,12 @@ public:
 #pragma endregion
 
 #pragma region Create arbitrary functions
-  signal _create_node( std::vector<signal> const& children, uint32_t literal) // , bool force = false, uint32_t h2 = 0u 
+  signal _create_node( std::vector<signal> const& children, uint32_t literal, const uint32_t ID = 0) // , bool force = false, uint32_t h2 = 0u 
   {
     storage::element_type::node_type node;
     std::copy( children.begin(), children.end(), std::back_inserter( node.children ) );
     node.data[1].h1 = literal;
+    node.data[2].h2 = ID;
     
     // node.data[0].h2 = h2;
     const auto it = _storage->hash.find( node );
