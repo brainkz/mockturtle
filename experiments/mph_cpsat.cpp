@@ -1702,23 +1702,6 @@ int cpsat_ortools(const std::string & cfg_name)
   }
 }
 
-/* Gate costs are based on CONNECT library (from Japan) */
-// const std::string DATABASE_PATH { "LIBRARY_2023_05_19_CONNECT.genlib" } ;
-/* CONNECT library (from Japan) */
-// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_VANILLA_CONNECT.genlib" } ;
-// LIBRARY_2023_05_19_CONNECT.genlib
-// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_2023_06_26_CONNECT_1111.genlib" } ;
-// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_2023_05_19_CONNECT.genlib" } ;
-const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/LIBRARY_2023_06_27_CONNECT_CONSERVATIVE.genlib" } ;
-/*The number of internal DFFs within each cell. 
-Some of them are necessary not only for path balancing but also 
-for synchronizing the pulses for AND gates. I include them 
-in total DFF count */
-// const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_05_08_CONNECT.csv" } ; 
-const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
-// const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/NDFF_PARSED_CONNECT.csv" } ; //updated costs with filtering here
-
-
 int main(int argc, char* argv[])  //
 {
   using namespace experiments;

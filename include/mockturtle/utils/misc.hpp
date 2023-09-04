@@ -6,6 +6,34 @@
 #include <set>
 #include <fmt/format.h>
 
+// *** FILE PATHS
+/* Gate costs are based on CONNECT library (from Japan) */
+const std::string DATABASE_PATH { "LIBRARY_2023_06_27_CONNECT_CONSERVATIVE.genlib" } ;
+/*The number of internal DFFs within each cell. 
+Some of them are necessary not only for path balancing but also 
+for synchronizing the pulses for AND gates. I include them 
+in total DFF count */
+const std::string NDFF_PATH { "nDFF_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
+const std::string LibEntry_file { "LibEntry_2023_06_27_CONNECT_CONSERVATIVE.csv" };
+
+// Need to provide a valid Python executable
+const std::string PYTHON_EXECUTABLE { "~/anaconda3/bin/python" }; // 
+
+// Python script that runs OR-tools for phase assignment
+const std::string PYTHON_PHASE_ASSIGNMENT { "../python/multiphase/decomposed_ilp_max.py" };
+
+// Python script that runs OR-tools for DFF placement
+const std::string PYTHON_DFF_PLACEMENT { "../python/multiphase/config_solver.py" };
+
+// Folder containing OPENCORES benchmarks in BLIF format
+const std::string OPENCORES_FOLDER { "../benchmarks/opencores" };
+
+// Folder containing ISCAS89 benchmarks in AIG format 
+const std::string ISCAS89_FOLDER { "../benchmarks/iscas89" };
+
+// Path prefix for files containing the specifications of the global nodemap. This nodemap contains the implementations of the compound gates found during enumeration process
+const std::string NODEMAP_PREFIX = "GNM/x3";
+
 std::string repeatString(const std::string& str, int count) 
 {
     std::string repeatedStr;

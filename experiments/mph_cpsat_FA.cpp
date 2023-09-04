@@ -816,13 +816,10 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
       DEBUG_PRINT("\t\t[NODE {}] ADDING FANOUT\n", node, fo_node);
     });
 
-    if ( fanouts.size() <= 1 )
+    // Fix the fanout count (bugged fanouts_size()?)
+    if ( fanouts.size() != fo_size )
     {
-      return;
-    }
-    if ( fo_size != fanouts.size() )
-    {
-      mockturtle::write_bench(ntk_fo , "PANIC.bench");
+      ntk._storage->nodes[node].data[0].h1 = fanouts.size();
     }
 
     // Sort the fanouts using the phase comparison function.
@@ -1427,9 +1424,7 @@ void write_klut_specs(const klut & ntk, const std::unordered_map<klut::signal, P
 
 std::tuple<int, std::unordered_map<unsigned int, unsigned int>, std::string>  cpsat_macro_opt(const std::string & cfg_name, uint8_t n_phases) 
 {
-  std::string command = fmt::format("/Users/brainkz/anaconda3/bin/python /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp_max.py {} {}", n_phases, cfg_name);
-  // std::string command = fmt::format("/Users/brainkz/anaconda3/bin/ipython --pdb --no-banner /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp.py {} {}", n_phases, cfg_name);
-  // std::string command = fmt::format("/Users/brainkz/anaconda3/bin/ipython -i --pdb --no-banner /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp.py {} {}", n_phases, cfg_name);
+  std::string command = fmt::format("{} {} {} {}", PYTHON_EXECUTABLE, PYTHON_PHASE_ASSIGNMENT, n_phases, cfg_name);
   
   std::string pattern = "Objective value: (\\d+)";
 
@@ -1548,7 +1543,7 @@ std::unordered_map<std::string, int> readCSV(const std::string& filename)
 
 int cpsat_ortools(const std::string & cfg_name) 
 {
-  std::string command = fmt::format("/Users/brainkz/anaconda3/bin/python /Users/brainkz/Documents/GitHub/ortools_python/config_solver.py {}", cfg_name);
+  std::string command = fmt::format("{} {} {}", PYTHON_EXECUTABLE, PYTHON_DFF_PLACEMENT, cfg_name);
   std::string pattern = "Objective value: (\\d+)";
 
   // Run the command and capture its output
@@ -1588,22 +1583,6 @@ int cpsat_ortools(const std::string & cfg_name)
     return -1;
   }
 }
-
-/* Gate costs are based on CONNECT library (from Japan) */
-// const std::string DATABASE_PATH { "LIBRARY_2023_05_19_CONNECT.genlib" } ;
-/* CONNECT library (from Japan) */
-// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_VANILLA_CONNECT.genlib" } ;
-// LIBRARY_2023_05_19_CONNECT.genlib
-// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_2023_06_26_CONNECT_1111.genlib" } ;
-// const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/LIBRARY_2023_05_19_CONNECT.genlib" } ;
-const std::string DATABASE_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/LIBRARY_2023_06_27_CONNECT_CONSERVATIVE.genlib" } ;
-/*The number of internal DFFs within each cell. 
-Some of them are necessary not only for path balancing but also 
-for synchronizing the pulses for AND gates. I include them 
-in total DFF count */
-// const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_05_08_CONNECT.csv" } ; 
-const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle_alessandro/build/nDFF_2023_06_27_CONNECT_CONSERVATIVE.csv" } ; 
-// const std::string NDFF_PATH { "/Users/brainkz/Documents/GitHub/mockturtle/build/NDFF_PARSED_CONNECT.csv" } ; //updated costs with filtering here
 
 
 int main(int argc, char* argv[])  //
@@ -1661,8 +1640,6 @@ int main(int argc, char* argv[])  //
   // std::unordered_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
   std::unordered_map<std::string, int> nDFF_global;
 
-  const std::string LibEntry_file = "/Users/brainkz/Documents/GitHub/mockturtle/build/LibEntry_2023_06_27_CONNECT_CONSERVATIVE.csv";
-
   mockturtle::tech_library_params tps; // tps.verbose = true;
   tech_library<NUM_VARS, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
 
@@ -1673,7 +1650,6 @@ int main(int argc, char* argv[])  //
     benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
     // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::string blif_folder = "/Users/brainkz/Downloads/ReleaseBench/K6/opt/blif/";
     const std::vector<std::string> BEEREL_BENCHMARKS 
     {
       "simple_spi-gates",
@@ -1684,7 +1660,6 @@ int main(int argc, char* argv[])  //
     };
 
     // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::string iscas89_folder = "/Users/brainkz/Downloads/IWLS_benchmarks_2005_V_1.0 2/iscas/blif/";
     const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
     benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
     // std::reverse(benchmarks1.begin(), benchmarks1.end());
@@ -1693,12 +1668,9 @@ int main(int argc, char* argv[])  //
     fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
     
     // *** READ COMPOUND GATE LIBRARY ***
-    const std::string nodemap_prefix = "/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_20230427/x3";
     const std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,2,2}, {0,1,2,3} } }; //  {0,1,1,3},
-    // const std::vector<std::vector<UI>> sets_of_levels { { {0,1,2,3} } };
 
-    std::unordered_map<ULL, Node> GNM_global = read_global_gnm( sets_of_levels, nodemap_prefix );
-    std::ofstream gnm_file ("/Users/brainkz/Documents/GitHub/mockturtle/include/mockturtle/utils/GNM_global.hpp");
+    std::unordered_map<ULL, Node> GNM_global = read_global_gnm( sets_of_levels, NODEMAP_PREFIX );
     std::unordered_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
 
   #pragma endregion benchmark_parsing
@@ -1714,7 +1686,7 @@ int main(int argc, char* argv[])  //
     {
       fmt::print("USING THE BLIF READER\n");
 
-      std::string abc_command = fmt::format("abc -c \"read_blif {}{}.blif\" -c strash -c \"write_aiger temp.aig\" ", blif_folder, benchmark);
+      std::string abc_command = fmt::format("abc -c \"read_blif {}{}.blif\" -c strash -c \"write_aiger temp.aig\" ", OPENCORES_FOLDER, benchmark);
 
       std::system(abc_command.c_str());
 
@@ -1728,7 +1700,7 @@ int main(int argc, char* argv[])  //
     else if ( benchmark.find(".aig") != std::string::npos ) // ISCAS89 benchmark
     {
       fmt::print("USING THE BENCH READER\n");
-      std::string path = fmt::format("{}{}", iscas89_folder, benchmark);
+      std::string path = fmt::format("{}{}", ISCAS89_FOLDER, benchmark);
       if ( lorina::read_aiger( path, aiger_reader( ntk_original ) ) != lorina::return_code::success )
       {
         fmt::print("Failed to read {}\n", benchmark);
@@ -1871,12 +1843,12 @@ int main(int argc, char* argv[])  //
 
         if (i == 0)
         {
-          std::string ilp_filename = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/{}.csv", benchmark);
-          fmt::print("\tWriting config {}\n", ilp_filename);
-          write_klut_specs(network, klut_prim_params, glob_phase, ilp_filename);
+          const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
+          fmt::print("\tWriting config {}\n", ilp_cfg_filename);
+          write_klut_specs(network, klut_prim_params, glob_phase, ilp_cfg_filename);
 
           fmt::print("\tCalling OR-Tools\n");
-          auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_filename, n_phases);
+          auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
 
           if (status == "SUCCESS") // (true) // 
           {
@@ -1929,7 +1901,7 @@ int main(int argc, char* argv[])  //
           // *** If there's anything that needs optimization
           if (!snakes.empty())
           {
-            std::string cfg_file = fmt::format("/Users/brainkz/Documents/GitHub/ortools_python/{}_cfgNR_{}.csv", benchmark, file_ctr++);
+            std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
             write_snakes(snakes, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
             auto num_dff = cpsat_ortools(cfg_file);
             // fmt::print("OR Tools optimized to {} DFF\n", num_dff);

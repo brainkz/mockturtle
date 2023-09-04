@@ -454,5 +454,66 @@
       }
     ],
     "version": "b64ad983"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 586.0,
+        "N_PHASES": 7.0,
+        "area": 16995.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 111.0,
+        "N_PHASES": 7.0,
+        "area": 3431.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 44.0,
+        "N_PHASES": 7.0,
+        "area": 4501.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 253.0,
+        "N_PHASES": 7.0,
+        "area": 6183.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 348.0,
+        "N_PHASES": 7.0,
+        "area": 5158.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 1833.0,
+        "N_PHASES": 7.0,
+        "area": 160375.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 6.0
+      },
+      {
+        "#DFF": 3081.0,
+        "N_PHASES": 7.0,
+        "area": 43666.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 12.0
+      },
+      {
+        "#DFF": 217.0,
+        "N_PHASES": 7.0,
+        "area": 5136.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 2.0
+      }
+    ],
+    "version": "a0b53d9e"
   }
 ]
