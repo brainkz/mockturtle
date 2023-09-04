@@ -58,7 +58,6 @@
 #include <mockturtle/algorithms/functional_reduction.hpp>
 #include <mockturtle/algorithms/klut_to_graph.hpp>
 
-
 // mockturtle/algorithms/mig_algebraic_rewriting.hpp
 
 #include <mockturtle/io/auxiliary_genlib.hpp>
@@ -69,20 +68,14 @@
 
 #include <experiments.hpp>
 
+#define DEBUG_PRINT(format, ...) if (verbose) fmt::print(format, ##__VA_ARGS__)
+
 typedef mockturtle::klut_network klut;
 typedef mockturtle::xag_network   xag;
 typedef mockturtle::xmg_network   xmg;
 typedef mockturtle::mig_network   mig;
 typedef mockturtle::aig_network   aig;
 typedef uint64_t node_t;
-
-// constexpr uint8_t NUM_VARS = 4u;
-
-// constexpr std::array<int,12> COSTS = {7, 9, 8, 8, 8, 7, 11, 11, 11, 8, 7, 0};
-// constexpr std::array<int,12> COSTS_CONNECT = {6, 10, 7, 7, 7, 11, 999, 999, 999, 7, 3, 0};
-
-// Removed input buffers in AND/OR gates
-// constexpr std::array<int,12> COSTS_CONNECT = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
 
 // Sunmagnetics Technology Library
 constexpr std::array<int,12> COSTS_MAP = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0};
@@ -187,12 +180,24 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
 
 
 constexpr uint8_t PI_GATE = 0u;
-constexpr uint8_t PO_GATE = 1u;
-constexpr uint8_t AA_GATE = 2u;
-constexpr uint8_t AS_GATE = 3u;
-constexpr uint8_t SA_GATE = 4u;
+constexpr uint8_t AA_GATE = 1u;
+constexpr uint8_t AS_GATE = 2u;
+constexpr uint8_t SA_GATE = 3u;
 
-const std::vector<std::string> GATE_TYPE { "PI", "PO", "AA", "AS", "SA" }; 
+union NodeData 
+{
+  struct 
+  {
+    unsigned int sigma : 30;
+    unsigned int type : 2;
+  };
+  uint32_t value;
+  NodeData() : value(0) {}
+  NodeData(uint32_t _sigma, uint8_t _type) : sigma(_sigma), type(_type) {}
+  NodeData(uint32_t _value) : value(_value) {}
+};
+
+const std::vector<std::string> GATE_TYPE { "PI", "AA", "AS", "SA" }; //, "PO"
 
 typedef uint32_t glob_phase_t;
 
@@ -221,8 +226,21 @@ struct Primitive
   }
 };
 
+template <typename Ntk>
+class fmt::formatter<Primitive<Ntk>> {
+public:
+  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+
+  template <typename Context>
+  constexpr auto format(const Primitive<Ntk>& primitive, Context& ctx) const {
+    return format_to(ctx.out(), "Primitive{{sig={}, func={}, type={}, fanins={}, is_spl={}}}",
+      primitive.sig, primitive.func, static_cast<int>(primitive.type),
+      fmt::join(primitive.fanins, ", "), primitive.is_spl);
+  }
+};
+
 // #if false
-std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, std::unordered_map<ULL, Node> nodemap,std::unordered_map<std::string, LibEntry> entries, bool verbose = false)
+std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, std::unordered_map<ULL, Node> nodemap, std::unordered_map<std::string, LibEntry> entries, bool verbose = false)
 {
   std::unordered_map<klut::signal, Primitive<klut>> tgt_sig_params;
   std::unordered_map<klut::signal, klut::signal> src2tgt;
@@ -232,6 +250,7 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
   src.foreach_pi( [&]( const klut::signal & src_pi ) 
   {
     klut::signal tgt_pi = tgt.create_pi();
+    tgt.set_value(tgt_pi, NodeData(0, PI_GATE).value);
     src2tgt.emplace(src_pi, tgt_pi);
     tgt_sig_params.emplace( tgt_pi, Primitive<klut>(tgt_pi, 0xAAAA, AS_GATE, {}));
   } );
@@ -251,10 +270,10 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
   auto ctr = 0u;
   mockturtle::topo_view<klut>( src ).foreach_node( [&]( auto src_node ) 
   {
-    if (verbose) fmt::print("Processing node {0} ({1} out of {2})\r", src_node, ++ctr, num_node_src);
+    DEBUG_PRINT("Processing node {0} ({1} out of {2})\r", src_node, ++ctr, num_node_src);
     if (ctr == num_node_src)
     {
-      if (verbose) fmt::print("\n");
+      DEBUG_PRINT("\n");
     }
     if ( !src.has_binding( src_node ) )
     {
@@ -326,56 +345,61 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
       {
         klut::signal parent_tgt = node2tgt.at(node.parent_hashes.front());
         klut::signal tgt_sig = tgt.create_not( parent_tgt );
+        tgt.set_value(tgt_sig, NodeData(0, AS_GATE).value);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x5555u, AS_GATE, { parent_tgt }));
         area += COSTS_MAP[fNOT];
-        if (verbose) fmt::print("ADDED NOT = {}\n", area);
+        DEBUG_PRINT("ADDED NOT = {}\n", area);
       }
       else if (node.last_func == fAND)
       {
         klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
         klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
         klut::signal tgt_sig = tgt.create_and(parent_tgt_1, parent_tgt_2);
+        tgt.set_value(tgt_sig, NodeData(0, SA_GATE).value);
         // fmt::print("Created node n{0} = AND({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x8888u, SA_GATE, { parent_tgt_1, parent_tgt_2 }));
         area += COSTS_MAP[fAND];
-        if (verbose) fmt::print("ADDED AND = {}\n", area);
+        DEBUG_PRINT("ADDED AND = {}\n", area);
       }
       else if (node.last_func == fOR) 
       {
         klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
         klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
         klut::signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2);
+        tgt.set_value(tgt_sig, NodeData(0, SA_GATE).value);
         // fmt::print("Created node n{0} = OR({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0xEEEEu, SA_GATE, { parent_tgt_1, parent_tgt_2 }));
         OR_replacement_candidates.emplace(tgt_sig);
         area += COSTS_MAP[fOR];
-        if (verbose) fmt::print("ADDED OR  = {}\n", area);
+        DEBUG_PRINT("ADDED OR  = {}\n", area);
       }
       else if (node.last_func == fCB)
       {
         klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
         klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
         klut::signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2);
+        tgt.set_value(tgt_sig, NodeData(0, AA_GATE).value);
         // fmt::print("Created node n{0} = CB({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0xEEEEu, AA_GATE, { parent_tgt_1, parent_tgt_2 }));
         area += COSTS_MAP[fCB];
-        if (verbose) fmt::print("ADDED CB  = {}\n", area);
+        DEBUG_PRINT("ADDED CB  = {}\n", area);
       }
       else if (node.last_func == fXOR)
       {
         klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
         klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
         klut::signal tgt_sig = tgt.create_xor(parent_tgt_1, parent_tgt_2);
+        tgt.set_value(tgt_sig, NodeData(0, AS_GATE).value);
         // fmt::print("Created node n{0} = XOR({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x6666u, AS_GATE, { parent_tgt_1, parent_tgt_2 }));
         XOR_gates.push_back(tgt_sig);
         area += COSTS_MAP[fXOR];
-        if (verbose) fmt::print("ADDED XOR = {}\n", area);
+        DEBUG_PRINT("ADDED XOR = {}\n", area);
       }
       // else if 
       else
@@ -409,10 +433,11 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
   for (klut::signal const & sig : OR_replacement_candidates)
   {
     Primitive<klut> & prim = tgt_sig_params.at(sig);
+    tgt.set_value(sig, NodeData(0, AA_GATE).value);
     prim.type = AA_GATE;
     area += COSTS_MAP[fCB];
     area -= COSTS_MAP[fOR];
-    if (verbose) fmt::print("REPLACED OR WITH CB = {}\n", area);
+    DEBUG_PRINT("REPLACED OR WITH CB = {}\n", area);
   }
 
   src.foreach_po([&](auto const & src_po)
@@ -423,32 +448,34 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
   return std::make_tuple(tgt, tgt_sig_params, area);
 }
 
-struct NtkNode
-{
-  node_t              id;
-  std::vector<node_t> fanins;
-  std::vector<node_t> fanouts;
-  glob_phase_t        phase;
-  uint8_t             type; 
-  klut::signal        ntk_sig;
-  bool                is_spl;
-  bool                is_pi;
-  bool                is_po;
-  bool                is_const;
-  bool                is_valid;
+#if false
+  struct NtkNode
+  {
+    node_t              id;
+    std::vector<node_t> fanins;
+    std::vector<node_t> fanouts;
+    glob_phase_t        phase;
+    uint8_t             type; 
+    klut::signal        ntk_sig;
+    bool                is_spl;
+    bool                is_pi;
+    bool                is_po;
+    bool                is_const;
+    bool                is_valid;
 
-  NtkNode(const klut::signal & _id, const std::vector<klut::signal>& _fanins, const std::vector<klut::signal>& _fanouts, glob_phase_t _phase, uint8_t _type, klut::signal _ntk_sig, bool _is_spl, bool _is_pi, bool _is_const)
-    : id(_id), fanins(_fanins), fanouts(_fanouts), phase(_phase), type(_type), ntk_sig(_ntk_sig), is_spl(_is_spl), is_pi(_is_pi), is_const(_is_const), is_valid(true) {}
-  NtkNode(const klut::signal & _id)
-    : id(_id), fanins({}), fanouts({}), phase(0), type(0), ntk_sig(0), is_spl(false), is_pi(false), is_const(false), is_valid(false) {}
-};
+    NtkNode(const klut::signal & _id, const std::vector<klut::signal>& _fanins, const std::vector<klut::signal>& _fanouts, glob_phase_t _phase, uint8_t _type, klut::signal _ntk_sig, bool _is_spl, bool _is_pi, bool _is_const)
+      : id(_id), fanins(_fanins), fanouts(_fanouts), phase(_phase), type(_type), ntk_sig(_ntk_sig), is_spl(_is_spl), is_pi(_is_pi), is_const(_is_const), is_valid(true) {}
+    NtkNode(const klut::signal & _id)
+      : id(_id), fanins({}), fanouts({}), phase(0), type(0), ntk_sig(0), is_spl(false), is_pi(false), is_const(false), is_valid(false) {}
+  };
+#endif
 
 struct Path
 {
-  std::set<node_t> sources;   // AS/SA gates
-  std::set<node_t> internals; // AA    gates
-  std::set<node_t> targets;   // AS/SA gates
-  Path(const std::set<node_t> & _sources, const std::set<node_t>& _internals, const std::set<node_t>& _targets)
+  std::set<klut::signal> sources;   // AS/SA gates
+  std::set<klut::signal> internals; // AA    gates
+  std::set<klut::signal> targets;   // AS/SA gates
+  Path(const std::set<klut::signal> & _sources, const std::set<klut::signal>& _internals, const std::set<klut::signal>& _targets)
     : sources(_sources), internals(_internals), targets(_targets) {}
   Path() : sources({}), internals({}), targets({}) {}
   
@@ -468,483 +495,481 @@ struct Path
     return fmt::format("Path from [{}]\n\tvia [{}]\n\tto [{}]\n", fmt::join(sources, ","), fmt::join(internals, ","), fmt::join(targets, ","));
   }
 
-  std::vector<node_t> preds(const node_t & sig_id, const std::unordered_map<node_t, NtkNode> & NR) const
+  std::vector<klut::signal> preds(const klut::signal & sig, const klut & ntk) const
   {
-    if ( sources.count(sig_id) != 0)
+    if ( sources.count(sig) != 0)
     {
       return {};
     }
-    const NtkNode & sig = NR.at( sig_id );
-    std::vector<node_t> predecessors;
-    for (const node_t & parent : sig.fanins)
-    {
+
+    std::vector<klut::signal> predecessors;
+
+    ntk.foreach_fanin(sig, [&](const klut::signal & parent){
       if ( internals.count(parent) != 0 || sources.count(parent) != 0 )
       {
         predecessors.push_back( parent );
       }
-    }
+    });
     return predecessors;
   }
 
-  std::vector<node_t> src_int() const
+  std::vector<klut::signal> src_int() const
   {
-    std::vector<node_t> out;
+    std::vector<klut::signal> out;
     out.insert(out.end(), sources.begin(), sources.end());
     out.insert(out.end(), internals.begin(), internals.end());
     return out;
   }
-  std::vector<node_t> int_tgt() const
+  std::vector<klut::signal> int_tgt() const
   {
-    std::vector<node_t> out;
+    std::vector<klut::signal> out;
     out.insert(out.end(), internals.begin(), internals.end());
     out.insert(out.end(), targets.begin(), targets.end());
     return out;
   }
 };
 
+template <typename Ntk>
+glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & node, const uint8_t n_phases, const uint8_t type, const bool verbose)
+{
+  bool valid = false;
+  uint32_t phase = 0u;
+  ntk.foreach_fanin(node, [&] ( const typename Ntk::signal & parent )
+  {
+    if ( ntk.is_constant( parent ) )
+    {
+      DEBUG_PRINT("\t\tfanin {} is constant, skipping...\n", parent);
+      return;
+    }
+    valid = true;
+    NodeData parent_data = ntk.value( parent );
+
+    // if d==false, SA gate can be directly connected to fanin
+    //cannot directly connect PI (convention)
+    //cannot directly connect split signal 
+    //cannot directly connect SA/AA gates to SA gates
+    int d = (type == SA_GATE) && ( (ntk.is_pi(parent)) || (ntk.fanout_size(parent) > 1) || (parent_data.type != AS_GATE) );
+
+    phase = generic_max( phase, parent_data.sigma + d );
+
+    if (verbose)
+    {
+      unsigned int gp = static_cast<unsigned int>(parent_data.sigma);
+      fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
+    }
+  });
+  assert(valid);
+
+  // DEBUG_PRINT("\t{} GATE {} placed at ɸ={} [S={}, φ={}]\n",  node, phase, phase/n_phases, phase%n_phases);
+
+  return phase;
+}
+
 void greedy_ntk_assign(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params, const uint8_t n_phases, const std::unordered_map<unsigned int, unsigned int> & phase_assignment, const bool verbose = false)
 {
   mockturtle::topo_view<klut> ntk_topo ( ntk );
-  
-  std::unordered_map<node_t, NtkNode> NR( ntk_topo.size() );
+
+  // ntk.set_value(sig, node_data.value);
+
+  ntk_topo.foreach_node([&] ( const klut::signal & node ) 
+  {
+    if ( ntk_topo.is_constant( node ) )
+    {
+      return;
+    }
+
+    if ( ntk_topo.is_pi( node ) )
+    {
+      NodeData node_data;
+      node_data.type = AS_GATE;
+      auto ct = phase_assignment.count(node);
+      node_data.sigma = (ct != 0) ? phase_assignment.at( node ) : 0;
+      ntk.set_value(node, node_data.value);
+
+      DEBUG_PRINT("PI {} placed at ɸ=0 [S=0, φ=0]\n", node);
+      return;
+    }
+
+    // const Primitive<klut> & node_params = sig_params.at( node );
+    // if (verbose) fmt::print("{} GATE {}:\n", GATE_TYPE.at(node_params.type), node);
+
+    uint8_t node_type = NodeData( ntk.value( node ) ).type;
+    // const Primitive<klut> & prim = sig_params.at( node );
+    DEBUG_PRINT("{} GATE {}:\n", GATE_TYPE.at(node_type), node);
+
+    NodeData node_data;
+    node_data.type = node_type;
+
+    auto ct = phase_assignment.count(node);
+    if (ct != 0) // there is a precalculated phase assignment
+    {
+      node_data.sigma = phase_assignment.at( node );
+      ntk.set_value(node, node_data.value);
+    }
+    else
+    {
+      if ( node_type == AA_GATE )
+      {
+        node_data.sigma = latest_fanin_phase(ntk_topo, node, n_phases, AA_GATE, verbose);
+        uint32_t sigma = static_cast<uint32_t>(node_data.sigma);
+        DEBUG_PRINT("\tAA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, sigma, sigma/n_phases, sigma%n_phases);
+      }
+      else if ( node_type == SA_GATE )
+      {
+        node_data.sigma = latest_fanin_phase(ntk_topo, node, n_phases, SA_GATE, verbose);
+        uint32_t sigma = static_cast<uint32_t>(node_data.sigma);
+        DEBUG_PRINT("\tSA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, sigma, sigma/n_phases, sigma%n_phases);
+      }
+      else if ( node_type == AS_GATE )
+      {
+        node_data.sigma = latest_fanin_phase(ntk_topo, node, n_phases, SA_GATE, verbose) + 1;
+        uint32_t sigma = static_cast<uint32_t>(node_data.sigma);
+        DEBUG_PRINT("\tAS GATE {} placed at ɸ={} [S={}, φ={}]\n", node, sigma, sigma/n_phases, sigma%n_phases);
+      }
+      else 
+      {
+        std::vector<klut::signal> fanins;
+        ntk.foreach_fanin(node, [&](const klut::signal & fanin){ fanins.push_back(fanin); });
+        fmt::print("\t GATE {0} : fanins[{1}], type[{2}], func[{3}=0x{3:x}=0b{3:b}]\n", node, fmt::join(fanins, ","), node_type, ntk.node_function(node)._bits[0]);
+        throw "Unsupported gate type!";
+      }
+    }
+  });
 }
 
 
-// #if false
-  std::unordered_map<node_t, NtkNode> greedy_ntknode_assign(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params, const uint8_t n_phases, const std::unordered_map<unsigned int, unsigned int> & phase_assignment, const bool verbose = false)
+std::unordered_map<klut::signal, glob_phase_t> greedy_assign(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params,  const bool verbose = false) //const uint8_t n_phases,
+{
+  mockturtle::topo_view<klut> ntk_topo ( ntk );
+  std::unordered_map<klut::signal, glob_phase_t> glob_phase;
+  glob_phase.reserve(ntk_topo.size());
+
+  printUnorderedMap(sig_params);
+
+  ntk_topo.foreach_node([&] ( const klut::signal & node ) 
   {
-    mockturtle::topo_view<klut> ntk_topo ( ntk );
-    std::unordered_map<node_t, NtkNode> NR( ntk_topo.size() );
-
-    ntk_topo.foreach_node([&] ( const klut::signal & node ) 
+    if ( ntk_topo.is_constant( node ) )
     {
-      NR.emplace(node, NtkNode(node));
-      if ( ntk_topo.is_constant( node ) )
+      DEBUG_PRINT("Skipping constant {}\n", node);
+      return;
+    }
+    if ( ntk_topo.is_pi( node ) )
+    {
+      glob_phase[node] = 0u;
+      DEBUG_PRINT("PI {} placed at ɸ=0 [S=0, φ=0]\n", node);
+      return;
+    }
+    const Primitive<klut> & node_params = sig_params.at( node );
+    DEBUG_PRINT("{} GATE {}:\n", GATE_TYPE.at(node_params.type), node);
+
+    if ( node_params.type == AA_GATE )
+    {
+      // place at the same phase as the latest fanin
+      glob_phase_t phase = 0u;
+      ntk_topo.foreach_fanin(node, [&] ( const klut::signal & parent )
       {
-        if (verbose) fmt::print("Skipping constant {}\n", node);
-        NR.at(node).id = node;
-        NR.at(node).ntk_sig = node;
-        NR.at(node).is_const = true;
-        NR.at(node).is_valid = true;
+        if ( ntk_topo.is_constant( parent ) )
+        {
+        DEBUG_PRINT("\t\tfanin {} is constant, skipping...\n", parent);
         return;
-      }
-      if ( ntk_topo.is_pi( node ) )
-      {
-        NR.at(node).id = node;
-        auto ct = phase_assignment.count(node);
-        if (ct != 0)
-        {
-          NR.at(node).phase = phase_assignment.at( node );
         }
-        else 
+        phase = std::max(phase, glob_phase.at( parent ));
+        DEBUG_PRINT("\t\tfanin {} ɸ={}\n", parent, glob_phase.at( parent ));
+        // fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
+      });
+      glob_phase[node] = phase;
+    if (verbose)
+    {
+      fmt::print("\tAA GATE {} placed at ɸ={}\n", node, phase);
+      // fmt::print("\tAA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
+    }
+    }
+    else if ( node_params.type == SA_GATE )
+    {
+    // Place at the earliest feasible phase
+    glob_phase_t phase = 0u;
+    ntk_topo.foreach_fanin(node, [&] (const klut::signal & parent)
+    {
+        if ( ntk_topo.is_constant( parent ) )
         {
-          NR.at(node).phase = 0;
+        if (verbose)
+        {
+            fmt::print("\t\tfanin {} is constant, skipping...\n", parent);
         }
-        NR.at(node).type = AS_GATE;
-        NR.at(node).ntk_sig = node;
-        NR.at(node).is_pi = true;
-        NR.at(node).is_valid = true;
-
-        if (verbose) fmt::print("PI {} placed at ɸ=0 [S=0, φ=0]\n", node);
         return;
-      }
-      const Primitive<klut> & node_params = sig_params.at( node );
-      if (verbose) fmt::print("{} GATE {}:\n", GATE_TYPE.at(node_params.type), node);
-
-      if ( node_params.type == AA_GATE )
-      {
-        // place at the same phase as the latest fanin
-        glob_phase_t phase = 0u;
-        ntk_topo.foreach_fanin(node, [&] ( const klut::signal & parent )
-        {
-          NR.at(node).fanins.push_back(NR.at(parent).id);
-          NR.at(parent).fanouts.push_back(NR.at(node).id);
-          if ( ntk_topo.is_constant( parent ) )
-          {
-            if (verbose) fmt::print("\t\tfanin {} is constant, skipping...\n", parent);
-            return;
-          }
-          phase = std::max( phase, NR.at( parent ).phase );
-          if (verbose)
-          {
-            glob_phase_t gp = NR.at( parent ).phase;
-            fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
-          }
-
-        });
-        NR.at(node).id = node;
-        auto ct = phase_assignment.count(node);
-        if (ct != 0)
-        {
-          NR.at(node).phase = phase_assignment.at( node );
         }
-        else 
-        {
-          NR.at(node).phase = phase;
-        }
-        NR.at(node).type = AA_GATE;
-        NR.at(node).ntk_sig = node;
-        NR.at(node).is_valid = true;
-        fmt::print("\tAA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
-      }
-      else if ( node_params.type == SA_GATE )
-      {
-        // Place at the earliest feasible phase
-        glob_phase_t phase = 0u;
-        ntk_topo.foreach_fanin(node, [&] (const klut::signal & parent)
-        {
-          NR.at(node).fanins.push_back(NR.at(parent).id);
-          NR.at(parent).fanouts.push_back(NR.at(node).id);
-          if ( ntk_topo.is_constant( parent ) )
-          {
-            if (verbose) fmt::print("\t\tfanin {} is constant, skipping...\n", parent);
-            return;
-          }
-          // if d==false, SA gate can be directly connected to fanin
-          //cannot directly connect PI
-          //cannot directly connect split signal 
-          //cannot directly connect SA/AA gates to SA gates
-          bool d = (ntk_topo.is_pi(parent)) || (ntk_topo.fanout_size(parent) > 1) || (sig_params.at(parent).type != AS_GATE);                     
+        // if d==false, SA gate can be directly connected to fanin
+        //cannot directly connect PI
+        //cannot directly connect split signal 
+        //cannot directly connect SA/AA gates to SA gates
+        bool d = (ntk_topo.is_pi(parent)) || (ntk_topo.fanout_size(parent) > 1) || (sig_params.at(parent).type != AS_GATE);                     
 
-          phase = std::max(phase, NR.at( parent ).phase + static_cast<int>(d) );
-          if (verbose)
-          {
-            glob_phase_t gp = NR.at( parent ).phase;
-            std::string gt;
-            fmt::print("\t\tfanin: {4} {0} ɸ={1} [S={2}, φ={3}], fanout={5} \n", 
+        phase = std::max(phase, glob_phase.at( parent ) + static_cast<int>(d) );
+        if (verbose)
+        {
+        glob_phase_t gp = glob_phase.at( parent );
+        std::string gt;
+        // fmt::print("\t\tfanin: {4} {0} ɸ={1} [S={2}, φ={3}], fanout={5} \n",
+        fmt::print("\t\tfanin: {2} {0} ɸ={1}, fanout={3} \n", 
             parent, 
             gp, 
-            gp/n_phases, 
-            gp%n_phases, 
+            // gp/n_phases, 
+            // gp%n_phases, 
             ntk_topo.is_pi(parent) ? "PI" : GATE_TYPE.at( sig_params.at(parent).type ),
-            ntk_topo.fanout_size(parent));
-          }
-        });
-        NR.at(node).id = node;
-        auto ct = phase_assignment.count(node);
-        if (ct != 0)
-        {
-          NR.at(node).phase = phase_assignment.at( node );
+            ntk_topo.fanout_size(parent)
+        );
         }
-        else 
-        {
-          NR.at(node).phase = phase;
-        }
-        NR.at(node).type = SA_GATE;
-        NR.at(node).ntk_sig = node;
-        NR.at(node).is_valid = true;
-        if (verbose) fmt::print("\tSA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
-      }
-      else if ( node_params.type == AS_GATE )
-      {
-        // Place at the earliest feasible phase
-        glob_phase_t phase = 0u;
-        ntk_topo.foreach_fanin(node, [&] (const klut::signal & parent)
-        {
-          NR.at(node).fanins.push_back(NR.at(parent).id);
-          NR.at(parent).fanouts.push_back(NR.at(node).id);
-          if ( ntk_topo.is_constant( parent ) )
-          {
-            if (verbose) fmt::print("\t\tfanin {} is constant, skipping...\n", parent);
-            return;
-          }
-          phase = std::max(phase, NR.at( parent ).phase );
-          if (verbose)
-          {
-            glob_phase_t gp = NR.at( parent ).phase;
-            fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
-          }
-        });
-        phase++;
-        NR.at(node).id = node;
-        auto ct = phase_assignment.count(node);
-        if (ct != 0)
-        {
-          NR.at(node).phase = phase_assignment.at( node );
-        }
-        else 
-        {
-          NR.at(node).phase = phase;
-        }
-        NR.at(node).type = AS_GATE;
-        NR.at(node).ntk_sig = node;
-        NR.at(node).is_valid = true;
-        if (verbose) fmt::print("\tAS GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
-      }
-      else 
-      {
-        fmt::print("\t GATE {} : fanins[{}], type[{}], func[{}]\n", node, fmt::join(node_params.fanins, ","), node_params.type, node_params.func);
-        throw "Unsupported gate type!";
-      }
     });
-
-    return NR;
-  }
-// #else
-  std::unordered_map<klut::signal, glob_phase_t> greedy_assign(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params,  const bool verbose = false) //const uint8_t n_phases,
-  {
-    mockturtle::topo_view<klut> ntk_topo ( ntk );
-    std::unordered_map<klut::signal, glob_phase_t> glob_phase;
-    glob_phase.reserve(ntk_topo.size());
-
-    ntk_topo.foreach_node([&] ( const klut::signal & node ) 
+    glob_phase[node] = phase;
+    if (verbose)
     {
-      if ( ntk_topo.is_constant( node ) )
-      {
+        // fmt::print("\tSA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
+        fmt::print("\tSA GATE {} placed at ɸ={}\n", node, phase);
+    }
+    }
+    else if ( node_params.type == AS_GATE )
+    {
+    // Place at the earliest feasible phase
+    glob_phase_t phase = 0u;
+    ntk_topo.foreach_fanin(node, [&] (const klut::signal & parent)
+    {
+        if ( ntk_topo.is_constant( parent ) )
+        {
         if (verbose)
         {
-          fmt::print("Skipping constant {}\n", node);
+            fmt::print("\t\tfanin {} is constant, skipping...\n", parent);
         }
         return;
-      }
-      if ( ntk_topo.is_pi( node ) )
-      {
-        glob_phase[node] = 0u;
+        }
+        phase = std::max(phase, glob_phase.at( parent ) );
         if (verbose)
         {
-          fmt::print("PI {} placed at ɸ=0 [S=0, φ=0]\n", node);
+        glob_phase_t gp = glob_phase.at( parent );
+        // fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
+        fmt::print("\t\tfanin {} ɸ={}\n", parent, gp);
         }
-        return;
-      }
-      const Primitive<klut> & node_params = sig_params.at( node );
-      if (verbose)
-      {
-        fmt::print("{} GATE {}:\n", GATE_TYPE.at(node_params.type), node);
-      }
-
-      if ( node_params.type == AA_GATE )
-      {
-        // place at the same phase as the latest fanin
-        glob_phase_t phase = 0u;
-        ntk_topo.foreach_fanin(node, [&] ( const klut::signal & parent )
-        {
-          if ( ntk_topo.is_constant( parent ) )
-          {
-            if (verbose)
-            {
-              fmt::print("\t\tfanin {} is constant, skipping...\n", parent);
-            }
-            return;
-          }
-          phase = std::max(phase, glob_phase.at( parent ));
-          if (verbose)
-          {
-            glob_phase_t gp = glob_phase.at( parent );
-            fmt::print("\t\tfanin {} ɸ={}\n", parent, gp);
-            // fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
-          }
-
-        });
-        glob_phase[node] = phase;
-        if (verbose)
-        {
-          fmt::print("\tAA GATE {} placed at ɸ={}\n", node, phase);
-          // fmt::print("\tAA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
-        }
-      }
-      else if ( node_params.type == SA_GATE )
-      {
-        // Place at the earliest feasible phase
-        glob_phase_t phase = 0u;
-        ntk_topo.foreach_fanin(node, [&] (const klut::signal & parent)
-        {
-          if ( ntk_topo.is_constant( parent ) )
-          {
-            if (verbose)
-            {
-              fmt::print("\t\tfanin {} is constant, skipping...\n", parent);
-            }
-            return;
-          }
-          // if d==false, SA gate can be directly connected to fanin
-          //cannot directly connect PI
-          //cannot directly connect split signal 
-          //cannot directly connect SA/AA gates to SA gates
-          bool d = (ntk_topo.is_pi(parent)) || (ntk_topo.fanout_size(parent) > 1) || (sig_params.at(parent).type != AS_GATE);                     
-
-          phase = std::max(phase, glob_phase.at( parent ) + static_cast<int>(d) );
-          if (verbose)
-          {
-            glob_phase_t gp = glob_phase.at( parent );
-            std::string gt;
-            // fmt::print("\t\tfanin: {4} {0} ɸ={1} [S={2}, φ={3}], fanout={5} \n",
-            fmt::print("\t\tfanin: {2} {0} ɸ={1}, fanout={3} \n", 
-              parent, 
-              gp, 
-              // gp/n_phases, 
-              // gp%n_phases, 
-              ntk_topo.is_pi(parent) ? "PI" : GATE_TYPE.at( sig_params.at(parent).type ),
-              ntk_topo.fanout_size(parent)
-            );
-          }
-        });
-        glob_phase[node] = phase;
-        if (verbose)
-        {
-          // fmt::print("\tSA GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
-          fmt::print("\tSA GATE {} placed at ɸ={}\n", node, phase);
-        }
-      }
-      else if ( node_params.type == AS_GATE )
-      {
-        // Place at the earliest feasible phase
-        glob_phase_t phase = 0u;
-        ntk_topo.foreach_fanin(node, [&] (const klut::signal & parent)
-        {
-          if ( ntk_topo.is_constant( parent ) )
-          {
-            if (verbose)
-            {
-              fmt::print("\t\tfanin {} is constant, skipping...\n", parent);
-            }
-            return;
-          }
-          phase = std::max(phase, glob_phase.at( parent ) );
-          if (verbose)
-          {
-            glob_phase_t gp = glob_phase.at( parent );
-            // fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
-            fmt::print("\t\tfanin {} ɸ={}\n", parent, gp);
-          }
-        });
-        phase++;
-        glob_phase[node] = phase;
-        if (verbose)
-        {
-          fmt::print("\tAS GATE {} placed at ɸ={}\n", node, phase);
-          // fmt::print("\tAS GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
-        }
-      }
-      else 
-      {
-        fmt::print("\t GATE {} : fanins[{}], type[{}], func[{}]\n", node, fmt::join(node_params.fanins, ","), node_params.type, node_params.func);
-        throw "Unsupported gate type!";
-      }
     });
-    return glob_phase;
-  }
-// #endif
+    phase++;
+    glob_phase[node] = phase;
+    if (verbose)
+    {
+        fmt::print("\tAS GATE {} placed at ɸ={}\n", node, phase);
+        // fmt::print("\tAS GATE {} placed at ɸ={} [S={}, φ={}]\n", node, phase, phase/n_phases, phase%n_phases);
+    }
+    }
+    else 
+    {
+    fmt::print("\t GATE {} : fanins[{}], type[{}], func[{}]\n", node, fmt::join(node_params.fanins, ","), node_params.type, node_params.func);
+    throw "Unsupported gate type!";
+    }
+  });
+  return glob_phase;
+}
 
-
-bool phase_comparison(const node_t & a, const node_t & b, const std::unordered_map<node_t, NtkNode> & NR)
+bool phase_ntk_comparison(const klut::signal & a, const klut::signal & b, const klut & ntk )
 {
-  const NtkNode & a_node = NR.at(a);
-  const NtkNode & b_node = NR.at(b);
-  if (a_node.is_const)
+  if (ntk.is_constant(a))
   {
     return true;
   }
-  else if (b_node.is_const)
+  else if (ntk.is_constant(b))
   {
     return false;
   }
-  return a_node.phase < b_node.phase;
+  NodeData a_data = ntk.value(a);
+  NodeData b_data = ntk.value(b);
+
+  return a_data.sigma < b_data.sigma;
 }
 
-void splitter_insertion( std::unordered_map<node_t, NtkNode> & NR , bool verbose = false)
+// Function to insert splitter nodes in a KLUT-based network (klut = k-input lookup table network).
+void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
 {
-  auto phase_comp = [&](const node_t & a, const node_t & b){ return phase_comparison(a, b, NR); };
-
-  std::vector<node_t> stack;
-  std::vector<node_t> seen;
-  // record the PO-s of the network
-  for (auto & [id, ntk_node] : NR)
+  // Lambda function for comparing the phases of two signals in the network.
+  auto phase_comp = [&](const klut::signal & a, const klut::signal & b)
   {
-    if (ntk_node.is_const)
-    {
-      continue;
-    }
-    std::sort(ntk_node.fanins.begin(), ntk_node.fanins.end(), phase_comp);
-    std::sort(ntk_node.fanouts.begin(), ntk_node.fanouts.end(), phase_comp);
-    if (ntk_node.fanouts.size() > 1)
-    {
-      stack.push_back(id);
-    }
-  }
+    return phase_ntk_comparison(a, b, ntk);
+  };
 
-  node_t spl_id = NR.size();
-  while (!stack.empty())
+  // Create a view of the network that provides access to fanout information.
+  auto ntk_fo = mockturtle::fanout_view<klut>(ntk);
+
+  // For each node in the fanout view:
+  ntk_fo.foreach_node([&](const klut::signal & node)
   {
-    if (verbose) fmt::print("Stack size: {}\n", stack.size());
-    // std::sort(stack.begin(), stack.end(), phase_comp);
-    node_t parent_id = stack.back();
-    NtkNode & parent = NR.at( parent_id );
+    // Get the number of fanouts for the current node.
+    uint32_t fo_size = ntk_fo.fanout_size(node);
 
-    if (verbose) fmt::print("\t{} fanouts: [{}]\n", parent.fanouts.size(), fmt::join(parent.fanouts, ","));
-    // create a splitter object, increment splitter counter
-    
-    if (verbose) fmt::print("\t\tAdding splitter {} to NR (size before = {}, ", spl_id, NR.size());
-    NR.emplace(spl_id, spl_id);
-    if (verbose) fmt::print("size after = {})\n", NR.size());
-    NtkNode & spl = NR.at(spl_id);
-    spl_id++;
-
-    if (verbose) fmt::print("\tAdding fanouts to splitter {} -> [{}]\n", spl.id, fmt::join(parent.fanouts.end()-2, parent.fanouts.end(), ","));
-    // splitter ----> fanouts 
-    spl.fanouts.insert( spl.fanouts.end(), parent.fanouts.end()-2, parent.fanouts.end() );
-
-
-    if (verbose) fmt::print("\tRemoving connection   parent {} <---- fanouts [{}]\n", parent.id, fmt::join(spl.fanouts, ","));
-    if (verbose) fmt::print("\tCreating connection splitter {} <---- fanouts [{}]\n",    spl.id, fmt::join(spl.fanouts, ","));
-    // parent  <-/-/- fanouts
-    // splitter <---- fanouts
-    for (auto it = parent.fanouts.end()-2; it < parent.fanouts.end(); ++it)
+    DEBUG_PRINT("\t[NODE {}] FANOUT SIZE = {}\n", node, fo_size);
+    // If the current node is a constant or it has fanout ≤ 1, skip to the next node.
+    if (ntk_fo.is_constant(node) || fo_size <= 1)
     {
-      node_t fo_id = *it;
-      NtkNode & fo = NR.at( fo_id );
-      // remove parent from the fanins of the ntk_node
-      // replace with the splitter parent from the fanins of the ntk_node
-      if (verbose) fmt::print("\t\t\t{} fanins before replacement: [{}]\n", fo.id, fmt::join(fo.fanins, ","));
-      auto parent_it = std::find(fo.fanins.begin(), fo.fanins.end(), parent_id);
-      *parent_it = spl.id; // fo.fanins.erase(parent_it);
-      if (verbose) fmt::print("\t\t\t{} fanins after  replacement: [{}]\n", fo.id, fmt::join(fo.fanins, ","));
+      return;
     }
-    // parent  -/-/-> fanouts
-    if (verbose) fmt::print("\tRemoving connection   parent {} ----> fanouts [{}]\n", parent.id, fmt::join(spl.fanouts, ","));
-    if (verbose) fmt::print("\t\t\tParent {} fanouts before replacement: [{}]\n", parent.id, fmt::join(parent.fanouts, ","));
-    parent.fanouts.erase(parent.fanouts.end()-2, parent.fanouts.end());
-    if (verbose) fmt::print("\t\t\tParent {} fanouts after  replacement: [{}]\n", parent.id, fmt::join(parent.fanouts, ","));
-    
-    if (verbose) fmt::print("\tConnecting parent {} <---> splitter {}\n", parent.id, spl.id);
-    // parent <----> splitter
-    if (verbose) fmt::print("\t\t\tSplitter {} fanins before connection: [{}]\n", spl.id, fmt::join(spl.fanins, ","));
-    spl.fanins.push_back(parent_id);  // connect spl to parent 
-    if (verbose) fmt::print("\t\t\tSplitter {} fanins after  connection: [{}]\n", spl.id, fmt::join(spl.fanins, ","));
-    
-    if (verbose) fmt::print("\t\t\tParent {} fanouts before adding splitter {}: [{}]\n", parent.id, spl.id, fmt::join(parent.fanouts, ","));
-    parent.fanouts.push_back(spl.id); // connect parent to spl
-    if (verbose) fmt::print("\t\t\tParent {} fanouts after  adding splitter {}: [{}]\n", parent.id, spl.id, fmt::join(parent.fanouts, ","));
-    // get maximum phase
-    std::vector<glob_phase_t> phases;
-    for (const node_t & fo_id : spl.fanouts)
-    {
-      phases.push_back(NR.at( fo_id ).phase);
-    }
-    glob_phase_t phase = *(std::min_element(phases.begin(), phases.end()));
 
-    // Set splitter parameters
-    if (verbose) fmt::print("\tAssigning phase {}\n", phase);
-    spl.phase    = phase;
-    spl.type     = AA_GATE;
-    spl.ntk_sig  = spl.id;
-    spl.is_spl   = true;
-    spl.is_valid = true;
+    // Populate the fanouts vector.
+    std::vector<klut::signal> fanouts;
+    fanouts.reserve(fo_size);
+    ntk_fo.foreach_fanout(node, [&](const klut::signal & fo_node)
+    {
+      fanouts.push_back(fo_node);
+      DEBUG_PRINT("\t\t[NODE {}] ADDING FANOUT\n", node, fo_node);
+    });
 
-    // sort fanins/fanouts
-    std::sort(spl.fanins.begin(), spl.fanins.end(), phase_comp);
-    std::sort(spl.fanouts.begin(), spl.fanouts.end(), phase_comp);
-    std::sort(parent.fanouts.begin(), parent.fanouts.end(), phase_comp);
-    for (const node_t & fo_id : spl.fanouts)
+    if ( fanouts.size() <= 1 )
     {
-      auto & fo = NR.at( fo_id );
-      std::sort(fo.fanins.begin(), fo.fanins.end(), phase_comp);
+      return;
     }
-    if (parent.fanouts.size() == 1)
+    if ( fo_size != fanouts.size() )
     {
-      stack.pop_back();
+      mockturtle::write_bench(ntk_fo , "PANIC.bench");
     }
-    // stack.push_back( spl.id );
-  }
+
+    // Sort the fanouts using the phase comparison function.
+    std::sort(fanouts.begin(), fanouts.end(), phase_comp);
+    DEBUG_PRINT("\t[NODE {}] SORTED FANOUTS:\n", node);
+    printVector(fanouts, 2);
+
+    // Create [fo_size - 1] splitter nodes.
+    klut::signal last_spl = node;
+    std::vector<klut::signal> splitters;
+    splitters.reserve( fanouts.size() - 1 );
+    for (auto it = fanouts.begin(); it < fanouts.end() - 1; it++)
+    {
+      DEBUG_PRINT("\t\t[NODE {}] LAST SPL: {}\n", node, last_spl);
+      // Copy sigma and type data from the first fanout for the splitter node data.
+      NodeData spl_data = ntk.value(*it);
+      // Change gate type to AA for the splitter node.
+      spl_data.type = AA_GATE;
+      // Create a new splitter node connected to 'last_spl'.
+
+      DEBUG_PRINT("\t\t[NODE {}] CREATING SPL FOR {}\n", node, *it);
+      DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} FANOUT BEFORE: {}\n", node, last_spl, ntk.fanout_size(last_spl));
+      const klut::signal spl = ntk._create_node({last_spl}, 2, last_spl);
+      ntk.set_value(spl, spl_data.value);
+      DEBUG_PRINT("\t\t[NODE {}] CREATED SPL {}\n", node, spl);
+      DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} FANOUT AFTER: {}\n", node, last_spl, ntk.fanout_size(last_spl));
+      DEBUG_PRINT("\t\t[NODE {}] SPL {} FANIN: {}\n", node, spl, ntk.fanin_size(spl));
+
+      // auto n = ntk._storage->nodes[*it];
+      // auto& preds = n.children;
+
+      // Update the connections to reflect the splitter's presence.
+      DEBUG_PRINT("\t\t[NODE {}, LAST_SPL {}] UPDATING CONNECTIONS\n", node, last_spl);
+      // for (auto& pred : preds)
+      for (auto pred_it = ntk._storage->nodes[*it].children.begin();
+                pred_it < ntk._storage->nodes[*it].children.end(); pred_it++ )
+      {
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PRED {}\n", node, last_spl, pred_it->data);
+        if (pred_it->data == node)
+        {
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] RECORDING OLD PREDS\n", node, last_spl);
+          // Store the previous connections.
+          std::vector<klut::signal> old_preds(ntk._storage->nodes[*it].children.size());
+          std::transform(ntk._storage->nodes[*it].children.begin(), ntk._storage->nodes[*it].children.end(), old_preds.begin(), [](auto c) { return c.index; });
+          printVector(old_preds, 4);
+
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
+          for (const auto& entry : ntk._storage->nodes[*it].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+          pred_it->data = spl;                             // Replace the connection with the splitter.
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
+          for (const auto& entry : ntk._storage->nodes[*it].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
+          DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(spl));
+          ntk._storage->nodes[spl].data[0].h1++;  // Increment fan-out of the splitter.
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT  AFTER: {}\n", node, last_spl, spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
+          DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(spl));
+
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] NODE {} FANOUT BEFORE: {}\n", node, last_spl, node, static_cast<int>(ntk._storage->nodes[node].data[0].h1));
+          DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
+          ntk._storage->nodes[node].data[0].h1--; // Decrement fan-out of the current node.
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] NODE {} FANOUT  AFTER: {}\n", node, last_spl, node, static_cast<int>(ntk._storage->nodes[node].data[0].h1));
+          DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
+
+          // // Notify listeners of the modification.
+          // for (auto const& fn : ntk._events->on_modified)
+          // {
+          //   (*fn)(*it, old_preds);
+          // }
+        }
+      }
+      last_spl = spl;
+      splitters.push_back(spl);
+    }
+
+    // Process the last fanout.
+    // auto& preds = ntk._storage->nodes[fanouts.back()].children;
+    DEBUG_PRINT("\t\t[NODE {}, LAST_SPL {}] UPDATING CONNECTIONS TO LAST FANOUT {}\n", node, last_spl, fanouts.back());
+    // for (auto& pred : preds)
+    for (auto pred_it = ntk._storage->nodes[fanouts.back()].children.begin();
+              pred_it < ntk._storage->nodes[fanouts.back()].children.end(); pred_it++ )
+    {
+      if (pred_it->data == node)
+      {
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] RECORDING OLD PREDS\n", node, last_spl);
+        // Store the previous connections.
+        std::vector<klut::signal> old_preds(ntk._storage->nodes[fanouts.back()].children.size());
+        std::transform(ntk._storage->nodes[fanouts.back()].children.begin(), ntk._storage->nodes[fanouts.back()].children.end(), old_preds.begin(), [](auto c) { return c.index; });
+        printVector(old_preds, 4);
+
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
+        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+        pred_it->data = last_spl;                            // Replace the connection with the last splitter.
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
+        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }     
+
+
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, last_spl, static_cast<int>(ntk._storage->nodes[last_spl].data[0].h1));
+        DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(last_spl));
+        ntk._storage->nodes[last_spl].data[0].h1++; // Increment fan-out of the last splitter.
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT  AFTER: {}\n", node, last_spl, last_spl, static_cast<int>(ntk._storage->nodes[last_spl].data[0].h1));
+        DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(last_spl));
+
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] NODE {} FANOUT BEFORE: {}\n", node, last_spl, node, static_cast<int>(ntk._storage->nodes[node].data[0].h1));
+        DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
+        ntk._storage->nodes[node].data[0].h1--;     // Decrement fan-out of the current node.
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] NODE {} FANOUT  AFTER: {}\n", node, last_spl, node, static_cast<int>(ntk._storage->nodes[node].data[0].h1));
+        DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
+
+        // Notify listeners of the modification.
+        for (auto const& fn : ntk._events->on_modified)
+        {
+          (*fn)(fanouts.back(), old_preds);
+        }
+      }
+    }
+
+    auto fo_ntk { mockturtle::fanout_view( ntk ) };
+    for (const auto & node : fanouts)
+    {
+      DEBUG_PRINT("\t\t\t node: {}\n", node);
+      
+      fo_ntk.foreach_fanin( node, [&](const klut::signal & fi_node)
+      {
+        DEBUG_PRINT("\t\t\t\t fanin : {}\n", fi_node);
+      });
+      fo_ntk.foreach_fanout( node, [&](const klut::signal & fo_node)
+      {
+        DEBUG_PRINT("\t\t\t\t fanout: {}\n", fo_node);
+      });
+    }
+    for (const auto & node : splitters)
+    {
+      DEBUG_PRINT("\t\t\t spl : {}\n", node);
+      
+      fo_ntk.foreach_fanin( node, [&](const klut::signal & fi_node)
+      {
+        DEBUG_PRINT("\t\t\t\t fanin : {}\n", fi_node);
+      });
+      fo_ntk.foreach_fanout( node, [&](const klut::signal & fo_node)
+      {
+        DEBUG_PRINT("\t\t\t\t fanout: {}\n", fo_node);
+      });
+    }
+    // Ensure that the current node's fan-out count is now 1 (since all other fanouts have been replaced by splitters).
+    assert(ntk._storage->nodes[node].data[0].h1 == 1);
+  });
 }
 
 uint64_t calculate_hash(glob_phase_t phase, klut::signal fanout, klut::signal fanin)
@@ -958,42 +983,42 @@ uint64_t calculate_hash(glob_phase_t phase, klut::signal fanout, klut::signal fa
 
 struct DFF_var 
 {
-  node_t fanin;
-  node_t fanout;
-  glob_phase_t phase;
+  klut::signal fanin;
+  klut::signal fanout;
+  uint32_t sigma;
   std::unordered_set<uint64_t> parent_hashes;
   uint64_t hash;
 
-  DFF_var(node_t _fanin, node_t _fanout, glob_phase_t _phase)
-      : fanin(_fanin), fanout(_fanout), phase(_phase), parent_hashes({}) 
+  DFF_var(klut::signal _fanin, klut::signal _fanout, uint32_t _sigma)
+      : fanin(_fanin), fanout(_fanout), sigma(_sigma), parent_hashes({}) 
       {
-        hash = calculate_hash(phase, fanout, fanin);
+        hash = calculate_hash(_sigma, _fanout, _fanin);
       }
 
-  DFF_var(node_t _fanin, node_t _fanout, glob_phase_t _phase, std::unordered_set<uint64_t> _parent_hashes, uint64_t _hash)
-      : fanin(_fanin), fanout(_fanout), phase(_phase), parent_hashes(_parent_hashes), hash(_hash) {}
+  DFF_var(klut::signal _fanin, klut::signal _fanout, uint32_t _sigma, std::unordered_set<uint64_t> _parent_hashes, uint64_t _hash)
+      : fanin(_fanin), fanout(_fanout), sigma(_sigma), parent_hashes(_parent_hashes), hash(_hash) {}
 
   DFF_var(const DFF_var& other)
-      : fanin(other.fanin), fanout(other.fanout), phase(other.phase), parent_hashes(other.parent_hashes), hash(other.hash) {}
+      : fanin(other.fanin), fanout(other.fanout), sigma(other.sigma), parent_hashes(other.parent_hashes), hash(other.hash) {}
 
-  std::string str()
+  std::string str() 
   {
-    return fmt::format( "var_{}_{}_{}", fanin, fanout, phase );
+      return fmt::format("var_{}_{}_{}", fanin, fanout, sigma);
   }
 };
 
-uint64_t dff_hash(node_t _fanin, node_t _fanout, glob_phase_t _phase)
+uint64_t dff_hash(klut::signal _fanin, klut::signal _fanout, uint32_t _sigma)
 {
-  return ( (uint64_t)_fanin << 40 ) | ( (uint64_t)_fanout << 16 ) | _phase;
+  return ( (uint64_t)_fanin << 40 ) | ( (uint64_t)_fanout << 16 ) | _sigma;
 }
 
 struct DFF_registry
 {
   std::unordered_map<uint64_t, DFF_var> variables;
 
-  DFF_var & at(node_t _fanin, node_t _fanout, glob_phase_t _phase)
+  DFF_var & at(node_t _fanin, node_t _fanout, glob_phase_t _sigma)
   {
-    return variables.at( dff_hash(_phase, _fanout, _fanin) );
+    return variables.at( dff_hash(_fanin, _fanout, _sigma) );
   } 
   DFF_var & at(uint64_t _hash)
   {
@@ -1013,78 +1038,91 @@ struct DFF_registry
     DFF_var & dff = variables.at(hash);
     if (negated)
     {
-      return fmt::format( "var_{}_{}_{}.Not()", dff.fanin, dff.fanout, dff.phase );
+      return fmt::format( "var_{}_{}_{}.Not()", dff.fanin, dff.fanout, dff.sigma );
     }
-    return fmt::format( "var_{}_{}_{}", dff.fanin, dff.fanout, dff.phase );
+    return fmt::format( "var_{}_{}_{}", dff.fanin, dff.fanout, dff.sigma );
   }
 };
 
 
-std::vector<Path> extract_paths(const std::unordered_map<node_t, NtkNode> & NR, bool verbose = false)
+std::vector<Path> extract_paths(const klut & ntk, bool verbose = false)
 {
-  // std::unordered_map<klut::signal, std::vector<klut::signal>> ancestors;
+  DEBUG_PRINT("\t[i] ENTERED FUNCTION extract_paths\n");
   std::vector<Path> paths;
 
-  for (const auto & [fo_id, fo_node] : NR)
+  ntk.foreach_node([&](const klut::signal & fo_node)
   {
-    if (fo_node.is_const || fo_node.is_pi || (fo_node.type != AS_GATE && fo_node.type != SA_GATE) )
+    DEBUG_PRINT("\t\t[i] PROCESSING NODE {}\n", fo_node);
+    if (ntk.is_constant(fo_node) || ntk.is_pi(fo_node))
     {
-      continue;
+      DEBUG_PRINT("\t\t\t[NODE {}] the node is IS CONSTANT\n", fo_node);
+      return;
+    }
+    NodeData fo_node_data = ntk.value(fo_node);
+    if (fo_node_data.type != AS_GATE && fo_node_data.type != SA_GATE) 
+    {
+      DEBUG_PRINT("\t\t\t[NODE {}] the node is AA, skipping\n", fo_node);
+      return;
     }
     // at this point, the node should be AS/SA
+    DEBUG_PRINT("\t\t[NODE {}] the node is AS/SA, continuing...\n", fo_node);
 
     // Create a separate path for each fanin of the node
     std::vector<Path> aa_paths; 
-    aa_paths.reserve( fo_node.fanins.size() );
+    aa_paths.reserve( ntk.fanin_size(fo_node) );
 
-    for (const node_t & fi_id : fo_node.fanins)
+    ntk.foreach_fanin(fo_node, [&](const klut::signal & fi_node)
     {
+      DEBUG_PRINT("\t\t\t[NODE {}] processing fanin {}\n", fo_node, fi_node);
       // Create a path object with only a target
       Path node_path;
-      node_path.targets.emplace( fo_id );
-      
-      std::vector<node_t> stack;
-      stack.push_back( fi_id );
-      
-      if ( verbose ) fmt::print("Node {}, traversal for parent {}\n", fo_id, fi_id);
+      node_path.targets.emplace( fo_node );
 
-      std::set<node_t> seen;
+      std::vector<klut::signal> stack { fi_node };
+      
+      DEBUG_PRINT("\t\t\t[NODE {}][FANIN {}] created stack\n", fo_node, fi_node);
+      
+      std::set<klut::signal> seen;
       while (!stack.empty())
       {
-        node_t & node_id = stack.back();
-        const NtkNode & n = NR.at( node_id );
+        DEBUG_PRINT("\t\t\t[NODE {}][FANIN {}] stack contents:\n", fo_node, fi_node);
+        printVector(stack, 4);
+
+        const klut::signal & n = stack.back();
         stack.pop_back();
 
-        if ( verbose ) fmt::print("\t[Parent {}]: Analyzing node {}\n", fi_id, node_id);
+        DEBUG_PRINT("\t\t\t[NODE {}][FANIN {}]: Analyzing node {}\n", fo_node, fi_node, n);
+
         // A constant does not have any effect on the DFF placement, we can skip it
-        if ( n.is_const )
+        if ( ntk.is_constant( n ) )
         {
           continue;
-        }
+        }        
+        const NodeData n_data { ntk.value(n) };
         // Found a source of the path, add to sources, do not continue traversal
-        else if ( n.is_pi || n.type == AS_GATE || n.type == SA_GATE )
+        if ( ntk.is_pi(n) || n_data.type == AS_GATE || n_data.type == SA_GATE )
         {
-          if ( verbose ) fmt::print("\t\t{} is a source node \n", node_id);
-          node_path.sources.emplace( node_id );
+          DEBUG_PRINT("\t\t\t[NODE {}][FANIN {}]: node {} is a source \n", fo_node, fi_node, n);
+          node_path.sources.emplace( n );
         }
         // Found AA gate, add to internal nodes, add parents for further traversal
-        else if ( n.type == AA_GATE )
+        else if ( n_data.type == AA_GATE )
         {
-          if ( verbose ) fmt::print("\t\t{} is INTERNAL adding fanins \n", node_id);
-          node_path.internals.emplace( node_id );
-          for (const node_t & sig_id : n.fanins)
-          {
-            stack.push_back( sig_id );
-          }
+          DEBUG_PRINT("\t\t\t[NODE {}][FANIN {}]: node is INTERNAL adding fanins \n", fo_node, fi_node, n);
+          node_path.internals.emplace( n );
+
+          ntk.foreach_fanin(n, [&](const klut::signal & sig){
+            stack.push_back( sig );
+          });
         }
         else
         {
-          if ( verbose ) fmt::print("Signal {}: {} is not recognized \n", node_id, GATE_TYPE.at( n.type ));
+          DEBUG_PRINT("\t\t\t[NODE {}][FANIN {}]: Signal {}: {} is not recognized \n", fo_node, fi_node, n, GATE_TYPE.at( n_data.type ));
           throw "Unsupported case";
         }
-        seen.emplace( node_id );
+        seen.emplace( n );
       }
-      // aa_paths.push_back(node_path);
+
       // Identify overlapping paths
       std::vector<size_t> to_merge;
       for (size_t i = 0u; i < paths.size(); ++i)
@@ -1109,33 +1147,10 @@ std::vector<Path> extract_paths(const std::unordered_map<node_t, NtkNode> & NR, 
         paths.erase(paths.begin() + idx);
       }
       paths.push_back(node_path);
-    }
-  }
+    });
+  });
   return paths;
 }
-
-union Edge
-{
-  struct 
-  {
-    uint32_t fanin  : 32;
-    uint32_t fanout : 32;
-  };
-  uint64_t value;
-
-  Edge(uint64_t _fanin, uint64_t _fanout) : fanin(_fanin), fanout(_fanout) {};
-  Edge(uint64_t _value) : value(_value) {};
-
-  bool operator==(const Edge & other) const 
-  {
-    return value == other.value;
-  }
-};
-
-
-// std::pair<std::vector<DFF_var>, uint64_t> 
-
-
 
 /// @brief Create binary variables for DFF placement in a given path
 /// @param path - a path object to insert DFFs into
@@ -1143,89 +1158,91 @@ union Edge
 /// @param n_phases - # of phases
 /// @param verbose - prints debug messages if set to *true*
 /// @return 
-std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(const Path & path, const std::unordered_map<node_t, NtkNode> & NR, const uint8_t n_phases, bool verbose = false)
+std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(const Path & path, const klut & ntk, const uint8_t n_phases, bool verbose = false)
 {
   DFF_registry DFF_REG;
   std::vector<uint64_t> required_SA_DFFs;
 
-  std::vector<std::tuple<node_t, uint64_t>> stack;
-  for (const node_t & tgt_id : path.targets)
+  std::vector<std::tuple<klut::signal, uint64_t>> stack;
+  for (const klut::signal & tgt : path.targets)
   {
-    stack.emplace_back(tgt_id, 0);
+    stack.emplace_back(tgt, 0);
   }
-  if (verbose) fmt::print("[DFF] Target nodes: {}\n", fmt::join(path.targets, ","));
-
-  std::vector<Edge> seen;
+  DEBUG_PRINT("[DFF] Target nodes: {}\n", fmt::join(path.targets, ","));
 
   auto precalc_ndff = 0u;
   
   while (!stack.empty())
-  {
-    if (verbose) fmt::print("STACK :\n");
-    for (const auto & [ fo_id, earliest_child_hash ] : stack)
+  { 
+    if (verbose)
     {
-      const NtkNode & fo_node = NR.at( fo_id );
-      if (earliest_child_hash != 0)
+      DEBUG_PRINT("STACK :\n");
+      for (const auto & [ fo_node, earliest_child_hash ] : stack)
       {
-        if (verbose) fmt::print("\t{}({})[{}], {}\n", GATE_TYPE.at(fo_node.type), fo_id, fo_node.phase, DFF_REG.at(earliest_child_hash).str());
-      }
-      else
-      {
-        if (verbose) fmt::print("\t{}({})[{}]\n", GATE_TYPE.at(fo_node.type), fo_id, fo_node.phase);
-      }
-    }
-    const auto & [ fo_id, earliest_child_hash ] = stack.back();
-    stack.pop_back();
-
-    const NtkNode & fo_node = NR.at( fo_id );
-    glob_phase_t latest_phase = fo_node.phase - (fo_node.type == AS_GATE);
-    if (verbose) fmt::print("[DFF] Analyzing child: {}({})[{}]\n", GATE_TYPE.at(fo_node.type), fo_id, fo_node.phase);
-    for (const node_t & fi_id : fo_node.fanins)
-    {
-      const NtkNode & fi_node = NR.at( fi_id );
-      glob_phase_t earliest_phase = fi_node.phase + (fi_node.type != AA_GATE);
-
-      if (verbose) fmt::print("\t[DFF] Analyzing parent: {}({})[{}]\n", GATE_TYPE.at(fi_node.type), fi_id, fi_node.phase);
-      Edge edge { fi_id, fo_id }; 
-      
-      // check if the chain is straight - #DFF is just floor(delta-phase), no need to create the dff vars
-      if (fo_node.type != AA_GATE && fi_node.type != AA_GATE)
-      {
-        // special case when an AS gate feeds directly into SA gate
-        if (fo_node.phase == fi_node.phase)
+        NodeData fo_data { ntk.value( fo_node ) };
+        if (earliest_child_hash != 0)
         {
-          if (verbose) fmt::print("\t[DFF] Straight chain: AS{} -> SA{}\n", fi_id, fo_id);
-          // do nothing, no additional DFFs needed
-          assert(fo_node.type == SA_GATE && fi_node.type == AS_GATE && fi_node.fanouts.size() == 1);
+          DEBUG_PRINT("\t{}({})[{}], {}\n", GATE_TYPE.at((int)fo_data.type), fo_node, (int)fo_data.sigma, DFF_REG.at(earliest_child_hash).str());
         }
         else
         {
-          if (verbose) fmt::print("\t[DFF] Straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_node.type), fi_node.phase, GATE_TYPE.at(fo_node.type), fo_node.phase);
-          // straight chain, just floor the difference!
-          precalc_ndff += (fo_node.phase - fi_node.phase)/n_phases + (fo_node.type == SA_GATE); //extra DFF before SA gate
+          DEBUG_PRINT("\t{}({})[{}]\n", GATE_TYPE.at((int)fo_data.type), fo_node, (int)fo_data.sigma);
         }
-        continue;
       }
-      
+    }
+    // fixing this stupid clang bug with structured bindings
+    auto node_tuple = stack.back();
+    const klut::signal fo_node = std::get<0>(node_tuple);
+    const uint64_t earliest_child_hash = std::get<1>(node_tuple);
+    // const auto & [ fo_node, earliest_child_hash ] = node_tuple ;
+    stack.pop_back();
+    NodeData fo_data { ntk.value( fo_node ) };
 
-      if (verbose) fmt::print("\t[DFF] Non-straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_node.type), fi_node.phase, GATE_TYPE.at(fo_node.type), fo_node.phase);
-      std::vector<uint64_t> out_hashes;
-      if (verbose) fmt::print("\tAdding new DFFs [reg size = {}]\n", DFF_REG.variables.size());
-      for (glob_phase_t phase = earliest_phase; phase <= latest_phase; ++phase)
+    uint32_t latest_sigma = fo_data.sigma - (fo_data.type == AS_GATE);
+    DEBUG_PRINT("[DFF] Analyzing child: {}({})[{}]\n", GATE_TYPE.at(fo_data.type), fo_node, (int)fo_data.sigma);
+
+    ntk.foreach_fanin(fo_node, [&](const klut::signal & fi_node){
+      NodeData fi_data { ntk.value( fi_node ) };
+      uint32_t earliest_sigma = fi_data.sigma + (fi_data.type != AA_GATE);
+
+      DEBUG_PRINT("\t[DFF] Analyzing parent: {}({})[{}]\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma);
+
+      // check if the chain is straight - #DFF is just floor(delta-phase), no need to create the dff vars
+      if (fo_data.type != AA_GATE && fi_data.type != AA_GATE)
       {
-        uint64_t new_hash = DFF_REG.add(fi_id, fo_id, phase);
-        out_hashes.push_back(new_hash);
-        if (verbose) fmt::print("\tAdded new DFFs at phase {} [reg size = {}]\n", phase, DFF_REG.variables.size());
+        // special case when an AS gate feeds directly into SA gate
+        if (fo_data.sigma == fi_data.sigma)
+        {
+          DEBUG_PRINT("\t[DFF] Straight chain: AS{} -> SA{}\n", fi_node, fo_node);
+          // do nothing, no additional DFFs needed
+          assert(fo_data.type == SA_GATE && fi_data.type == AS_GATE && ntk.fanout_size(fi_node) == 1);
+        }
+        else
+        {
+          DEBUG_PRINT("\t[DFF] Straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_data.type), (int)fi_data.sigma, GATE_TYPE.at(fo_data.type), (int)fo_data.sigma);
+          // straight chain, just floor the difference!
+          precalc_ndff += (fo_data.sigma - fi_data.sigma)/n_phases + (fo_data.type == SA_GATE); //extra DFF before SA gate
+        }
+        return;
       }
 
-      if (verbose) fmt::print("\tConnecting new DFFs\n");
+      DEBUG_PRINT("\t[DFF] Non-straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_data.type), (int)fi_data.sigma, GATE_TYPE.at(fo_data.type), (int)fo_data.sigma);
+      std::vector<uint64_t> out_hashes;
+      DEBUG_PRINT("\tAdding new DFFs [reg size = {}]\n", DFF_REG.variables.size());
+
+      for (glob_phase_t sigma = earliest_sigma; sigma <= latest_sigma; ++sigma)
+      {
+        uint64_t new_hash = DFF_REG.add(fi_node, fo_node, sigma);
+        out_hashes.push_back(new_hash);
+        DEBUG_PRINT("\tAdded new DFFs at phase {} [reg size = {}]\n", sigma, DFF_REG.variables.size());
+      }
+      DEBUG_PRINT("\tConnecting new DFFs\n");
       for (auto i = 1u; i < out_hashes.size(); ++i)
       {
         DFF_var & dff = DFF_REG.at( out_hashes[i] );
         dff.parent_hashes.emplace(out_hashes[i-1]);
       }
-
-      if (fo_node.type == SA_GATE)
+      if (fo_data.type == SA_GATE)
       {
         assert( !out_hashes.empty() );
         required_SA_DFFs.push_back(out_hashes.back());
@@ -1233,25 +1250,19 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(
 
       uint64_t earliest_hash = (out_hashes.empty()) ? earliest_child_hash : out_hashes.front();
       // if the node is internal, connect with the fanout phase
-      if (fo_node.type == AA_GATE && !out_hashes.empty() && earliest_hash != 0 && earliest_child_hash != 0)
+      if (fo_data.type == AA_GATE && !out_hashes.empty() && earliest_hash != 0 && earliest_child_hash != 0)
       {
         DFF_var & child_dff = DFF_REG.at( earliest_child_hash );
-        if (verbose) fmt::print("\tPrior node is {}[{}]\n", child_dff.str(), child_dff.phase); 
+        DEBUG_PRINT("\tPrior node is {}[{}]\n", child_dff.str(), (int)child_dff.sigma); 
         // assert(child_dff.fanin == fo_id);
         child_dff.parent_hashes.emplace( out_hashes.back() );
       }
-      if (fi_node.type == AA_GATE)
+      if (fi_data.type == AA_GATE)
       {
-        stack.emplace_back( fi_id, earliest_hash );
-        if (verbose) fmt::print("\tEmplacing {}({})[{}], {}\n", GATE_TYPE.at(fi_node.type), fi_id, fi_node.phase, (earliest_hash!=0)?DFF_REG.at(earliest_hash).str():"");
+        stack.emplace_back( fi_node, earliest_hash );
+        DEBUG_PRINT("\tEmplacing {}({})[{}], {}\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma, (earliest_hash!=0)?DFF_REG.at(earliest_hash).str():"");
       }
-
-      // auto it = std::find(seen.begin(), seen.end(), edge);
-      // if (it == seen.end())
-      // {
-      //   seen.push_back( edge );
-      // }
-    }
+    });
   }
   return std::make_tuple(DFF_REG, precalc_ndff, required_SA_DFFs);
 }
@@ -1272,7 +1283,7 @@ struct Snake
     std::vector<uint64_t> & head_section = sections.back();
     uint64_t & head_hash = head_section.back();
     DFF_var & head_dff = DFF_REG.at( head_hash );
-    if (dff.phase == head_dff.phase) // add to the same section
+    if (dff.sigma == head_dff.sigma) // add to the same section
     {
       head_section.push_back( dff_hash );
       return false;
@@ -1291,7 +1302,7 @@ struct Snake
 
 };
 
-void write_snakes(const std::vector<Snake> & snakes, const std::unordered_map<node_t, NtkNode> & NR, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
+void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
 {
   std::ofstream spec_file (cfg_name);
 
@@ -1305,7 +1316,7 @@ void write_snakes(const std::vector<Snake> & snakes, const std::unordered_map<no
       {
         vars.push_back(DFF_REG.str( hash ));
       }
-      if (verbose) fmt::print("New single phase conflict : {}≤1\n", fmt::join(vars, "+"));
+      DEBUG_PRINT("New single phase conflict : {}≤1\n", fmt::join(vars, "+"));
       vars_bucket.push_back(fmt::format(vars.size()>1?"({})":"{}", fmt::join(vars, "+")));
       if (vars.size() > 1)
       {
@@ -1313,7 +1324,7 @@ void write_snakes(const std::vector<Snake> & snakes, const std::unordered_map<no
       }
     }
     std::reverse(vars_bucket.begin(), vars_bucket.end());
-    if (verbose) fmt::print("New buffer requirement : ({})\n", fmt::join(vars_bucket, "|"));
+    DEBUG_PRINT("New buffer requirement : ({})\n", fmt::join(vars_bucket, "|"));
     if (vars_bucket.size() == n_phases)
     {
       spec_file << fmt::format("BUFFER,{}\n", fmt::join(vars_bucket, ","));
@@ -1322,7 +1333,7 @@ void write_snakes(const std::vector<Snake> & snakes, const std::unordered_map<no
 
   for (const uint64_t & hash : required_SA_DFFs)
   {
-    if (verbose) fmt::print("New SA_REQUIRED : {}\n", DFF_REG.str( hash ));
+    DEBUG_PRINT("New SA_REQUIRED : {}\n", DFF_REG.str( hash ));
     spec_file << fmt::format("SA_REQUIRED,{}\n", DFF_REG.str( hash ));
   }
 }
@@ -1334,18 +1345,19 @@ void write_snakes(const std::vector<Snake> & snakes, const std::unordered_map<no
 /// @param n_phases 
 /// @param verbose 
 /// @return 
-std::vector<Snake> sectional_snake(const Path & path, std::unordered_map<node_t, NtkNode> &NR,  DFF_registry & DFF_REG, uint8_t n_phases, bool verbose = false)
+std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry & DFF_REG, uint8_t n_phases, bool verbose = false)
 {
   std::vector<Snake> out_snakes; 
   std::vector<Snake> stack;
   
-  if (verbose) fmt::print("[i]: Starting extraction of worms \n");
+  DEBUG_PRINT("[i]: Starting extraction of worms \n");
   // get all DFFs 
   for (const auto & [hash, dff]: DFF_REG.variables)
   {
-    auto fanout_phase = NR.at( dff.fanout ).phase - ( NR.at( dff.fanout ).type == AS_GATE );
+    NodeData fo_data { ntk.value( dff.fanout ) };
+    auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE );
     auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
-    if (it != path.targets.end() && (dff.phase >= fanout_phase ))
+    if (it != path.targets.end() && (dff.sigma >= fanout_sigma ))
     {
       stack.emplace_back( hash );
     }
@@ -1353,32 +1365,32 @@ std::vector<Snake> sectional_snake(const Path & path, std::unordered_map<node_t,
   
   while (!stack.empty())
   {
-    if (verbose) fmt::print("[i] Stack size is {} \n", stack.size());
+    DEBUG_PRINT("[i] Stack size is {} \n", stack.size());
     Snake snake = stack.back();
     stack.pop_back();
 
-    if (verbose) fmt::print("\t[i] The snake has {} sections\n", snake.sections.size());
+    DEBUG_PRINT("\t[i] The snake has {} sections\n", snake.sections.size());
     uint64_t hash = snake.sections.back().back();
     DFF_var & dff = DFF_REG.at( hash );
 
     // fmt::print("\tCurrent worm size {}, between phases {} and {} \n", worm.size(), DFF_REG.str(worm.front()), DFF_REG.str(worm.back()));
 
 
-    if (verbose) fmt::print("\t\t[i] The DFF {} has {} parents\n", DFF_REG.at( hash ).str(),  dff.parent_hashes.size() );
+    DEBUG_PRINT("\t\t[i] The DFF {} has {} parents\n", DFF_REG.at( hash ).str(),  dff.parent_hashes.size() );
 
     bool returned_current_snake = false;
     for (const uint64_t parent_hash : dff.parent_hashes)
     {
       Snake snake_copy = snake; 
-      if (verbose) fmt::print("\t\t[i] Advancing towards fanin {}\n", DFF_REG.at( parent_hash ).str() );
+      DEBUG_PRINT("\t\t[i] Advancing towards fanin {}\n", DFF_REG.at( parent_hash ).str() );
       bool status = snake_copy.append(parent_hash, DFF_REG, n_phases);
-      if (verbose) fmt::print((status) ? "\t\t\tAdded new section!\n" :"\t\t\tExtended existing section!\n"  );
-      if (verbose) fmt::print("\t\t\tThe new length is {}\n", snake_copy.sections.size() );
+      DEBUG_PRINT((status) ? "\t\t\tAdded new section!\n" :"\t\t\tExtended existing section!\n"  );
+      DEBUG_PRINT("\t\t\tThe new length is {}\n", snake_copy.sections.size() );
       
       stack.push_back( snake_copy );
       if (status && !returned_current_snake && snake_copy.sections.size() == n_phases)
       {
-        if (verbose) fmt::print("\t\tAdding the snake to the output\n");
+        DEBUG_PRINT("\t\tAdding the snake to the output\n");
         out_snakes.push_back(snake);
         returned_current_snake = true;
       }
@@ -1386,126 +1398,6 @@ std::vector<Snake> sectional_snake(const Path & path, std::unordered_map<node_t,
   }
   return out_snakes;
 }
-
-std::vector<std::pair<std::vector<std::vector<uint64_t>>,std::string>> snake(DFF_registry & DFF_REG, const std::unordered_map<node_t, NtkNode> & NR, const std::vector<Path> & paths, const uint8_t n_phases, const std::string & cfg_prefix)
-{
-  std::vector< std::pair< std::vector< std::vector<uint64_t> >, std::string > >  global_worms;
-
-  auto file_ctr = 0u;
-  for (const Path & path : paths)
-  {
-    path.print(); 
-
-    fmt::print("[i]: Starting extraction of worms \n");
-    std::vector<std::vector<uint64_t>> worms;
-    std::vector<std::vector<uint64_t>> stack;
-    std::vector<std::vector<uint64_t>> seen;
-    
-    for (const auto & [hash, dff]: DFF_REG.variables)
-    {
-      auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
-      if (it != path.targets.end() && (dff.phase == NR.at( dff.fanout ).phase ))
-      {
-        stack.push_back( { hash } );
-      }
-    }
-
-    fmt::print("Stack size is {} \n", stack.size());
-    while (!stack.empty())
-    {
-      std::vector<uint64_t> worm = stack.back();
-      stack.pop_back();
-      seen.push_back(worm);
-
-      // DFF_var & worm_tail = DFF_REG.at( worm.front() );
-      DFF_var & worm_head = DFF_REG.at( worm.back() );
-      glob_phase_t old_head_phase = worm_head.phase;
-      DFF_var & worm_tail = DFF_REG.at( worm.front() );
-      glob_phase_t old_tail_phase = worm_tail.phase;
-      bool is_full_diff = ((old_tail_phase - old_head_phase) == (n_phases - 1));
-
-      fmt::print("\tCurrent worm size {}, between phases {} and {} \n", worm.size(), DFF_REG.str(worm.front()), DFF_REG.str(worm.back()));
-
-      bool the_worm_is_good = worm_head.parent_hashes.empty() && is_full_diff;
-
-      for (const uint64_t phash : worm_head.parent_hashes)
-      {
-        DFF_var & new_head = DFF_REG.at( phash );
-
-        glob_phase_t head_phase = new_head.phase;
-        glob_phase_t tail_phase = head_phase + n_phases - 1;
-        
-        the_worm_is_good |= (head_phase < old_head_phase && is_full_diff );
-
-        std::vector<uint64_t> new_worm;
-        for (auto it = worm.begin(); it < worm.end(); ++it)
-        {
-          DFF_var & dff = DFF_REG.at( *it );
-          if (dff.phase <= tail_phase)
-          {
-            new_worm.insert(new_worm.end(), it, worm.end());
-            fmt::print("\tAdding new worm with size {}, between phases {} and {} \n", worm.size(), dff.phase, head_phase);
-            break;
-          }
-        }
-        new_worm.push_back( phash );
-        
-        auto it = std::find(seen.begin(), seen.end(), new_worm);
-        if (it == seen.end())
-        {
-          stack.push_back( new_worm );
-        }
-      }
-      if (the_worm_is_good)
-      {
-        fmt::print("\tAdding the worm with size {}, between phases {} and {} to the output vector\n", worm.size(), old_tail_phase, old_head_phase);
-        worms.push_back(worm);
-      }
-    }
-    std::string cfg_name;
-    if (worms.size() > 0)
-    {
-      cfg_name = fmt::format("{}{}.csv", cfg_prefix, file_ctr++);
-      std::ofstream spec_file (cfg_name);
-
-      std::vector<std::vector<uint64_t>> single_phase_conflicts;
-      for (const auto & worm : worms)
-      {
-        std::map<glob_phase_t, std::vector<uint64_t>> buckets;
-        for (auto it = worm.begin(); it < worm.end(); ++it)
-        {
-          DFF_var & dff = DFF_REG.at(*it);
-          buckets[dff.phase].push_back(*it);
-        }
-
-        std::vector<std::string> vars_bucket;
-        for (const auto & [phase, bucket] : buckets)
-        {
-          std::vector<std::string> vars;
-          for (uint64_t hash : bucket)
-          {
-            vars.push_back(DFF_REG.str(hash));
-          }
-          vars_bucket.push_back(fmt::format(vars.size()>1?"({})":"{}", fmt::join(vars, "+")));
-
-          auto it = std::find(single_phase_conflicts.begin(), single_phase_conflicts.end(), bucket);
-          if (it == single_phase_conflicts.end() && vars.size() > 1)
-          {
-            single_phase_conflicts.push_back(bucket);
-            fmt::print("New single phase conflict : {}≤1\n", fmt::join(vars, "+"));
-            spec_file << fmt::format("PHASE,{}\n", fmt::join(vars, ","));
-          }
-        }
-        std::reverse(vars_bucket.begin(), vars_bucket.end());
-        fmt::print("New buffer requirement : ~({})\n", fmt::join(vars_bucket, "|"));
-        spec_file << fmt::format("BUFFER,{}\n", fmt::join(vars_bucket, ","));
-      }
-    }
-    global_worms.emplace_back(worms, cfg_name);
-  }
-  return global_worms;
-}
-
 
 void write_klut_specs(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params, const std::unordered_map<klut::signal, glob_phase_t> &glob_phase, const std::string & filename)
 {
@@ -1719,6 +1611,31 @@ int main(int argc, char* argv[])  //
   using namespace experiments;
   using namespace mockturtle;
 
+  TT3 XOR3, MAJ3, OR3;
+  XOR3._bits = 0x96;
+  MAJ3._bits = 0xe8;
+  OR3._bits  = 0xfe;
+
+  std::vector<TT3> xor3_tts;
+  std::vector<TT3> maj3_tts;
+  std::vector<TT3>  or3_tts;
+  auto add_xor3 = [&xor3_tts](const TT3 & tt){xor3_tts.push_back(tt);};
+  auto add_maj3 = [&maj3_tts](const TT3 & tt){maj3_tts.push_back(tt);};
+  auto add_or3  =  [&or3_tts](const TT3 & tt){ or3_tts.push_back(tt);};
+  kitty::exact_npn_canonization(XOR3, add_xor3);
+  kitty::exact_npn_canonization(MAJ3, add_maj3);
+  kitty::exact_npn_canonization( OR3, add_or3 );
+
+  fmt::print("Compatible TTs:\n");
+  for (auto i = 0u; i < xor3_tts.size(); ++i)
+  {
+    fmt::print("\t[{}]:\n", i);
+    fmt::print("\t\tXOR3: {0:08b}={0:02x}={0:d}\n", xor3_tts[i]._bits);
+    fmt::print("\t\tMAJ3: {0:08b}={0:02x}={0:d}\n", maj3_tts[i]._bits);
+    fmt::print("\t\t OR3: {0:08b}={0:02x}={0:d}\n",  or3_tts[i]._bits);
+  }
+  // return 0;
+
   experiment<std::string, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay");
 
   // uint8_t MIN_N_PHASES = std::stoi(argv[1]);
@@ -1773,7 +1690,7 @@ int main(int argc, char* argv[])  //
     // std::reverse(benchmarks1.begin(), benchmarks1.end());
 
     // *** LIST ALL CONSIDERED BENCHMARKS ***
-    fmt::print("Benchmarks:\n{}\n", fmt::join(benchmarks1, "\n\t"));
+    fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
     
     // *** READ COMPOUND GATE LIBRARY ***
     const std::string nodemap_prefix = "/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_20230427/x3";
@@ -1808,7 +1725,7 @@ int main(int argc, char* argv[])  //
         continue;
       }
     }
-    else if (benchmark.find(".aig") != std::string::npos) // ISCAS89 benchmark
+    else if ( benchmark.find(".aig") != std::string::npos ) // ISCAS89 benchmark
     {
       fmt::print("USING THE BENCH READER\n");
       std::string path = fmt::format("{}{}", iscas89_folder, benchmark);
@@ -1821,7 +1738,7 @@ int main(int argc, char* argv[])  //
     }
     else // regular benchmark
     {
-      fmt::print("USING THE AIGER READER\n");
+      fmt::print( "USING THE AIGER READER\n" );
       if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( ntk_original ) ) != lorina::return_code::success )
       {
         fmt::print("Failed to read {}\n", benchmark);
@@ -1832,15 +1749,113 @@ int main(int argc, char* argv[])  //
 
     // *** MAP, NO NEED FOR RETIMING/PATH BALANCING ***
     fmt::print("Started mapping {}\n", benchmark);
-    auto [res_w_pb, st_w_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
+    auto [res_wo_pb, st_wo_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
     fmt::print("Finished mapping {}\n", benchmark);
 
+
     // *** DECOMPOSE COMPOUND GATES INTO PRIMITIVES, REMOVE DFFS, REPLACE OR GATES WITH CB WHERE POSSIBLE ***
-    auto [klut_decomposed, klut_prim_params, raw_area] = decompose_to_klut(res_w_pb, GNM_global, entries);
+    auto _result = decompose_to_klut(res_wo_pb, GNM_global, entries);
+    auto klut_decomposed = std::get<0>(_result);
+    auto klut_prim_params = std::get<1>(_result);
+    auto raw_area = std::get<2>(_result);
     fmt::print("Decomposition complete\n");
+
+    cut_enumeration_params ce_params; 
+    ce_params.cut_size = 3u;
+  
+    auto cuts = mockturtle::cut_enumeration<klut, true>( klut_decomposed, ce_params );
+    klut_decomposed.foreach_node( [&]( auto node ) {
+      auto idx = klut_decomposed.node_to_index( node );
+      auto & node_cuts = cuts.cuts( idx );
+      std::cout << node_cuts << "\n";
+    } );
+
+    phmap::flat_hash_map<std::array<uint32_t,3>, std::tuple<kitty::dynamic_truth_table, uint32_t>, ArrayHash<3>> maj3_cuts;
+    phmap::flat_hash_map<std::array<uint32_t,3>, std::tuple<kitty::dynamic_truth_table, uint32_t>, ArrayHash<3>> xor3_cuts;
+    // std::unordered_set<std::array<uint32_t,4>> maj3_cuts;
+    // std::unordered_set<std::array<uint32_t,4>> xor3_cuts;
+    // phmap::flat_hash_set<cut_type<true, empty_cut_data>> maj3_cuts;
+    // phmap::flat_hash_set<cut_type<true, empty_cut_data>> xor3_cuts;
+
+    klut_decomposed.foreach_node( [&]( const klut::signal & node ) { // 
+      const auto idx = klut_decomposed.node_to_index( node );
+      const auto & node_cut_set = cuts.cuts( idx );
+      // fmt::print("[{}] Extracted {} cuts for node {} (idx={})\n", benchmark, node_cut_set.size(), node, idx);
+      // if (node_cut_set.size() == 0) { return; }
+
+      for (const auto & cut_entry : node_cut_set)
+      {
+        auto qq = *cut_entry;
+        const auto tt = cuts.truth_table( *cut_entry );
+        if (std::find_if(xor3_tts.begin(), xor3_tts.end(), [&](const TT3 & xor3_tt){return tt._bits.front() == xor3_tt._bits;}) != xor3_tts.end())
+        {
+          std::array<uint32_t,3> item;
+          std::copy(cut_entry->begin(), cut_entry->end(), item.begin());
+          xor3_cuts.emplace( item, std::make_tuple(tt, idx) );
+
+          std::ostringstream oss;
+          oss << *cut_entry;
+          fmt::print("[{}]\t XOR3 cut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
+        }
+        if (std::find_if(maj3_tts.begin(), maj3_tts.end(), [&](const TT3 & maj3_tt){return tt._bits.front() == maj3_tt._bits;}) != maj3_tts.end())
+        {
+          std::array<uint32_t,3> item;
+          std::copy(cut_entry->begin(), cut_entry->end(), item.begin());
+          maj3_cuts.emplace( item, std::make_tuple(tt, idx) );
+
+          std::ostringstream oss;
+          oss << *cut_entry;
+          fmt::print("[{}]\t MAJ3 cut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
+        }
+        // std::ostringstream oss;
+        // oss << *cut_entry;
+        // fmt::print("[{}] \tCut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
+      }
+      // flat_hash_set<std::array<uint32_t, 3>> arraySet;
+      // auto tt = cuts.truth_table( node_cut_set );
+      // std::cout << node_cut_set << " -> " <<  << "\n";
+      // cuts.truth_table( node_cut_set );
+    } );
+
+    for (const auto & [leaves, xor3_tuple] : xor3_cuts) 
+    {
+      const auto xor3_tt = std::get<0>(xor3_tuple);
+      // const auto xor3_root = std::get<1>(xor3_tuple);
+      if (maj3_cuts.contains(leaves)) 
+      {
+        auto maj3_tuple = maj3_cuts[leaves];
+        auto maj3_tt = std::get<0>(maj3_tuple);
+        auto maj3_root = std::get<1>(maj3_tuple);
+        // cut_intersection.push_back(xor3_nodes);
+        // const auto & node_cut_set = cuts.cuts( maj3_root );
+
+        fmt::print("[{0}]\tCut [{1}]\n\t XOR3 tt 0b{2:08b}=0x{2:02x}\n\t MAJ3 tt 0b{3:08b}=0x{3:02x}\n", benchmark, fmt::join(leaves, ","), xor3_tt._bits[0], maj3_tt._bits[0]);
+        // for (const auto & cut_entry : node_cut_set)
+        // {
+        //   const auto tt = cuts.truth_table( *cut_entry );
+        //   std::ostringstream oss;
+        //   oss << *cut_entry;
+        // }
+      }
+    }
+
+    // return 0;
+
+    // for (const auto & cut : xor3_cuts)
+    // {
+    //   if ( std::find( maj3_cuts.begin(), maj3_cuts.end(), cut ) != maj3_cuts.end() )
+    //   {
+    //     auto tt = cuts.truth_table( node_cut_set );
+    //     std::cout << node_cut_set << " -> " <<  << "\n";
+    //     cuts.truth_table( node_cut_set );
+    //   }
+    // }
+
+    continue;
   
     // *** [temporary] GREEDILY ASSIGN A STAGE (sigma) TO EACH ELEMENT ***
     std::unordered_map<klut::signal, glob_phase_t> glob_phase = greedy_assign(klut_decomposed, klut_prim_params, false);
+    printUnorderedMap(glob_phase);
 
     // for (auto n_phases = MIN_N_PHASES; n_phases <= MAX_N_PHASES; ++n_phases)
     for (const auto n_phases : PHASES)
@@ -1848,17 +1863,17 @@ int main(int argc, char* argv[])  //
       fmt::print("[i] Mapping with {} phases\n", n_phases);
       // *** IF i = 0, we assign phases with the CP-SAT
       // *** IF i = 1, we assign phases greedily
-      for (auto i = 0; i < 2; ++i)
+      // for (auto i = 0; i < 2; ++i)
+      for (auto i = 0; i < 1; ++i)
       {
-
+        klut network { klut_decomposed.clone() };
         std::unordered_map<unsigned int, unsigned int> assignment;
 
         if (i == 0)
         {
-
           std::string ilp_filename = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/{}.csv", benchmark);
           fmt::print("\tWriting config {}\n", ilp_filename);
-          write_klut_specs(klut_decomposed, klut_prim_params, glob_phase, ilp_filename);
+          write_klut_specs(network, klut_prim_params, glob_phase, ilp_filename);
 
           fmt::print("\tCalling OR-Tools\n");
           auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_filename, n_phases);
@@ -1877,25 +1892,23 @@ int main(int argc, char* argv[])  //
         
         // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
         // *** IF i = 1, "assignment" is empty
-        std::unordered_map<node_t, NtkNode> NR = greedy_ntknode_assign(klut_decomposed, klut_prim_params, n_phases, assignment, false);
+        greedy_ntk_assign(network, klut_prim_params, n_phases, assignment, true);
 
         // *** Greedily insert splitters
-        splitter_insertion( NR );
-        for (auto & [id, ntk_node] : NR) 
-        {
-          if (ntk_node.is_spl)
-          {
-            assert(ntk_node.fanouts.size() == 2); // check that all splitters have fanout of exactly 2
-          }
-          else
-          {
-            assert(ntk_node.fanouts.size() <= 1); // check that all nodes have fanout 1 or smaller
-          }
-        }
+        splitter_ntk_insertion( network, true);
+
+        // network.foreach_node([&] ( const klut::signal & node ) 
+        // {
+        //   if ( network.fanout_size( node ) > 1 )
+        //   {
+        //     assert( network.node_function( node ) == 0x2 );
+        //   };
+        // });
+
         fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
 
         fmt::print("[i] EXTRACTING PATHS\n");
-        std::vector<Path> paths = extract_paths(NR, false);
+        std::vector<Path> paths = extract_paths( network, true );
         // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
 
         auto total_num_dff = 0u;
@@ -1903,45 +1916,54 @@ int main(int argc, char* argv[])  //
         auto path_ctr = 0u;
         for (const Path & path : paths)
         {
-          fmt::print("\tAnalyzing the path {} out of {}\r", ++path_ctr, paths.size());
+          fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
           // *** Create binary variables
-          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, NR, n_phases);
+          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, n_phases);
           total_num_dff += precalc_ndff;
-          // fmt::print("[i]: Precalculated {} DFFs\n", precalc_ndff);
+          fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
           
           // *** Generate constraints
-          std::vector<Snake> snakes = sectional_snake(path, NR, DFF_REG, n_phases);
+          std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, true);
 
-          // fmt::print("\tCreated {} snakes\n", snakes.size());
+          fmt::print("\tCreated {} snakes\n", snakes.size());
           // *** If there's anything that needs optimization
           if (!snakes.empty())
           {
             std::string cfg_file = fmt::format("/Users/brainkz/Documents/GitHub/ortools_python/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-            write_snakes(snakes, NR, DFF_REG, required_SA_DFFs, cfg_file, n_phases);
+            write_snakes(snakes, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
             auto num_dff = cpsat_ortools(cfg_file);
             // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
             total_num_dff += num_dff;
+            fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
           }
         }
 
         // *** Record maximum phase
-        auto phase_it = std::max_element(NR.begin(), NR.end(), [&](const auto & a, const auto & b) {return a.second.phase < b.second.phase;});
-        int64_t max_phase = phase_it->second.phase;
-        
+        uint64_t max_phase = 0u;
         // *** Record number of splitters and total number of DFFs (not only path balancing DFFs)
         uint64_t total_num_spl = 0;
-        for (const auto & [node, node_obj] : NR)
+        network.foreach_gate([&](const klut::signal & node)
         {
-          if (!node_obj.fanouts.empty())
+          NodeData node_data { network.value(node) };
+          fmt::print("[Node {}] old max_phase = {}\tnode_data = {}\t", node, max_phase, static_cast<int>(node_data.sigma));
+          max_phase = generic_max(max_phase, node_data.sigma);
+          fmt::print("new max_phase = {}\n", max_phase);
+
+          auto fo_size = network.fanout_size(node);
+          if (fo_size > 1)
           {
-            total_num_spl += node_obj.fanouts.size() - 1;
+            total_num_spl += fo_size - 1;
           }
-          if (node_obj.fanouts.empty() && node_obj.phase != max_phase) // node is fanout
-          {
-            total_num_dff += (max_phase - node_obj.phase) / n_phases;
-          }
-        }
-        
+        });
+
+        network.foreach_po([&](const klut::signal & node)
+        {
+          NodeData node_data { network.value(node) };
+          fmt::print("[PO {}] max_phase = {}, sigma = {}, node #DFF = {}\n", node, max_phase, static_cast<int>(node_data.sigma), ( (max_phase - node_data.sigma) / n_phases ) );
+          total_num_dff += (max_phase - node_data.sigma) / n_phases;
+          fmt::print("\t\t\t\t[i] total #DFF = {}\n", total_num_dff);
+        });
+
         fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
         int total_area = raw_area + total_num_dff * COSTS_MAP[fDFF] + total_num_spl * COSTS_MAP[fSPL];
         fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
@@ -1956,3 +1978,25 @@ int main(int argc, char* argv[])  //
   // TODO : now, count #DFFs in extracted paths. Perhaps, the function can be written within the Path object.
   return 0;
 }
+
+// Adder 18542 vs 24384
+
+
+/* 
+  7 phases
+  |-------------|--------------|--------------|--------|--------------|--------------|------------|---------|
+  |   benchmark | #DFF (tight) | #DFF (loose) | Ratio  | area (tight) | area (loose) | Area Ratio |  delay  |
+  |-------------|--------------|--------------|--------|--------------|--------------|------------|---------|
+  |   int2float |      217     |      217     |  1.00  |     5'136    |     5'136    |     1.00   |    2    |
+  |    priority |    3'375     |    3'284     |  1.03  |    45'724    |    45'087    |     1.01   |   12    |
+  |       voter |    2'380     |    2'180     |  1.09  |   164'204    |   162'804    |     1.01   |    6    |
+  |        c432 |      352     |      342     |  1.03  |     5'186    |     5'116    |     1.01   |    4    |
+  |        c880 |      270     |      254     |  1.06  |     6'302    |     6'190    |     1.02   |    3    |
+  |       c1355 |       46     |       46     |  1.00  |     4'515    |     4'515    |     1.00   |    2    |
+  |       c1908 |      125     |      125     |  1.00  |     3'529    |     3'529    |     1.00   |    2    |
+  |       c3540 |      579     |      589     |  0.98  |    16'946    |    17'016    |     1.00   |    3    |
+  |    s382.aig |      156     |       89     |  1.75  |     2'880    |     2'411    |     1.19   |    2    |
+  |   s5378.aig |      857     |      808     |  1.06  |    22'104    |    21'761    |     1.02   |    2    |
+  |  s13207.aig |    2'013     |    1'837     |  1.10  |    43'614    |    42'382    |     1.03   |    3    |
+  |-------------|--------------|--------------|--------|--------------|--------------|------------|---------|
+*/

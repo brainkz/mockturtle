@@ -34,7 +34,6 @@ void printUnorderedMap(const std::unordered_map<KeyType, ValueType>& map, const 
 template <typename ValueType>
 void printVector(const std::vector<ValueType>& vec, const int indent_lvl = 0) 
 {
-
   for (const auto& entry : vec) 
   {
     fmt::print("{}{}\n", repeatString("\t", indent_lvl), entry);
@@ -70,6 +69,20 @@ Value getMaxValue(const std::unordered_map<Key, Value>& map)
     });
   return max_entry->second;
 }
+
+template <std::size_t ArrSize>
+struct ArrayHash
+{
+  size_t operator()(const std::array<uint32_t, ArrSize>& arr) const
+  {
+    size_t seed = 0;
+    for (uint32_t value : arr) 
+    {
+      seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    }
+    return seed;
+  }
+};
 
 // std::tuple<int, std::vector<gate>> readGenlibFromFile(const std::string& databasePath) {
 //     std::vector<gate> gates;

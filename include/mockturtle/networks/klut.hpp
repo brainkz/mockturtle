@@ -246,58 +246,58 @@ public:
     return a;
   }
 
-  signal create_not( signal const& a )
+  signal create_not( signal const& a, const uint32_t ID = 0)
   {
-    return _create_node( { a }, 3 );
+    return _create_node( { a }, 3 , ID);
   }
 #pragma endregion
 
 #pragma region Create binary functions
-  signal create_and( signal a, signal b )
+  signal create_and( signal a, signal b, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b }, 4 );
+    return _create_node( { a, b }, 4 , ID);
   }
 
-  signal create_nand( signal a, signal b )
+  signal create_nand( signal a, signal b, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b }, 5 );
+    return _create_node( { a, b }, 5, ID );
   }
 
-  signal create_or( signal a, signal b )
+  signal create_or( signal a, signal b, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b }, 6 );
+    return _create_node( { a, b }, 6, ID );
   }
 
-  signal create_lt( signal a, signal b )
+  signal create_lt( signal a, signal b, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b }, 8 );
+    return _create_node( { a, b }, 8, ID );
   }
 
-  signal create_le( signal a, signal b )
+  signal create_le( signal a, signal b, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b }, 11 );
+    return _create_node( { a, b }, 11, ID );
   }
 
-  signal create_xor( signal a, signal b )
+  signal create_xor( signal a, signal b, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b }, 12 );
+    return _create_node( { a, b }, 12, ID );
   }
 #pragma endregion
 
 #pragma region Create ternary functions
-  signal create_maj( signal a, signal b, signal c )
+  signal create_maj( signal a, signal b, signal c, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b, c }, 14 );
+    return _create_node( { a, b, c }, 14, ID );
   }
 
-  signal create_ite( signal a, signal b, signal c )
+  signal create_ite( signal a, signal b, signal c, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b, c }, 16 );
+    return _create_node( { a, b, c }, 16, ID );
   }
 
-  signal create_xor3( signal a, signal b, signal c )
+  signal create_xor3( signal a, signal b, signal c, const uint32_t ID = 0 )
   {
-    return _create_node( { a, b, c }, 18 );
+    return _create_node( { a, b, c }, 18, ID );
   }
 #pragma endregion
 
@@ -353,14 +353,14 @@ public:
     return index;
   }
 
-  signal create_node( std::vector<signal> const& children, kitty::dynamic_truth_table const& function )
+  signal create_node( std::vector<signal> const& children, kitty::dynamic_truth_table const& function, const uint32_t ID = 0 )
   {
     if ( children.size() == 0u )
     {
       assert( function.num_vars() == 0u );
       return get_constant( !kitty::is_const0( function ) );
     }
-    return _create_node( children, _storage->data.cache.insert( function ) );
+    return _create_node( children, _storage->data.cache.insert( function ), ID );
   }
 
   signal clone_node( klut_network const& other, node const& source, std::vector<signal> const& children )

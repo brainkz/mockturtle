@@ -187,10 +187,10 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
 
 
 constexpr uint8_t PI_GATE = 0u;
-constexpr uint8_t PO_GATE = 1u;
-constexpr uint8_t AA_GATE = 2u;
-constexpr uint8_t AS_GATE = 3u;
-constexpr uint8_t SA_GATE = 4u;
+// constexpr uint8_t PO_GATE = 1u;
+constexpr uint8_t AA_GATE = 1u;
+constexpr uint8_t AS_GATE = 2u;
+constexpr uint8_t SA_GATE = 3u;
 
 const std::vector<std::string> GATE_TYPE { "PI", "PO", "AA", "AS", "SA" }; 
 
@@ -325,7 +325,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
       else if (node.last_func == fNOT)
       {
         klut::signal parent_tgt = node2tgt.at(node.parent_hashes.front());
-        klut::signal tgt_sig = tgt.create_not( parent_tgt );
+        uint32_t ID = tgt.fanout_size( parent_tgt );
+        klut::signal tgt_sig = tgt.create_not( parent_tgt, ID );
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x5555u, AS_GATE, { parent_tgt }));
         area += COSTS_MAP[fNOT];
@@ -335,7 +336,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
       {
         klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
         klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-        klut::signal tgt_sig = tgt.create_and(parent_tgt_1, parent_tgt_2);
+        uint32_t ID = tgt.fanout_size( parent_tgt_1 ) + tgt.fanout_size( parent_tgt_2 );
+        klut::signal tgt_sig = tgt.create_and(parent_tgt_1, parent_tgt_2, ID);
         // fmt::print("Created node n{0} = AND({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x8888u, SA_GATE, { parent_tgt_1, parent_tgt_2 }));
@@ -346,7 +348,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
       {
         klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
         klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-        klut::signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2);
+        uint32_t ID = tgt.fanout_size( parent_tgt_1 ) + tgt.fanout_size( parent_tgt_2 );
+        klut::signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2, ID);
         // fmt::print("Created node n{0} = OR({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0xEEEEu, SA_GATE, { parent_tgt_1, parent_tgt_2 }));
@@ -358,7 +361,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
       {
         klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
         klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-        klut::signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2);
+        uint32_t ID = tgt.fanout_size( parent_tgt_1 ) + tgt.fanout_size( parent_tgt_2 );
+        klut::signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2, ID);
         // fmt::print("Created node n{0} = CB({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0xEEEEu, AA_GATE, { parent_tgt_1, parent_tgt_2 }));
@@ -369,7 +373,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
       {
         klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
         klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-        klut::signal tgt_sig = tgt.create_xor(parent_tgt_1, parent_tgt_2);
+        uint32_t ID = tgt.fanout_size( parent_tgt_1 ) + tgt.fanout_size( parent_tgt_2 );
+        klut::signal tgt_sig = tgt.create_xor(parent_tgt_1, parent_tgt_2, ID);
         // fmt::print("Created node n{0} = XOR({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
         node2tgt.emplace(hash, tgt_sig);
         tgt_sig_params.emplace(tgt_sig, Primitive<klut>(tgt_sig, 0x6666u, AS_GATE, { parent_tgt_1, parent_tgt_2 }));
