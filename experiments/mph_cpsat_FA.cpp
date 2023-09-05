@@ -1645,9 +1645,11 @@ int main(int argc, char* argv[])  //
 
   #pragma region benchmark_parsing
     // *** BENCHMARKS OF INTEREST ***
-    auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
-    auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
-    benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+    // experiments::adder | experiments::div  | 
+    auto benchmarks1 = epfl_benchmarks( experiments::sin  | experiments::multiplier );
+    // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
+    // auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
+    // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
     // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
     const std::vector<std::string> BEEREL_BENCHMARKS 
@@ -1841,6 +1843,8 @@ int main(int argc, char* argv[])  //
         klut network { klut_decomposed.clone() };
         std::unordered_map<unsigned int, unsigned int> assignment;
 
+        // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
+        // *** IF i = 1, "assignment" is empty
         if (i == 0)
         {
           const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
@@ -1862,8 +1866,6 @@ int main(int argc, char* argv[])  //
           }
         }
         
-        // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
-        // *** IF i = 1, "assignment" is empty
         greedy_ntk_assign(network, klut_prim_params, n_phases, assignment, true);
 
         // *** Greedily insert splitters
