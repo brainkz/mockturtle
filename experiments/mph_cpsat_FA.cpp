@@ -237,15 +237,25 @@ public:
       primitive.sig, primitive.func, static_cast<int>(primitive.type),
       fmt::join(primitive.fanins, ", "), primitive.is_spl);
   }
-};
+};å
 
 // #if false
 std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, std::unordered_map<ULL, Node> nodemap, std::unordered_map<std::string, LibEntry> entries, bool verbose = false)
 {
+  /* record the information of each signal in tgt, including: signal index (why?), */
+  /* truth table ( represented using an uint16 ), type ( PI/AA/AS/AS ), fan-ins,   */
+  /* and if it is a splitter                                                       */
   std::unordered_map<klut::signal, Primitive<klut>> tgt_sig_params;
+  /* record the correspondence between nodes in src and node in tgt                */
   std::unordered_map<klut::signal, klut::signal> src2tgt;
   int64_t area = 0;
-  
+
+  /* src: a 4-LUT with gates in the target technology libarary binded to each node */
+  /* tgt: a 2-LUT ( essentially 4-LUT ), each node is associated with a NodeData,  */
+  /* which contains the assigned stage and the gate type ( PI/SA/AS/AA ), denoted  */
+  /* using 'value' since src is converted into tgt by decomposing each 4-LUT into  */
+  /* 2-LUTs, for each node in src, there is a node in tgt implementing the same    */
+  /* function                                                                      */
   klut tgt;
   src.foreach_pi( [&]( const klut::signal & src_pi ) 
   {
@@ -280,6 +290,7 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
       return;
     }
 
+    /* get gate type in the technology library */
     auto const& g = src.get_binding( src_node );
 
     // handing constants
@@ -296,6 +307,8 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
       return;
     }
     
+    /* for each cell in the technology library, there is a primitive gates-based     */
+    /* implementation, prepared in advance and ready for a look-up                   */
     LibEntry entry = entries.at(g.name);
     Node & root = nodemap[entry.hash];
 
@@ -321,6 +334,7 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
 
     std::unordered_map<ULL, klut::signal> node2tgt;
 
+    /* for each cell/compound gate in src, implement it using primitive gates in tgt */
     for (ULL hash : topo_order)
     {
       Node & node = nodemap.at(hash);
@@ -414,14 +428,15 @@ std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> dec
 
   for (klut::signal const & xor_sig : XOR_gates)
   {
-    std::vector<klut::signal> stack;
-    std::vector<klut::signal> visited;
+    //std::vector<klut::signal> stack;
+    //std::vector<klut::signal> visited;
     Primitive<klut> & xor_prim = tgt_sig_params.at(xor_sig);
 
     for (klut::signal const & fanin : xor_prim.fanins)
     {
       // Primitive<klut> & fanin_prim = tgt_sig_params.at(fanin);
-      // if the OR gate 
+      /* hazzards potentially produced by a CB can lead to incorrect behavior of its   */
+      /* following XOR, such a CB should therefore be replaced by an OR */
       auto it = std::find(OR_replacement_candidates.begin(), OR_replacement_candidates.end(), fanin);
       if (it != OR_replacement_candidates.end())
       {
@@ -526,6 +541,112 @@ struct Path
     out.insert(out.end(), internals.begin(), internals.end());
     out.insert(out.end(), targets.begin(), targets.end());
     return out;
+  }
+};
+
+struct Standard_T1_CELL
+{
+  // 3 bits to store input negations
+  unsigned in_phase : 3;
+  /* truth tables of the 3 outputs under the current input phase */
+  uint8_t sum_truth_table{};
+  uint8_t carry_truth_table{};
+  uint8_t cbar_truth_table{};
+
+  Standard_T1_CELL( const unsigned in_phase_, const uint8_t sum_truth_table_, const uint8_t carry_truth_table_, const uint8_t cbar_truth_table_ )
+    : in_phase( in_phase_ ), sum_truth_table( sum_truth_table_ ), carry_truth_table( carry_truth_table_ ), cbar_truth_table( cbar_truth_table_ ) {}
+}
+
+static std::array<Standard_T1_CELL, 8u> standard_T1_cells = 
+{
+  { 0, 0x96, 0xe8, 0xfe }, 
+  { 1, 0x69, 0xd4, 0xfd }, 
+  { 2, 0x69, 0xb2, 0xfb }, 
+  { 3, 0x96, 0x71, 0xf7 }, 
+  { 4, 0x69, 0x8e, 0xef }, 
+  { 5, 0x96, 0x4d, 0xdf }, 
+  { 6, 0x69, 0xb2, 0xbf }, 
+  { 7, 0x69, 0x17, 0x7f }
+};
+
+struct T1_OUTPUTS
+{
+  // 3 bits to store input negations
+  unsigned in_phase          : 3;
+  // whether carry (maj3) output is used with inverter, feel free to rename if other naming is more convenient for you
+  bool     has_carry_inverted: 1;
+  // whether cbar (or3) output is used with inverter, feel free to rename if other naming is more convenient for you
+  bool     has_cbar_inverted : 1;
+  // whether carry (maj3) output is used with DFF
+  bool     has_carry         : 1;
+  // whether cbar (or3) output is used with DFF
+  bool     has_cbar          : 1;
+  /* TTs of the 3 outputs */
+  uint8_t   sum_truth_table{};
+  uint8_t carry_truth_table{};
+  uint8_t  cbar_truth_table{};
+  /* usage of the 5 output ports */
+  klut::node       sum_to;
+  klut::node     carry_to;
+  klut::node inv_carry_to;
+  klut::node      cbar_to;
+  klut::node  inv_cbar_to;
+
+  // TODO : calculate cost, add mask for specific outputs
+  T1_OUTPUTS() : in_phase(0u), has_carry_inverted(false), has_cbar_inverted(false), has_carry(false), has_cbar(false) {}
+
+  // Explicit Constructor
+  T1_OUTPUTS(const uint8_t in, const bool p_c, const bool p_cb, const bool h_c, const bool h_cb)
+    : in_phase(in), has_carry_inverted(p_c), has_cbar_inverted(p_cb), has_carry(h_c), has_cbar(h_cb) {}
+
+  /* Explicit constructor with output functions provided */
+  T1_OUTPUTS( const uint8_t in, const bool p_c, const bool p_cb, const bool h_c, const bool h_cb, const klut::node sum_node, 
+              const klut::node carry_node, const klut::node inv_carry_node, const klut::node cbar_node, const klut::node inv_cbar_node )
+    : in_phase( in ), has_carry_inverted( p_c ), has_cbar_inverted( p_cb ), has_carry( h_c ), has_cbar( h_cb ), sum_to( sum_node ), 
+      carry_to( carry_node ), inv_carry_to( inv_carry_node ), cbar_to( cbar_node ), inv_cbar_to( inv_cbar_node ) {}
+    
+  // returns the TT of the sum output of the T1 cell
+  uint8_t sum_tt() const
+  {
+    return (__builtin_popcount(in_phase) & 1) ? 0x69 : 0x96;
+  }
+  // returns the TT of the carry output of the T1 cell
+  uint8_t carry_tt(const bool output_phase = false) const
+  {
+    TT3 tt_in;
+    tt_in._bits = MAJ3;
+    const uint32_t phase = in_phase | (output_phase << CUT_SIZE);
+    
+    TT3 tt_out = kitty::create_from_npn_config( std::make_tuple( tt_in, phase, perm ) );
+    return static_cast<uint8_t>(tt_out._bits);
+  }
+  // returns the TT of the cbar output of the T1 cell
+  uint8_t cbar_tt(const bool output_phase = false) const
+  {
+    TT3 tt_in;
+    tt_in._bits = OR3;
+    const uint32_t phase = in_phase | (output_phase << CUT_SIZE);
+    
+    TT3 tt_out = kitty::create_from_npn_config( std::make_tuple( tt_in, phase, perm ) );
+    return static_cast<uint8_t>(tt_out._bits);
+  }
+  uint8_t cost() const
+  {
+    return T1_COST // base cost (2x merger + T1 cell)
+      + __builtin_popcount(in_phase) * (COST_MAP[fNOT] - COST_MAP[fDFF]) // cost of negating the inputs
+      + COST_MAP[fDFF] * (has_carry + has_cbar)                          // cost of MAJ3 and OR3
+      + COST_MAP[fNOT] * (has_carry_inverted + has_cbar_inverted)        // cost of ~(MAJ3) and ~(OR3)
+      + COST_MAP[fSPL] * ((has_carry & has_carry_inverted) + (has_cbar & has_cbar_inverted)); //cost of splitters, if needed 
+  }
+  void report() const
+  {
+    fmt::print("\t\tInput phases : {{ {}0,{}1,{}2 }}\n", ( ( in_phase & 1 ) ? "~" : " " ), ( ( in_phase >> 1 & 1 ) ? "~" : " " ), ( ( in_phase >> 2 & 1 ) ? "~" : " " ) );
+    fmt::print("\t\t      Sum ( Node {} ): {0:08b} ( 0x{0:02x} )\n",       sum_to,    sum_truth_table );
+    fmt::print("\t\t    Carry ( Node {} ): {0:08b} ( 0x{0:02x} )\n",     carry_to,  carry_truth_table );
+    fmt::print("\t\tInv carry ( Node {} ): {0:08b} ( 0x{0:02x} )\n", inv_carry_to, ~carry_truth_table );
+    fmt::print("\t\t     Cbar ( Node {} ): {0:08b} ( 0x{0:02x} )\n",      cbar_to,   cbar_truth_table );
+    fmt::print("\t\tInv carry ( Node {} ): {0:08b} ( 0x{0:02x} )\n", inv_carry_to,  ~cbar_truth_table );
+
   }
 };
 
@@ -1584,6 +1705,43 @@ int cpsat_ortools(const std::string & cfg_name)
   }
 }
 
+void config_t1_ports_connection( klut const& ntk, const bool output_phase, 
+                                 const uint32_t target_node, 
+                                 klut::node& port, klut::node& inv_port )
+{
+  if ( !output_phase )
+  {
+    /* connect the node to the output port */
+    port = ntk.index_to_node( target_node );
+    /* if (1) the target node is an inverter, and    */
+    /* (2) its fanin node has more than one fanout,  */
+    /* the fanin node of the target node shall be    */
+    /* connected to the output port of inverted port */
+    if ( ntk.fanin_size( port ) == 1 )
+    {
+      /* TO CHECK: a valid standard to dectect INV?  */
+      ntk.foreach_fanin( port, [&inv_port]( auto const& ni ) {
+        if ( ntk.fanout_size( ni ) > 1 )
+        {
+          inv_port = ni;
+        }
+      } );
+    }
+  }
+  else
+  {
+    inv_port = ntk.index_to_node( target_node );
+    if ( ntk.fanin_size( inv_port ) == 1 )
+    {
+      ntk.foreach_fanin( inv_port, [&port]( auto const& ni ) {
+        if ( ntk.fanout_size( ni ) > 1 )
+        {
+          port = ni;
+        }
+      } );
+    }
+  }
+}
 
 int main(int argc, char* argv[])  //
 {
@@ -1601,6 +1759,7 @@ int main(int argc, char* argv[])  //
   auto add_xor3 = [&xor3_tts](const TT3 & tt){xor3_tts.push_back(tt);};
   auto add_maj3 = [&maj3_tts](const TT3 & tt){maj3_tts.push_back(tt);};
   auto add_or3  =  [&or3_tts](const TT3 & tt){ or3_tts.push_back(tt);};
+
   kitty::exact_npn_canonization(XOR3, add_xor3);
   kitty::exact_npn_canonization(MAJ3, add_maj3);
   kitty::exact_npn_canonization( OR3, add_or3 );
@@ -1744,11 +1903,11 @@ int main(int argc, char* argv[])  //
 
     phmap::flat_hash_map<std::array<uint32_t,3>, std::tuple<kitty::dynamic_truth_table, uint32_t>, ArrayHash<3>> maj3_cuts;
     phmap::flat_hash_map<std::array<uint32_t,3>, std::tuple<kitty::dynamic_truth_table, uint32_t>, ArrayHash<3>> xor3_cuts;
+    phmap::flat_hash_map<std::array<uint32_t,3>, std::tuple<kitty::dynamic_truth_table, uint32_t>, ArrayHash<3>>  or3_cuts;
     // std::unordered_set<std::array<uint32_t,4>> maj3_cuts;
     // std::unordered_set<std::array<uint32_t,4>> xor3_cuts;
     // phmap::flat_hash_set<cut_type<true, empty_cut_data>> maj3_cuts;
     // phmap::flat_hash_set<cut_type<true, empty_cut_data>> xor3_cuts;
-
     klut_decomposed.foreach_node( [&]( const klut::signal & node ) { // 
       const auto idx = klut_decomposed.node_to_index( node );
       const auto & node_cut_set = cuts.cuts( idx );
@@ -1757,8 +1916,9 @@ int main(int argc, char* argv[])  //
 
       for (const auto & cut_entry : node_cut_set)
       {
-        auto qq = *cut_entry;
+        //auto qq = *cut_entry;
         const auto tt = cuts.truth_table( *cut_entry );
+        /* check if the function of the cut is NPN-equivalent to XOR3 */
         if (std::find_if(xor3_tts.begin(), xor3_tts.end(), [&](const TT3 & xor3_tt){return tt._bits.front() == xor3_tt._bits;}) != xor3_tts.end())
         {
           std::array<uint32_t,3> item;
@@ -1779,6 +1939,12 @@ int main(int argc, char* argv[])  //
           oss << *cut_entry;
           fmt::print("[{}]\t MAJ3 cut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
         }
+        if ( std::find_if( or3_tts.begin(), or3_tts.end(), [&]( TT3 const& or3_tt ) { return tt._bits.front() == or3_tt._bits; } ) != or3_tts.end() )
+        {
+          std::array<uint32_t, 3> item;
+          std::copy( cut_entry->begin, cut_entry->end, item.begin() );
+          or3_cuts.emplace( item, std::make_tuple( tt, idx ) );
+        }
         // std::ostringstream oss;
         // oss << *cut_entry;
         // fmt::print("[{}] \tCut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
@@ -1789,39 +1955,211 @@ int main(int argc, char* argv[])  //
       // cuts.truth_table( node_cut_set );
     } );
 
-    for (const auto & [leaves, xor3_tuple] : xor3_cuts) 
-    {
-      const auto xor3_tt = std::get<0>(xor3_tuple);
-      // const auto xor3_root = std::get<1>(xor3_tuple);
-      if (maj3_cuts.contains(leaves)) 
-      {
-        auto maj3_tuple = maj3_cuts[leaves];
-        auto maj3_tt = std::get<0>(maj3_tuple);
-        auto maj3_root = std::get<1>(maj3_tuple);
-        // cut_intersection.push_back(xor3_nodes);
-        // const auto & node_cut_set = cuts.cuts( maj3_root );
+    /* TODO: adopt the assumption that, it is a good deal if an implementation can make use of more than 2 out of the 3 outputs of T1,  */
+    /* then we would need four rounds of matching: (1) 3 leaves using all 3 outputs; (2) ...using XOR and MAJ; (3) ...using MAJ and OR; */
+    /* (4) ...using XOR and OR. For each 3 leaves found, check validity by deciding which of the 8 T1s to choose                        */
+    phmap::flat_hash_map<std::array<uint32_t,3>, T1_OUTPUT>, ArrayHash<3>> t1_candidates;
+    // std::vector<std::array<uint32_t, 3>> checked_leaves;
 
-        fmt::print("[{0}]\tCut [{1}]\n\t XOR3 tt 0b{2:08b}=0x{2:02x}\n\t MAJ3 tt 0b{3:08b}=0x{3:02x}\n", benchmark, fmt::join(leaves, ","), xor3_tt._bits[0], maj3_tt._bits[0]);
-        // for (const auto & cut_entry : node_cut_set)
-        // {
-        //   const auto tt = cuts.truth_table( *cut_entry );
-        //   std::ostringstream oss;
-        //   oss << *cut_entry;
-        // }
+    for ( auto it_xor3{ xor3_cuts.begin() }; it_xor3 <= xor3_cuts.end(); ++it_xor3 )
+    {
+      auto target_leaves = it_xor3->first;
+      if ( maj3_cuts.contains( target_leaves ) )
+      {
+        if ( or3_cuts.contains( target_leaves ) )
+        {
+          /* find a candidate potentially using all 3 outputs of an T1 cell */
+          /* check whether the combination of truth table is valid          */
+          bool maj_phase{ false }, or_phase{ false };
+          for ( auto const& t1_cell : standard_T1_cells )
+          {
+            maj_phase = or_phase = false;
+            if ( std::get<0>( it_xor3->second )._bits[0] != t1_cell.sum_truth_table )
+            {
+              continue;
+            }
+
+            if ( std::get<0>( maj3_cuts[target_leaves] )._bits[0] == ~t1_cell.carry_truth_table )
+            {
+              maj_phase = true;
+            }
+            else if ( std::get<0>( maj3_cuts[target_leaves] )._bits[0] != t1_cell.carry_truth_table )
+            {
+              continue;
+            }
+
+            if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] == ~ti_cell.cbar_truth_table )
+            {
+              or_phase = true;
+            }
+            else if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] == t1_cell.cbar_truth_table )
+            {
+              continue;
+            }
+
+            /* managed to find a T1 cell-based implementation      */
+            /* figure out the nodes connecting to the output ports */
+            klut::node sum_to = klut_decomposed.index_to_node( std::get<1>( it_xor3->second ) );
+            klut::node carry_to = klut_decomposed.get_constant( false );
+            klut::node inv_carry_to = klut_decomposed.get_constant( false );
+            klut::node cbar_to = klut_decomposed.get_constant( false );
+            klut::node inv_cbar_to = klut_decomposed.get_constant( false );
+            config_t1_ports_connection( klut_decomposed, maj_phase, std::get<1>( maj3_cuts[target_leaves] ), carry_to, inv_carry_to );
+            config_t1_ports_connection( klut_decomposed,  or_phase, std::get<1>(  or3_cuts[target_leaves] ),  cbar_to,  inv_cbar_to );
+
+            /* instantiate an T1 cell */
+            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to == klut_decomposed.get_constant( false ), inv_cbar_to == klut_decomposed.get_constant( false ), 
+                                                              carry_to == klut_decomposed.get_constant( false ), cbar_to == klut_decomposed.get_constant( false ), 
+                                                              sum_to, carry_to, inv_carry_to, cbar_to, inv_cbar_to ) );
+            break;
+            /* TODO: think about if it is possible that a design can be implemented under */
+            /* different input phases of a T1 cell; if yes, it is better to enumerate all */
+            /* the potential input phases and choose the one requires the minimum cost    */
+          }
+        }
       }
     }
 
-    // return 0;
+    for ( auto it_xor3{ xor3_cuts.begin() }; it_xor3 <= xor3_cuts.end(); ++it_xor3 )
+    {
+      auto target_leaves = it_xor3->first;
+      if ( maj3_cuts.contains( target_leaves ) )
+      {
+        if ( !t1_candidates.contains( target_leaves ) )
+        {
+          /* find a candidate potentially using 2 outputs of an T1 cell  */
+          /* ( XOR3, MAJ3 ), check whether the combnation of tt is valid */
+          bool maj_phase{ false };
+          for ( auto const& t1_cell : standard_T1_cells )
+          {
+            if ( std::get<0>( it_xor3->second )._bits[0] != t1_cell.sum_truth_table )
+            {
+              continue;
+            }
 
-    // for (const auto & cut : xor3_cuts)
-    // {
-    //   if ( std::find( maj3_cuts.begin(), maj3_cuts.end(), cut ) != maj3_cuts.end() )
-    //   {
-    //     auto tt = cuts.truth_table( node_cut_set );
-    //     std::cout << node_cut_set << " -> " <<  << "\n";
-    //     cuts.truth_table( node_cut_set );
-    //   }
-    // }
+            if ( std::get<0>( maj3_cuts[target_leaves] )._bits[0] == ~t1_cell.carry_truth_table )
+            {
+              maj_phase = true;
+            }
+            else if ( std::get<0>( maj3_cuts[target_leaves] )._bits[0] != t1_cell.carry_truth_table )
+            {
+              continue;
+            }
+
+            /* managed to find a T1 cell-based implementation      */
+            /* figure out the nodes connecting to the output ports */
+            klut::node sum_to = klut_decomposed.index_to_node( std::get<1>( it_xor3->second ) );
+            klut::node carry_to = klut_decomposed.get_constant( false );
+            klut::node inv_carry_to = klut_decomposed.get_constant( false );
+            config_t1_ports_connection( klut_decomposed, maj_phase, std::get<1>( maj3_cuts[target_leaves] ), carry_to, inv_carry_to );
+
+            /* instantiate an T1 cell */
+            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to == klut_decomposed.get_constant( false ), false, 
+                                                              carry_to == klut_decomposed.get_constant( false ), false, 
+                                                              sum_to, carry_to, inv_carry_to, klut_decomposed.get_constant( false ), klut_decomposed.get_constant( false ) ) );
+            break;
+          }
+        }
+      }
+    }
+
+    for ( auto it_xor3{ xor3_cuts.begin() }; it_xor3 <= xor3_cuts.end(); ++it_xor3 )
+    {
+      auto target_leaves = it_xor3->first;
+      if ( or3_cuts.contains( target_leaves ) )
+      {
+        if ( !t1_candidates.contains( target_leaves ) )
+        {
+          /* find a candidate potentially using 2 outputs of an T1 cell  */
+          /* ( XOR3,  OR3 ), check whether the combnation of tt is valid */
+          bool or_phase{ false };
+          for ( auto const& t1_cell : standard_T1_cells )
+          {
+            if ( std::get<0>( it_xor3->second )._bits[0] != t1_cell.sum_truth_table )
+            {
+              continue;
+            }
+
+            if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] == ~t1_cell.cbar_truth_table )
+            {
+              or_phase = true;
+            }
+            else if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] != t1_cell.cbar_truth_table )
+            {
+              continue;
+            }
+
+            /* managed to find a T1 cell-based implementation      */
+            /* figure out the nodes connecting to the output ports */
+            klut::node sum_to = klut_decomposed.index_to_node( std::get<1>( it_xor3->second ) );
+            klut::node cbar_to = klut_decomposed.get_constant( false );
+            klut::node inv_cbar_to = klut_decomposed.get_constant( false );
+            config_t1_ports_connection( klut_decomposed, or_phase, std::get<1>( or3_cuts[target_leaves] ), cbar_to, inv_cbar_to );
+
+            /* instantiate an T1 cell */
+            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, false, inv_cbar_to == klut_decomposed.get_constant( false ), 
+                                                              false, cbar_to == klut_decomposed.get_constant( false ), 
+                                                              sum_to, klut_decomposed.get_constant( false ), klut_decomposed.get_constant( false ), cbar_to, inv_cbar_to ) );
+            break;
+          }
+        }
+      }
+    }
+
+    for ( auto it_maj3{ maj3_cuts.begin() }; it_maj3 <= maj3_cuts.end(); ++it_maj3 )
+    {
+      if ( or3_cuts.contains( it_maj3->first ) )
+      {
+        if ( !t1_candidates.contains( target_leaves ) )
+        {
+          /* find a candidate potentially using 2 outputs of an T1 cell  */
+          /* ( MAJ3,  OR3 ), check whether the combnation of tt is valid */
+          bool maj_phase{ false }, or_phase{ false };
+          for ( auto const& t1_cell : standard_T1_cells )
+          {
+            if ( std::get<0>( it_maj3->second )._bits[0] == ~t1_cell.carry_truth_table )
+            {
+              maj_phase = true;
+            }
+            else if ( std::get<0>( it_maj3->second )._bits[0] != t1_cell.carry_truth_table )
+            {
+              continue;
+            }
+
+            if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] == ~t1_cell.cbar_truth_table )
+            {
+              or_phase = true;
+            }
+            else if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] != t1_cell.cbar_truth_table )
+            {
+              continue;
+            }
+
+            /* managed to find a T1 cell-based implementation      */
+            /* figure out the nodes connecting to the output ports */
+            klut::node carry_to = klut_decomposed.get_constant( false );
+            klut::node inv_carry_to = klut_decomposed.get_constant( false );
+            klut::node cbar_to = klut_decomposed.get_constant( false );
+            klut::node inv_cbar_to = klut_decomposed.get_constant( false );
+            config_t1_ports_connection( klut_decomposed, maj_phase, std::get<1>(          it_maj3->second ), carry_to, inv_carry_to );
+            config_t1_ports_connection( klut_decomposed,  or_phase, std::get<1>(  or3_cuts[target_leaves] ),  cbar_to,  inv_cbar_to );
+
+            /* instantiate an T1 cell */
+            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to == klut_decomposed.get_constant( false ), inv_cbar_to == klut_decomposed.get_constant( false ), 
+                                                              carry_to == klut_decomposed.get_constant( false ), cbar_to == klut_decomposed.get_constant( false ), 
+                                                              klut_decomposed.get_constant( false ), carry_to, inv_carry_to, cbar_to, inv_cbar_to ) );
+            break;
+          }
+        }
+      }
+    }
+
+    for ( auto it_t1_candidates{ t1_candidates.begin }; it_t1_candidates <= t1_candidates.end(); ++it_t1_candidates )
+    {
+
+    }
+
+    /* TODO: bind the instantiated T1 cells to the 2-LUT network for constraints generation */
 
     continue;
   
