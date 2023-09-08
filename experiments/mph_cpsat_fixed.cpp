@@ -1757,10 +1757,10 @@ int main(int argc, char* argv[])  //
         
         // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
         // *** IF i = 1, "assignment" is empty
-        greedy_ntk_assign(network, klut_prim_params, n_phases, assignment, true);
+        greedy_ntk_assign(network, klut_prim_params, n_phases, assignment, true );
 
         // *** Greedily insert splitters
-        splitter_ntk_insertion( network, true);
+        splitter_ntk_insertion( network, true );
 
         // network.foreach_node([&] ( const klut::signal & node ) 
         // {
@@ -1804,15 +1804,15 @@ int main(int argc, char* argv[])  //
         }
 
         // *** Record maximum phase
-        uint64_t max_phase = 0u;
+        uint64_t max_stage = 0u;
         // *** Record number of splitters and total number of DFFs (not only path balancing DFFs)
         uint64_t total_num_spl = 0;
         network.foreach_gate([&](const klut::signal & node)
         {
           NodeData node_data { network.value(node) };
-          fmt::print("[Node {}] old max_phase = {}\tnode_data = {}\t", node, max_phase, static_cast<int>(node_data.sigma));
-          max_phase = generic_max(max_phase, node_data.sigma);
-          fmt::print("new max_phase = {}\n", max_phase);
+          fmt::print("[Node {}] old max_stage = {}\tnode_data = {}\t", node, max_stage, static_cast<int>(node_data.sigma));
+          max_stage = generic_max(max_stage, node_data.sigma);
+          fmt::print("new max_stage = {}\n", max_stage);
 
           auto fo_size = network.fanout_size(node);
           if (fo_size > 1)
@@ -1824,17 +1824,17 @@ int main(int argc, char* argv[])  //
         network.foreach_po([&](const klut::signal & node)
         {
           NodeData node_data { network.value(node) };
-          fmt::print("[PO {}] max_phase = {}, sigma = {}, node #DFF = {}\n", node, max_phase, static_cast<int>(node_data.sigma), ( (max_phase - node_data.sigma) / n_phases ) );
-          total_num_dff += (max_phase - node_data.sigma) / n_phases;
+          fmt::print("[PO {}] max_stage = {}, sigma = {}, node #DFF = {}\n", node, max_stage, static_cast<int>(node_data.sigma), ( (max_stage - node_data.sigma) / n_phases ) );
+          total_num_dff += (max_stage - node_data.sigma) / n_phases;
           fmt::print("\t\t\t\t[i] total #DFF = {}\n", total_num_dff);
         });
 
         fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
         int total_area = raw_area + total_num_dff * COSTS_MAP[fDFF] + total_num_spl * COSTS_MAP[fSPL];
         fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
-        fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_phase);
+        fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_stage);
 
-        exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_phase - 1) / n_phases + 1 ));
+        exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_stage - 1) / n_phases + 1 ));
         exp.save();
         exp.table();
       }
