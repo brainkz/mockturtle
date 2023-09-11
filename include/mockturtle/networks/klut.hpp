@@ -238,6 +238,11 @@ public:
     } );
     return i;
   }
+
+  bool is_po( node const& n ) const
+  {
+    return std::find( _storage->outputs.begin(), _storage->outputs.end(), n ) != _storage->outputs.end();
+  }
 #pragma endregion
 
 #pragma region Create unary functions
