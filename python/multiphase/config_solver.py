@@ -58,6 +58,7 @@ def parse_file_and_create_variables(file_path : str, model : cp_model.CpModel):
                 buffer_constr.append(buffer_vars)
                 # model.AddAtLeastOne(buffer_vars)
                 
+                
     return all_varnames, phase_constr, buffer_constr, required
 
 def parse_expression_and_create_variables(i : int, model : cp_model.CpModel, expression : str):
@@ -112,6 +113,9 @@ if __name__ == "__main__":
                 vars.append(long_var)
                 
         model.AddBoolOr(vars)
+        
+        
+        
 
     model.Minimize(sum(all_vars.values()))
 

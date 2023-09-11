@@ -18,18 +18,15 @@ TYPES = {"0": "PI", "1": "AA", "2": "AS", "3": "SA"} #"1": "PO",
 # TYPES = {"0": "AA", "1": "AS", "2": "SA"}
 
 class Primitive:
-    __slots__ = ['sig', 'func', 'type', 'fanins', 'fanouts', 'phase']
-    def __init__(self, _sig: int, _func : int, _type : str, _fanins : list, _fanouts : list, _phase : int = None) -> None:
+    __slots__ = ['sig', 'type', 'fanins', 'fanouts']
+    def __init__(self, _sig: int, _type : str, _fanins : list, _fanouts : list) -> None:
         self.sig        = _sig
-        self.func       = _func
         self.type       = _type
         self.fanins     = _fanins
         self.fanouts    = _fanouts
-        self.phase      = _phase
 
     def __eq__(self, other) -> bool: 
         if self.sig == other.sig:
-            assert(self.func == other.func)
             assert(self.type == other.type)
             assert(self.fanins == other.fanins)
             assert(self.fanouts == other.fanouts)
@@ -38,7 +35,6 @@ class Primitive:
 
     def __neq__(self, other) -> bool: 
         if self.sig == other.sig:
-            assert(self.func == other.func)
             assert(self.type == other.type)
             assert(self.fanins == other.fanins)
             assert(self.fanouts == other.fanouts)
@@ -46,37 +42,23 @@ class Primitive:
         return True
 
     def __repr__(self):
-        return f"Primitive(sig={self.sig}, func={self.func}, type='{self.type}', fanins={self.fanins}, phase={self.phase}), fanouts={self.fanouts}"
+        return f"Primitive(sig={self.sig}, type='{self.type}', fanins={self.fanins}), fanouts={self.fanouts}"
     
 def parse_specs(filename: str) -> dict[int, Primitive]:
     items = {}
     with open(filename, 'r') as f:
         for line in f:
             line = line.strip()
-            # if line.startswith('PI'):
-            #     _, _sig_str, _fanout_str = line.split()
-            #     _sig = int(_sig_str)
-            #     _fanouts = [int(_fanout_sig) for _fanout_sig in _fanout_str.split('|') if _fanout_sig]
-            #     g = Primitive(_sig, 0xAAAA, 'PI', [], _fanouts)
-            # else:
             
             list_split = line.split(',')
-            _sig_str, _func_str, _type_str, _fanin_str, _gphase_str, _fanout_str = list_split
+            _sig_str, _type_str, _fanin_str, _fanout_str = list_split
             _sig  = int(_sig_str)
-            _func = int(_func_str)
-            _gphase = int(_gphase_str) # if _gphase_str else None
             _fanins = [int(_fanin_sig) for _fanin_sig in _fanin_str.split('|') if _fanin_sig]
             _fanouts = [int(_fanout_sig) for _fanout_sig in _fanout_str.split('|') if _fanout_sig]
             
-            # if _sig in items:
-            #     assert (items[g.sig].type == 'PI')
-            #     continue
-            g = Primitive(_sig, _func, TYPES[_type_str], _fanins, _fanouts, _gphase)
+            g = Primitive(_sig, TYPES[_type_str], _fanins, _fanouts)
             items[g.sig] = g
     return items
-
-# ndff = delta / nph + r
-# ndff * nph = delta + r * nph
 
 if __name__ == "__main__":
     
@@ -108,9 +90,6 @@ if __name__ == "__main__":
     print(f'Finished creating [all_signals]')
     pprint(all_signals)
     
-    max_phase = max(g.phase for g in all_signals.values() if g.phase is not None)
-    
-    # sigma_bounds = (0, max_phase + NPH)
     sigma_bounds = (0, 1000)
 
     print(f"Setting up the model {cfg_path}")

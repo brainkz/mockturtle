@@ -5,6 +5,7 @@
 #include <fstream>
 #include <vector>
 #include <fmt/format.h>
+#include <mockturtle/algorithms/nodes.hpp>
 
 struct Delay 
 {
@@ -96,7 +97,7 @@ struct LibEntry
     const Delay& _delays, 
     const uint64_t _hash, 
     const std::string& _chars,
-    std::unordered_map<uint64_t, Node> & nodemap
+    phmap::flat_hash_map<uint64_t, Node> & nodemap
   ) :
     name(_name),
     delays(_delays),
@@ -151,11 +152,11 @@ struct LibEntry
     struct_hash = other.struct_hash;
     return *this;
   };
-  UI cost(std::unordered_map<uint64_t, Node> & nodemap) const
+  UI cost(phmap::flat_hash_map<uint64_t, Node> & nodemap) const
   {
     return nodemap[hash].cost;
   }
-  // UI cost(std::unordered_map<uint64_t, Node> & nodemap) const
+  // UI cost(phmap::flat_hash_map<uint64_t, Node> & nodemap) const
   // {
   //   return nodemap[hash].cost;
   // }
@@ -195,7 +196,7 @@ void writeLibEntryToCSV(const std::vector<LibEntry>& entries, const std::string&
   outFile.close();
 }
 
-std::unordered_map<std::string, LibEntry> read_LibEntry_map(const std::string& filename)
+phmap::flat_hash_map<std::string, LibEntry> read_LibEntry_map(const std::string& filename)
 {
   std::ifstream inFile(filename);
   if (!inFile) 
@@ -204,7 +205,7 @@ std::unordered_map<std::string, LibEntry> read_LibEntry_map(const std::string& f
     return {};
   }
 
-  std::unordered_map<std::string, LibEntry> entries;
+  phmap::flat_hash_map<std::string, LibEntry> entries;
   std::string line;
   while (std::getline(inFile, line)) 
   {

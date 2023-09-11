@@ -13,6 +13,7 @@
 #include <fmt/format.h>
 #include <thread>
 #include <kitty/kitty.hpp>
+#include <parallel_hashmap/phmap.h>
 
 typedef unsigned short US;
 typedef unsigned int   UI;
@@ -44,11 +45,12 @@ constexpr US fSPL   = 10;
 constexpr US fPI  = 11;
 constexpr US fNOFUNC= 99;
 
-// constexpr std::array<UI,12> COSTS_CONNECT = {6, 10, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
-// constexpr std::array<UI,12> COSTS_CONNECT_UPD = {5, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
-// constexpr std::array<UI,12> COSTS_CONNECT_CONSERVATIVE = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
-constexpr std::array<UI,12> COSTS_CONNECT_CONSERVATIVE = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
-constexpr std::array<UI,12> COSTS_CONNECT_PESSIMISTIC_3IN = {6, 9, 7, 7, 7, 11, 10, 10, 10, 7, 3, 0};
+// constexpr std::array<int,12> COSTS_CONNECT = {6, 10, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
+// constexpr std::array<int,12> COSTS_CONNECT_UPD = {5, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
+// constexpr std::array<int,12> COSTS_CONNECT_CONSERVATIVE = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
+constexpr std::array<int,12> COSTS_CONNECT_CONSERVATIVE = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
+constexpr std::array<int,12> COSTS_CONNECT_PESSIMISTIC_3IN = {6, 9, 7, 7, 7, 11, 10, 10, 10, 7, 3, 0};
+constexpr std::array<int,12> COSTS_SUNMAGNETICS = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0};
 
 constexpr UI kNumThreads = 100;
 
@@ -69,27 +71,27 @@ constexpr float GENLIB_FALL_FANOUT_DELAY  = 0.025;
 constexpr std::array<UI,12> COSTS = {7, 9, 8, 8, 8, 7, 11, 11, 11, 8, 7, 0}; // ORIGINAL COSTS
 // constexpr std::array<UI,12> COSTS = {5,  9, 7, 3, 3, 11, 999, 999, 999, 8, 7, 0};
                   // {6, 10, 7, 7, 7, 11, 999, 999, 999, 7, 3, 0};
-std::unordered_map<US, std::string> F2STR { 
+phmap::flat_hash_map<US, std::string> F2STR { 
   {fDFF   , "DFF"},
   {fNOT   , "NOT"},
   {fMERGE , "MRG"},
-  {fOR  , "OR "},
+  {fOR    , "OR "},
   {fAND   , "AND"},
   {fXOR   , "XOR"},
   {fOR3   , "OR3"},
   {fAND3  , "AND3"},
   {fMAJ3  , "MAJ3"},
-  {fCB  , "CB "},
+  {fCB    , "CB "},
   {fSPL   , "SPL"},
-  {fPI  , "PI "},
+  {fPI    , "PI "},
   {fNOFUNC, "N/A"}
   }; 
 
 std::array<uint16_t, NUM_VARS> PI_WORDS = {{0x5555, 0x3333, 0x0F0F, 0x00FF}};
 
-const std::unordered_map<uint16_t, uint8_t> PIFUNC2IDX = {{0x5555, 0}, {0x3333, 1}, {0x0F0F, 2}, {0x00FF, 3}};
+const phmap::flat_hash_map<uint16_t, uint8_t> PIFUNC2IDX = {{0x5555, 0}, {0x3333, 1}, {0x0F0F, 2}, {0x00FF, 3}};
 
-std::unordered_map<uint16_t, std::string> PI2LETTER { 
+phmap::flat_hash_map<uint16_t, std::string> PI2LETTER { 
   {0x00FF, "d"},
   {0x0F0F, "c"},
   {0x3333, "b"},
@@ -98,21 +100,21 @@ std::unordered_map<uint16_t, std::string> PI2LETTER {
   {0xFFFF, "1"},
   }; 
 
-std::unordered_map<uint16_t, std::string> IDX2LETTER { 
+phmap::flat_hash_map<uint16_t, std::string> IDX2LETTER { 
   {3, "d"},
   {2, "c"},
   {1, "b"},
   {0, "a"},
   }; 
 
-std::unordered_map<uint16_t, uint16_t> dummy_map {
+phmap::flat_hash_map<uint16_t, uint16_t> dummy_map {
   {0x00FF, 0x00FF},
   {0x0F0F, 0x0F0F},
   {0x3333, 0x3333},
   {0x5555, 0x5555}
   };
 
-std::unordered_map<uint16_t, std::string> FN2LETTER { 
+phmap::flat_hash_map<uint16_t, std::string> FN2LETTER { 
   {0x00FF, "d"},
   {0x0F0F, "c"},
   {0x3333, "b"},
@@ -129,7 +131,8 @@ std::unordered_map<uint16_t, std::string> FN2LETTER {
 
 constexpr UL NUM_TT = (1 << (1 << NUM_VARS));
 constexpr UI ONES = NUM_TT - 1;
-constexpr UL INF = 0xFFFFFF;
+// constexpr UL INF = 0xFFFFFF;
+constexpr UL INF = 0xFFFF;
 
 // Hash combiner
 template <typename T>
@@ -173,6 +176,15 @@ public:
   UI lvl = INF;
   ULL hash = 0;
 
+  // UI func = 0;                    // 16
+  // US last_func = fNOFUNC;         // 7
+  // UI cost = INF;                  // 16
+  // UI depth = INF;                 // 5
+  // bool xorable = false;           // 1
+  // UI lvl = INF;                   // 3
+  // ULL hash = 0;                   // 64
+  // std::vector<ULL> parent_hashes; // 64 * vector_size
+
   Node() = default;
   Node(const Node& other) : func(other.func), last_func(other.last_func), cost(other.cost), depth(other.depth), xorable(other.xorable), parent_hashes(other.parent_hashes), hash(other.hash), lvl(other.lvl) {}
 
@@ -215,8 +227,25 @@ public:
   ~Node() { }
 
   // Equality operator
-  bool operator==(const Node& other) const {
-    return hash == other.hash;
+  // bool operator==(const Node& other) const 
+  // {
+  //   return hash == other.hash;
+  // }
+  bool operator==(const Node& other) const 
+  {
+    return  func          == other.func &&
+            last_func     == other.last_func &&
+            cost          == other.cost &&
+            depth         == other.depth &&
+            xorable       == other.xorable &&
+            parent_hashes == other.parent_hashes &&
+            lvl           == other.lvl &&
+            hash          == other.hash;
+  }
+
+  bool operator!=(const Node& other) const 
+  {
+    return !(*this == other);
   }
 
   ULL get_hash() 
@@ -248,8 +277,8 @@ public:
     // return fmt::format("{:04x}{} | {} | {}, {} | ", func, (xorable?'x':' '), F2STR[(US)last_func], cost, depth);
     // return "Func: " + std::to_string(func) + "|Last: " + std::to_string(last_func) + "|Cost: " + std::to_string(cost) + "|Depth: " + std::to_string(depth) + "|X: " + std::to_string(xorable);
   }
-
-  std::string genlib_eqn(std::unordered_map<ULL, Node> & nodemap, std::vector<UI> & pis) const
+  
+  std::string genlib_eqn(phmap::flat_hash_map<ULL, Node> & nodemap, std::vector<UI> & pis) const
   {
     // if (DEBUG) {fmt::print("\t\tAccessing genlib_eqn: {}\n", to_str());}
     if (last_func == fPI)
@@ -298,7 +327,7 @@ public:
     }
   }
 
-  std::string to_genlib(std::unordered_map<ULL, Node> & nodemap, const std::vector<UI> & levels, const std::vector<UI> PI_funcs) const
+  std::string to_genlib(phmap::flat_hash_map<ULL, Node> & nodemap, const std::vector<UI> & levels, const std::vector<UI> PI_funcs) const
   {
     std::vector<UI> pis;
     std::string str = fmt::format("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(levels, ""), cost,  genlib_eqn(nodemap, pis));
@@ -316,7 +345,7 @@ public:
     return str;
   }
 
-  // std::string to_genlib(std::unordered_map<ULL, Node> & nodemap, const std::vector<UI> & levels, std::unordered_map<UI, std::string> pi2symbol) const
+  // std::string to_genlib(phmap::flat_hash_map<ULL, Node> & nodemap, const std::vector<UI> & levels, phmap::flat_hash_map<UI, std::string> pi2symbol) const
   // {
   //   std::vector<UI> pis;
   //   std::string str = fmt::format("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(levels, ""), cost,  genlib_eqn(nodemap, pis));
@@ -334,14 +363,14 @@ public:
   //   return str;
   // }
 
-  UI node_cost(std::unordered_map<ULL, Node> & nodemap, const std::array<UI,12> cost_map) const
+  UI node_cost(phmap::flat_hash_map<ULL, Node> & nodemap, const std::array<UI,12> cost_map) const
   {
     std::vector<ULL> stack { hash };
     UI gate_cost = 0;
     // fmt::print("Hash  inside {}\n", hash);
     // fmt::print("Node  inside {}\n", to_str());
 
-    std::unordered_map<ULL, UI> ct_spl;
+    phmap::flat_hash_map<ULL, UI> ct_spl;
     std::unordered_set<ULL> non_splittable_nodes;
 
     // fmt::print("\t\t\tInitial cost {}\n", gate_cost);
@@ -392,7 +421,7 @@ public:
     return gate_cost;
   }
 
-  int recalculate_cost(std::unordered_map<ULL, Node> & nodemap, const std::array<UI,12> cost_map, std::vector<ULL> seen = {}) const
+  int recalculate_cost(phmap::flat_hash_map<ULL, Node> & nodemap, const std::array<UI,12> cost_map, std::vector<ULL> seen = {}) const
   {
     if (std::find(seen.begin(), seen.end(), hash) != seen.end())
     {
@@ -420,7 +449,7 @@ public:
     }
   }
 
-  int number_of_dff(std::unordered_map<ULL, Node> & nodemap) const
+  int number_of_dff(phmap::flat_hash_map<ULL, Node> & nodemap) const
   {
     // DFF is not redundant if 
     //    1. it is followed by SA gate
@@ -428,8 +457,8 @@ public:
     
     std::vector<ULL> stack { hash };
 
-    std::unordered_map<ULL, std::vector<ULL>> fanouts;
-    std::unordered_map<ULL, std::vector<ULL>> fanins;
+    phmap::flat_hash_map<ULL, std::vector<ULL>> fanouts;
+    phmap::flat_hash_map<ULL, std::vector<ULL>> fanins;
 
     while (!stack.empty())
     {
@@ -496,7 +525,7 @@ public:
     return nPB_DFF;
   }
 
-  std::vector<UI> structural_hash(std::unordered_map<ULL, Node> & nodemap) const
+  std::vector<UI> structural_hash(phmap::flat_hash_map<ULL, Node> & nodemap) const
   {
     std::vector<ULL> stack { hash };
     std::vector<UI> nums;
@@ -534,7 +563,7 @@ public:
     return nums;
   }
 
-  void topo_sort(std::unordered_map<ULL, Node> & nodemap, std::vector<ULL>& order, bool verbose = false) const
+  void topo_sort(phmap::flat_hash_map<ULL, Node> & nodemap, std::vector<ULL>& order, bool verbose = false) const
   {
     // fmt::print("\t\tTraversing {0}\n", 
     //   hash
@@ -557,7 +586,7 @@ public:
     // );
   }
 
-  std::string to_stack(std::unordered_map<ULL, Node> & nodemap, const std::unordered_map<uint16_t, uint16_t> & pi_map = dummy_map) const
+  std::string to_stack(phmap::flat_hash_map<ULL, Node> & nodemap, const phmap::flat_hash_map<uint16_t, uint16_t> & pi_map = dummy_map) const
   {
     if (last_func == fPI)
     {
@@ -600,7 +629,7 @@ public:
     }
   }
 
-  auto process_nodes(std::unordered_map<ULL, Node> & GNM)
+  auto process_nodes(phmap::flat_hash_map<ULL, Node> & GNM)
   {
     std::vector<std::pair<ULL,US>> stack { std::make_pair(hash, 0) };
     std::vector<ULL> seen;
@@ -648,7 +677,7 @@ public:
 
   }
 
-  std::tuple<bool, UI> redundancy_check(std::unordered_map<ULL, Node> & GNM)
+  std::tuple<bool, UI> redundancy_check(phmap::flat_hash_map<ULL, Node> & GNM)
   {
     // std::vector<UI>   pi_funcs   {0x00FF, 0x0F0F, 0x3333, 0x5555};
     std::array<UI,  4> pi_funcs   {0x5555, 0x3333, 0x0F0F, 0x00FF};
@@ -792,7 +821,7 @@ std::tuple<
   bool
   > get_delays(
     uint64_t hash, 
-    std::unordered_map<ULL, Node> & hashmap
+    phmap::flat_hash_map<ULL, Node> & hashmap
   )
 {
   std::vector<std::pair<uint64_t, uint8_t>> stack;
@@ -853,7 +882,7 @@ std::tuple<TT4,
   std::string,
   bool> process_node(
     const uint64_t hash, 
-    std::unordered_map<ULL, Node> & hashmap)
+    phmap::flat_hash_map<ULL, Node> & hashmap)
 {
   auto [pi_delays, support, status] = get_delays(hash, hashmap);
   if (!status) return std::make_tuple( TT4{}, std::vector<uint8_t>{}, 0, "", false);
@@ -870,7 +899,7 @@ std::tuple<TT4,
   auto t1 = tt;
   auto tmin = t1;
 
-  std::unordered_map<uint16_t, uint8_t> pi_map;
+  phmap::flat_hash_map<uint16_t, uint8_t> pi_map;
   for (auto idx : support)
   {
     uint16_t func = PI_WORDS[idx];
@@ -937,7 +966,7 @@ std::tuple<TT4,
 
 #pragma region write_output
 
-void write_csv_gnm(const std::unordered_map<ULL, Node>& gnm, const std::string& filename) {
+void write_csv_gnm(const phmap::flat_hash_map<ULL, Node>& gnm, const std::string& filename) {
   // Open output file
   std::ofstream outfile(filename);
 
@@ -971,17 +1000,18 @@ void write_csv_arr(const std::array<ULL, NUM_TT>& arr_hashes, const std::string&
   outfile.close();
 }
 
-std::unordered_map<ULL, Node> read_csv_gnm(const std::string& filename) 
+phmap::flat_hash_map<ULL, Node> read_csv_gnm(const std::string& filename, const uint32_t cost_cutoff = 512u, const uint32_t depth_cutoff = 16u) 
 {
   // Open input file
   std::ifstream infile(filename);
   
-  std::unordered_map<ULL, Node> gnm;
+  phmap::flat_hash_map<ULL, Node> gnm;
 
   // Parse CSV file and populate GNM variable
   std::string line;
   std::getline(infile, line);  // skip header row
-  while (std::getline(infile, line)) {
+  while (std::getline(infile, line)) 
+  {
     std::stringstream ss;
     ss.str(line);
     std::string field;
@@ -992,22 +1022,26 @@ std::unordered_map<ULL, Node> read_csv_gnm(const std::string& filename)
     std::stringstream(field) >> node.func;
     std::getline(ss, field, ',');
     std::stringstream(field) >> node.last_func;
+    if (node.last_func > 20) { continue; }
     std::getline(ss, field, ',');
     std::stringstream(field) >> node.cost;
+    if (node.cost > cost_cutoff) { continue; }
     std::getline(ss, field, ',');
     std::stringstream(field) >> node.depth;
+    if (node.depth > depth_cutoff) { continue; }
     std::getline(ss, field, ',');
     std::stringstream(field) >> node.xorable;
     std::getline(ss, field, ',');
     std::stringstream parent_hashes_ss(field);
-    while (std::getline(parent_hashes_ss, field, '|')) {
+    while (std::getline(parent_hashes_ss, field, '|')) 
+    {
       ULL parent_hash;
       std::stringstream(field) >> parent_hash;
       node.parent_hashes.push_back(parent_hash);
     }
     std::getline(ss, field, ',');
     std::stringstream(field) >> node.lvl;
-    gnm[node.hash] = node;
+    gnm.emplace(node.hash, node);
   }
 
   // Close input file
@@ -1037,7 +1071,7 @@ std::array<ULL, NUM_TT> read_csv_arr(const std::string& filename) {
 }
 
 
-bool is_good(ULL hash, Node & node, std::unordered_map<ULL, bool> & status, std::unordered_map<ULL, Node>& all_hashes)
+bool is_good(ULL hash, Node & node, phmap::flat_hash_map<ULL, bool> & status, phmap::flat_hash_map<ULL, Node>& all_hashes)
 {
   bool good = true;
   for (auto & p_hash : node.parent_hashes)
@@ -1052,9 +1086,9 @@ bool is_good(ULL hash, Node & node, std::unordered_map<ULL, bool> & status, std:
   return good;
 }
 
-std::unordered_map<ULL, bool> subset_of_pi(std::vector<ULL>& pi, std::unordered_map<ULL, Node>& all_hashes)
+phmap::flat_hash_map<ULL, bool> subset_of_pi(std::vector<ULL>& pi, phmap::flat_hash_map<ULL, Node>& all_hashes)
 {
-  std::unordered_map<ULL, bool> status;
+  phmap::flat_hash_map<ULL, bool> status;
   for (ULL hash : pi)
   {
     status[hash] = true;
@@ -1236,9 +1270,9 @@ std::string get_formula( TT4 _tt, const bool reverse = false, const std::vector<
   return expression;
 }
 
-// std::unordered_map<ULL, Node> mergeMaps(const std::vector<std::unordered_map<ULL, Node>>& maps) 
+// phmap::flat_hash_map<ULL, Node> mergeMaps(const std::vector<phmap::flat_hash_map<ULL, Node>>& maps) 
 // {
-//     std::unordered_map<ULL, Node> mergedMap;
+//     phmap::flat_hash_map<ULL, Node> mergedMap;
 
 //     for (const auto& map : maps) {
 //         mergedMap.insert(map.begin(), map.end());
@@ -1247,29 +1281,27 @@ std::string get_formula( TT4 _tt, const bool reverse = false, const std::vector<
 //     return mergedMap;
 // }
 
-std::unordered_map<ULL, Node> mergeMaps(const std::vector<std::unordered_map<ULL, Node>>& maps) 
+phmap::flat_hash_map<ULL, Node> mergeMaps(std::vector<phmap::flat_hash_map<ULL, Node>>& maps) 
 {
-  std::unordered_map<ULL, Node> mergedMap;
+  // phmap::flat_hash_map<ULL, Node> mergedMap;
 
-  for (const auto& map : maps) {
-    // for (const auto & [key, value] : map)
-    // {
-    //   // mergedMap[key] = std::move(value);
-    //   mergedMap.emplace(std::move(key), std::move(value));
-    // }
-    mergedMap.insert(map.begin(), map.end());
+  // for (const auto& map : maps) 
+  for (auto it = maps.rbegin() - 1; it < maps.rend(); it++) 
+  {
+    auto & other_map = *it;
+    maps[0].insert(other_map.begin(), other_map.end());
   }
 
-  return mergedMap;
+  return maps[0];
 }
 
-std::unordered_map<ULL, Node> read_global_gnm(
+phmap::flat_hash_map<ULL, Node> read_global_gnm(
   const std::vector<std::vector<UI>> sets_of_levels,
   const std::string file_prefix,
-  const std::array<UI, 12> costs = COSTS_CONNECT_CONSERVATIVE
+  const std::array<int, 12> costs = COSTS_CONNECT_CONSERVATIVE
 )
 {
-  std::vector<std::unordered_map<ULL, Node>> GNM_vector(sets_of_levels.size());
+  std::vector<phmap::flat_hash_map<ULL, Node>> GNM_vector(sets_of_levels.size());
   std::vector<std::thread> threads;
 
   // Launch threads to read the CSV files in parallel
@@ -1280,42 +1312,362 @@ std::unordered_map<ULL, Node> read_global_gnm(
     {
       GNM_vector[i] = read_csv_gnm(fmt::format("{}_{}_gnm.csv", file_prefix, fmt::join(levels, "")));
       fmt::print("Imported GNM {0} with {1} nodes\n", fmt::join(levels, ""), GNM_vector[i].size());
-      for (auto & [hash, node] : GNM_vector[i])
-      {
-        // fmt::print("Imported node {}\n", node.to_str());
-        UI node_cost = node.node_cost(GNM_vector[i], costs);
+      // for (auto & [hash, node] : GNM_vector[i])
+      // {
+      //   // fmt::print("Imported node {}\n", node.to_str());
+      //   UI node_cost = node.node_cost(GNM_vector[i], costs);
 
-        node.cost = node_cost;
-        // GNM_global[hash].cost = node_cost;
-        // GNM_global[hash] = node;
-      }
+      //   node.cost = node_cost;
+      //   // GNM_global[hash].cost = node_cost;
+      //   // GNM_global[hash] = node;
+      // }
     });
     i++;
   }
   // Wait for all threads to finish
-  for (auto& thread : threads) {
+  for (auto& thread : threads) 
+  {
       thread.join();
   }
 
-  std::unordered_map<ULL, Node> GNM_global = mergeMaps(GNM_vector);
-  // for (const std::vector<UI> & levels : sets_of_levels)
-  // {
-    
-  //   std::unordered_map<ULL, Node> GNM = read_csv_gnm(fmt::format("{}_{}_gnm.csv", file_prefix, fmt::join(levels, "")));
-  //   fmt::print("Imported GNM {0} with {1} nodes\n", fmt::join(levels, ""), GNM.size());
-  //   for (auto & [hash, node] : GNM)
-  //   {
-  //     // fmt::print("Imported node {}\n", node.to_str());
-  //     if (!node.xorable)
-  //     {
-  //       continue;
-  //     }
-  //     UI node_cost = node.node_cost(GNM, costs);
-
-  //     node.cost = node_cost;
-  //     GNM_global[hash].cost = node_cost;
-  //     GNM_global[hash] = node;
-  //   }
-  // }
+  phmap::flat_hash_map<ULL, Node> GNM_global = mergeMaps(GNM_vector);
   return GNM_global;
 }
+
+void SaveToFile(const phmap::flat_hash_map<uint64_t, Node>& map, const std::string& filepath_prefix, uint64_t max_size = 1024 * 1024 * 50) 
+{
+  fmt::print("Starting the dumping process\n");
+
+  auto it = map.begin();
+  int chunk_id = 0;
+
+  while (it != map.end())
+  {
+    std::string filepath = fmt::format("{}_{}.dat", filepath_prefix, chunk_id);
+    fmt::print("Opening {} for writing\n", filepath);
+    std::ofstream outfile(filepath, std::ios::binary);
+    if (!outfile) 
+    {
+      std::cerr << "Failed to open file for writing" << std::endl;
+      return;
+    }
+    // if (chunk_id == 0)
+    // {
+    //   // Write out the size of the map first
+    //   size_t map_size = map.size();
+    //   outfile.write(reinterpret_cast<const char*>(&map_size), sizeof(map_size));
+    //   fmt::print("Recorded map size = {}\n", map_size);
+    // }
+    
+    while ( (outfile.tellp() < max_size) && (it != map.end()) )
+    {
+      auto & [hash, node] = *it;
+      outfile.write(reinterpret_cast<const char*>(&node.hash), sizeof(ULL));
+
+      outfile.write(reinterpret_cast<const char*>(&node.func), sizeof(UI));
+      outfile.write(reinterpret_cast<const char*>(&node.last_func), sizeof(US));
+      outfile.write(reinterpret_cast<const char*>(&node.cost), sizeof(UI));
+      outfile.write(reinterpret_cast<const char*>(&node.depth), sizeof(UI));
+      outfile.write(reinterpret_cast<const char*>(&node.xorable), sizeof(bool));
+      
+      // Write vector size and contents
+      US vec_size = node.parent_hashes.size();
+      outfile.write(reinterpret_cast<const char*>(&vec_size), sizeof(US));
+      if (vec_size > 0) 
+      {
+        outfile.write(reinterpret_cast<const char*>(&node.parent_hashes[0]), vec_size * sizeof(ULL));
+      }
+
+      outfile.write(reinterpret_cast<const char*>(&node.lvl), sizeof(UI));
+      it++;
+    }
+    // if the map is done, place a codeword to the end of the file
+    // if (it == map.end())
+    // {
+    //   const ULL code = 0x1c0fb3767dc1ea0c;
+    //   outfile.write(reinterpret_cast<const char*>(&code), sizeof(ULL));
+    // }
+
+    outfile.close();
+    chunk_id++;
+  } 
+}
+
+bool LoadFromFile(phmap::flat_hash_map<uint64_t, Node>& map, const std::string& filepath_prefix) 
+{
+  fmt::print("Starting the loading process\n");
+
+  int chunk_id = 0;
+  while (true)
+  {
+    std::string filepath = fmt::format("{}_{}.dat", filepath_prefix, chunk_id);
+    std::ifstream infile(filepath, std::ios::binary);
+    if (!infile) 
+    {
+      fmt::print("Reading complete\n", filepath);
+      return true;
+    }
+    fmt::print("Reading from {}\n", filepath);
+    
+    // Determine the size of the file in bytes
+    infile.seekg(0, std::ios::end);
+    std::streampos fileSize = infile.tellg();
+    infile.seekg(0, std::ios::beg);
+
+    while (infile.tellg() < fileSize)
+    {
+      Node node;
+      infile.read(reinterpret_cast<char*>(&node.hash), sizeof(ULL));
+      // if (node.hash == 0x1c0fb3767dc1ea0c)
+      // {
+      //   // found the end of the map
+      //   infile.close();
+      //   return true;
+      // }
+
+      infile.read(reinterpret_cast<char*>(&node.func), sizeof(UI));
+      infile.read(reinterpret_cast<char*>(&node.last_func), sizeof(US));
+      infile.read(reinterpret_cast<char*>(&node.cost), sizeof(UI));
+      infile.read(reinterpret_cast<char*>(&node.depth), sizeof(UI));
+      infile.read(reinterpret_cast<char*>(&node.xorable), sizeof(bool));
+
+      US vec_size = 0;
+      infile.read(reinterpret_cast<char*>(&vec_size), sizeof(vec_size));
+      node.parent_hashes.resize(vec_size);
+      if (vec_size > 0) 
+      {
+        infile.read(reinterpret_cast<char*>(&node.parent_hashes[0]), vec_size * sizeof(ULL));
+      }
+
+      infile.read(reinterpret_cast<char*>(&node.lvl), sizeof(UI));
+      // fmt::print("Loading: {}\n", node.to_str());
+      map.emplace( std::move(node).hash, std::move(node) );
+    }
+    fmt::print("\n");
+    infile.close();
+    chunk_id++;
+  }
+}
+
+phmap::flat_hash_map<uint64_t, Node> LoadFromOneFile(const int chunk_id, const std::string & path) 
+{
+  phmap::flat_hash_map<uint64_t, Node> map;
+  std::ifstream infile(path, std::ios::binary);
+  fmt::print("Reading from {}\n", path);
+  
+  // Determine the size of the file in bytes
+  infile.seekg(0, std::ios::end);
+  std::streampos fileSize = infile.tellg();
+  infile.seekg(0, std::ios::beg);
+
+  while (infile.tellg() < fileSize)
+  {
+    Node node;
+    infile.read(reinterpret_cast<char*>(&node.hash), sizeof(ULL));
+    infile.read(reinterpret_cast<char*>(&node.func), sizeof(UI));
+    infile.read(reinterpret_cast<char*>(&node.last_func), sizeof(US));
+    infile.read(reinterpret_cast<char*>(&node.cost), sizeof(UI));
+    infile.read(reinterpret_cast<char*>(&node.depth), sizeof(UI));
+    infile.read(reinterpret_cast<char*>(&node.xorable), sizeof(bool));
+
+    US vec_size = 0;
+    infile.read(reinterpret_cast<char*>(&vec_size), sizeof(vec_size));
+    node.parent_hashes.resize(vec_size);
+    if (vec_size > 0) 
+    {
+      infile.read(reinterpret_cast<char*>(&node.parent_hashes[0]), vec_size * sizeof(ULL));
+    }
+    infile.read(reinterpret_cast<char*>(&node.lvl), sizeof(UI));
+    map.emplace( std::move(node).hash, std::move(node) );
+    fmt::print("[{}] Loading: {}\n", chunk_id,  node.to_str());
+  }
+  infile.close();
+  return map;
+}
+
+void LoadVectorFromOneFile(std::vector<Node> & vec, const int chunk_id, const std::string & path) 
+{
+  std::ifstream infile(path, std::ios::binary);
+  fmt::print("Reading from {}\n", path);
+  
+  // Determine the size of the file in bytes
+  infile.seekg(0, std::ios::end);
+  std::streampos fileSize = infile.tellg();
+  infile.seekg(0, std::ios::beg);
+
+  while (infile.tellg() < fileSize)
+  {
+    Node node;
+    infile.read(reinterpret_cast<char*>(&node.hash), sizeof(ULL));
+    infile.read(reinterpret_cast<char*>(&node.func), sizeof(UI));
+    infile.read(reinterpret_cast<char*>(&node.last_func), sizeof(US));
+    infile.read(reinterpret_cast<char*>(&node.cost), sizeof(UI));
+    infile.read(reinterpret_cast<char*>(&node.depth), sizeof(UI));
+    infile.read(reinterpret_cast<char*>(&node.xorable), sizeof(bool));
+
+    US vec_size = 0;
+    infile.read(reinterpret_cast<char*>(&vec_size), sizeof(vec_size));
+    node.parent_hashes.resize(vec_size);
+    if (vec_size > 0) 
+    {
+      infile.read(reinterpret_cast<char*>(&node.parent_hashes[0]), vec_size * sizeof(ULL));
+    }
+    infile.read(reinterpret_cast<char*>(&node.lvl), sizeof(UI));
+    fmt::print("[{}] Loading: {}\n", chunk_id,  node.to_str());
+    
+    vec.push_back( node );
+  }
+  infile.close();
+}
+
+phmap::flat_hash_map<ULL, Node> ParallelLoadFromFiles(const std::string& filepath_prefix) 
+{
+  fmt::print("Starting the loading process\n");
+  fmt::print("Building the list of files\n");
+
+  int chunk_id = 0;
+  do
+  {
+    std::string filepath = fmt::format("{}_{}.dat", filepath_prefix, chunk_id);
+    std::ifstream infile(filepath, std::ios::binary);
+    if (!infile) 
+    {
+      break;
+    }
+    chunk_id++;
+  } while (true);
+
+  std::vector<std::thread> threads;
+  threads.reserve(chunk_id);
+  // std::vector<phmap::flat_hash_map<ULL, Node>> maps( chunk_id );
+  std::vector<std::vector<Node>> vecs;
+  for (int i = 0u; i < chunk_id; ++i)
+  {
+    // fmt::print("Reading {}_{}.dat\n", filepath_prefix, i);
+    threads.emplace_back([i, &vecs, &filepath_prefix]() 
+    {
+      std::string filepath = fmt::format("{}_{}.dat", filepath_prefix, i);
+      LoadVectorFromOneFile( vecs[i], i, filepath );
+      // fmt::print("[{}] found {} nodes\n", i, maps[i].size());
+    });
+  }
+  for (auto& thread : threads) 
+  {
+      thread.join();
+  }
+
+  phmap::flat_hash_map<ULL, Node> global_map;
+  for (std::vector<Node> & vec: vecs)
+  {
+    for (Node & node : vec)
+    {
+      global_map.emplace(node.hash, std::move(node));
+    }
+  }
+  return global_map;
+}
+
+
+#if false
+  // Save the map to a binary file
+  bool SaveToFile(const std::string& filename, const std::vector<Node>& data) {
+      std::ofstream file(filename, std::ios::binary | std::ios::out);
+      if (!file.is_open()) {
+          std::cerr << "Error: Unable to open file for writing: " << filename << std::endl;
+          return false;
+      }
+
+      // Write the number of nodes
+      size_t numNodes = data.size();
+      file.write(reinterpret_cast<const char*>(&numNodes), sizeof(size_t));
+
+      // Write the nodes
+      for (const Node& node : data) {
+          file.write(reinterpret_cast<const char*>(&node), sizeof(Node));
+      }
+
+      // Close the file
+      file.close();
+      return true;
+  }
+
+  // Load the map from a binary file
+  bool LoadFromFile(const std::string& filename, std::vector<Node>& data) {
+      std::ifstream file(filename, std::ios::binary | std::ios::in);
+      if (!file.is_open()) {
+          std::cerr << "Error: Unable to open file for reading: " << filename << std::endl;
+          return false;
+      }
+
+      // Read the number of nodes
+      size_t numNodes;
+      file.read(reinterpret_cast<char*>(&numNodes), sizeof(size_t));
+
+      // Resize the vector to hold the data
+      data.resize(numNodes);
+
+      // Read the nodes
+      for (Node& node : data) {
+          file.read(reinterpret_cast<char*>(&node), sizeof(Node));
+      }
+
+      // Close the file
+      file.close();
+      return true;
+  }
+#endif
+
+#if false
+  void DumpToFile(const phmap::flat_hash_map<uint64_t, Node>& map, const std::string& filename) {
+    std::ofstream outfile(filename, std::ios::binary);
+
+    if (!outfile) {
+      std::cerr << "Error opening file for writing: " << filename << std::endl;
+      return;
+    }
+
+    // Write the number of elements in the map
+    uint64_t num_elements = map.size();
+    outfile.write(reinterpret_cast<const char*>(&num_elements), sizeof(uint64_t));
+
+    // Write each key-value pair to the file
+    for (const auto& entry : map) {
+      uint64_t key = entry.first;
+      Node node = entry.second;
+
+      outfile.write(reinterpret_cast<const char*>(&key), sizeof(uint64_t));
+      outfile.write(reinterpret_cast<const char*>(&node), sizeof(Node));
+    }
+
+    outfile.close();
+  }
+
+    phmap::flat_hash_map<uint64_t, Node> LoadFromFile(const std::string& filename) {
+      phmap::flat_hash_map<uint64_t, Node> map;
+      std::ifstream infile(filename, std::ios::binary);
+
+      if (!infile) {
+        std::cerr << "Error opening file for reading: " << filename << std::endl;
+        return map; // Return an empty map if there was an error
+      }
+
+      // Read the number of elements in the file
+      uint64_t num_elements;
+      infile.read(reinterpret_cast<char*>(&num_elements), sizeof(uint64_t));
+
+      // Read each key-value pair from the file and insert it into the map
+      for (uint64_t i = 0; i < num_elements; ++i) 
+      {
+        uint64_t key;
+        Node node;
+
+        infile.read(reinterpret_cast<char*>(&key), sizeof(uint64_t));
+        infile.read(reinterpret_cast<char*>(&node), sizeof(Node));
+
+        map[key] = node;
+      }
+
+      infile.close();
+      return map;
+    }
+#endif
