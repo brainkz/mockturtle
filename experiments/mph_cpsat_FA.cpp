@@ -2197,7 +2197,7 @@ int main(int argc, char* argv[])  //
             {
               or_phase = true;
             }
-            else if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] == t1_cell.cbar_truth_table )
+            else if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] != t1_cell.cbar_truth_table )
             {
               continue;
             }
