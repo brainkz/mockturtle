@@ -180,6 +180,121 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
   return std::make_tuple( res, st, total_ndff, total_area, cec );
 }
 
+  /// @brief Create binary variables for DFF placement in a given path
+  /// @param path - a path object to insert DFFs into
+  /// @param NR - unordered_map of NtkNode objects 
+  /// @param n_phases - # of phases
+  /// @param verbose - prints debug messages if set to *true*
+  /// @return 
+  std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(const Path & path, const klut & ntk, const uint8_t n_phases, bool verbose = false)
+  {
+    DFF_registry DFF_REG;
+    std::vector<uint64_t> required_SA_DFFs;
+
+    std::vector<std::tuple<klut::signal, uint64_t>> stack;
+    for (const klut::signal & tgt : path.targets)
+    {
+      stack.emplace_back(tgt, 0);
+    }
+    DEBUG_PRINT("[DFF] Target nodes: {}\n", fmt::join(path.targets, ","));
+
+    auto precalc_ndff = 0u;
+    
+    while (!stack.empty())
+    { 
+      if (verbose)
+      {
+        DEBUG_PRINT("STACK :\n");
+        for (const auto & [ fo_node, earliest_child_hash ] : stack)
+        {
+          NodeData fo_data { ntk.value( fo_node ) };
+          if (earliest_child_hash != 0)
+          {
+            DEBUG_PRINT("\t{}({})[{}], {}\n", GATE_TYPE.at((int)fo_data.type), fo_node, (int)fo_data.sigma, DFF_REG.at(earliest_child_hash).str());
+          }
+          else
+          {
+            DEBUG_PRINT("\t{}({})[{}]\n", GATE_TYPE.at((int)fo_data.type), fo_node, (int)fo_data.sigma);
+          }
+        }
+      }
+      // fixing this stupid clang bug with structured bindings
+      auto node_tuple = stack.back();
+      const klut::signal fo_node = std::get<0>(node_tuple);
+      const uint64_t earliest_child_hash = std::get<1>(node_tuple);
+      // const auto & [ fo_node, earliest_child_hash ] = node_tuple ;
+      stack.pop_back();
+      NodeData fo_data { ntk.value( fo_node ) };
+
+      uint32_t latest_sigma = fo_data.sigma - (fo_data.type == AS_GATE);
+      DEBUG_PRINT("[DFF] Analyzing child: {}({})[{}]\n", GATE_TYPE.at(fo_data.type), fo_node, (int)fo_data.sigma);
+
+      ntk.foreach_fanin(fo_node, [&](const klut::signal & fi_node){
+        NodeData fi_data { ntk.value( fi_node ) };
+        uint32_t earliest_sigma = fi_data.sigma + (fi_data.type != AA_GATE);
+
+        DEBUG_PRINT("\t[DFF] Analyzing parent: {}({})[{}]\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma);
+
+        // check if the chain is straight - #DFF is just floor(delta-phase), no need to create the dff vars
+        if (fo_data.type != AA_GATE && fi_data.type != AA_GATE)
+        {
+          // special case when an AS gate feeds directly into SA gate
+          if (fo_data.sigma == fi_data.sigma)
+          {
+            DEBUG_PRINT("\t[DFF] Straight chain: AS{} -> SA{}\n", fi_node, fo_node);
+            // do nothing, no additional DFFs needed
+            assert(fo_data.type == SA_GATE && fi_data.type == AS_GATE && ntk.fanout_size(fi_node) == 1);
+          }
+          else
+          {
+            DEBUG_PRINT("\t[DFF] Straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_data.type), (int)fi_data.sigma, GATE_TYPE.at(fo_data.type), (int)fo_data.sigma);
+            // straight chain, just floor the difference!
+            precalc_ndff += (fo_data.sigma - fi_data.sigma)/n_phases + (fo_data.type == SA_GATE); //extra DFF before SA gate
+          }
+          return;
+        }
+
+        DEBUG_PRINT("\t[DFF] Non-straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_data.type), (int)fi_data.sigma, GATE_TYPE.at(fo_data.type), (int)fo_data.sigma);
+        std::vector<uint64_t> out_hashes;
+        DEBUG_PRINT("\tAdding new DFFs [reg size = {}]\n", DFF_REG.variables.size());
+
+        for (glob_phase_t sigma = earliest_sigma; sigma <= latest_sigma; ++sigma)
+        {
+          uint64_t new_hash = DFF_REG.add(fi_node, fo_node, sigma);
+          out_hashes.push_back(new_hash);
+          DEBUG_PRINT("\tAdded new DFFs at phase {} [reg size = {}]\n", sigma, DFF_REG.variables.size());
+        }
+        DEBUG_PRINT("\tConnecting new DFFs\n");
+        for (auto i = 1u; i < out_hashes.size(); ++i)
+        {
+          DFF_var & dff = DFF_REG.at( out_hashes[i] );
+          dff.parent_hashes.emplace(out_hashes[i-1]);
+        }
+        if (fo_data.type == SA_GATE)
+        {
+          assert( !out_hashes.empty() );
+          required_SA_DFFs.push_back(out_hashes.back());
+        }
+
+        uint64_t earliest_hash = (out_hashes.empty()) ? earliest_child_hash : out_hashes.front();
+        // if the node is internal, connect with the fanout phase
+        if (fo_data.type == AA_GATE && !out_hashes.empty() && earliest_hash != 0 && earliest_child_hash != 0)
+        {
+          DFF_var & child_dff = DFF_REG.at( earliest_child_hash );
+          DEBUG_PRINT("\tPrior node is {}[{}]\n", child_dff.str(), (int)child_dff.sigma); 
+          // assert(child_dff.fanin == fo_id);
+          child_dff.parent_hashes.emplace( out_hashes.back() );
+        }
+        if (fi_data.type == AA_GATE)
+        {
+          stack.emplace_back( fi_node, earliest_hash );
+          DEBUG_PRINT("\tEmplacing {}({})[{}], {}\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma, (earliest_hash!=0)?DFF_REG.at(earliest_hash).str():"");
+        }
+      });
+    }
+    return std::make_tuple(DFF_REG, precalc_ndff, required_SA_DFFs);
+  }
+
   struct Snake
   {
     std::deque<std::vector<uint64_t>> sections;

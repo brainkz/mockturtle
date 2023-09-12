@@ -22,7 +22,9 @@ const std::string LibEntry_file { "../rsfq_tech_lib/LibEntry_2023_06_27_CONNECT_
 const std::string PYTHON_EXECUTABLE { "~/anaconda3/bin/python" }; // 
 
 // Python script that runs OR-tools for phase assignment
-const std::string PYTHON_PHASE_ASSIGNMENT { "../python/multiphase/decomposed_ilp_max.py" };
+// const std::string PYTHON_PHASE_ASSIGNMENT { "../python/multiphase/decomposed_ilp_max.py" };
+const std::string PYTHON_PHASE_ASSIGNMENT { "../python/multiphase/phase_assignment.py" };
+
 
 // Python script that runs OR-tools for DFF placement
 const std::string PYTHON_DFF_PLACEMENT { "../python/multiphase/config_solver.py" };
@@ -41,12 +43,12 @@ const std::string NODEMAP_BINARY_PREFIX = "../GNM/GNM_global";
 
 std::string repeatString(const std::string& str, int count) 
 {
-    std::string repeatedStr;
-    for (int i = 0; i < count; ++i) 
-    {
-        repeatedStr += str;
-    }
-    return repeatedStr;
+  std::string repeatedStr;
+  for (int i = 0; i < count; ++i) 
+  {
+      repeatedStr += str;
+  }
+  return repeatedStr;
 }
 
 template <typename T1, typename T2>
