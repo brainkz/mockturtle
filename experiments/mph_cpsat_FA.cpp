@@ -1903,7 +1903,37 @@ void write_klut_specs_supporting_t1( klut const& ntk, phmap::flat_hash_map<std::
 
 bool customized_T1_classifier( T1_OUTPUTS const& t1 )
 {
-  if ( t1.has_sum && ( !t1.has_carry && !t1.has_carry_inverted ) && ( t1.has_cbar || t1.has_cbar_inverted ) )
+  /* pay attention to T1s that use exclusively the    */
+  /* output ports of SUM and (inverted) CBAR          */
+  // if ( t1.has_sum && ( !t1.has_carry && !t1.has_carry_inverted ) && ( t1.has_cbar || t1.has_cbar_inverted ) )
+  // {
+  //   return true;
+  // }
+
+  /* pay attention to T1s that use more than 3 output */
+  /* ports                                            */
+  uint8_t num_output_ports_used{ 0u };
+  if ( t1.has_sum )
+  {
+    ++num_output_ports_used;
+  }
+  if ( t1.has_carry )
+  {
+    ++num_output_ports_used;
+  }
+  if ( t1.has_carry_inverted )
+  {
+    ++num_output_ports_used;
+  }
+  if ( t1.has_cbar )
+  {
+    ++num_output_ports_used;
+  }
+  if ( t1.has_cbar_inverted )
+  {
+    ++num_output_ports_used;
+  }
+  if ( num_output_ports_used > 3 )
   {
     return true;
   }
@@ -2332,30 +2362,30 @@ int main(int argc, char* argv[])  //
 
     /* estimate the gain of implementing parts of the circuits using T1s instead */
     auto updated_area{ raw_area };
-    uint32_t num_t1_use_sum_cbar{ 0u };
-    uint32_t num_t1_cells{ 0u };
+    // uint32_t num_t1_use_more_than_3{ 0u };
+    // uint32_t num_t1_cells{ 0u };
     for ( auto it_t1_cands{ t1_candidates.begin() }; it_t1_cands != t1_candidates.end(); ++it_t1_cands )
     {
       if ( !t1_usage_sanity_check( klut_decomposed, *it_t1_cands, updated_area ) )
       {
         t1_candidates.erase( it_t1_cands );
       }
-      else
-      {
-        ++num_t1_cells;
-        if ( customized_T1_classifier( ( *it_t1_cands ).second ) )
-        {
-          ++num_t1_use_sum_cbar;
-        }
-      }
-      //fmt::print( "Area before : {}, \tArea after : {}, \tRed. : {:>5.2f}%\n", raw_area, updated_area, ( ( static_cast<float>( raw_area ) - static_cast<float>( updated_area ) ) / static_cast<float>( raw_area ) * 100 ) );
+      // else
+      // {
+      //   ++num_t1_cells;
+      //   if ( customized_T1_classifier( ( *it_t1_cands ).second ) )
+      //   {
+      //     ++num_t1_use_more_than_3;
+      //   }
+      // }
+      // fmt::print( "Area before : {}, \tArea after : {}, \tRed. : {:>5.2f}%\n", raw_area, updated_area, ( ( static_cast<float>( raw_area ) - static_cast<float>( updated_area ) ) / static_cast<float>( raw_area ) * 100 ) );
     }
 
     /* bind the instantiated T1 cells to the 2-LUT network for csv generation    */
     std::string filename = benchmark + "_before_phase_assignment.csv";
     write_klut_specs_supporting_t1( klut_decomposed, t1_candidates, filename );
 
-    fmt::print( "Usage of the T1 cells:\n" );
+    // fmt::print( "Usage of the T1 cells:\n" );
     // uint32_t num_t1_cells{ 0u };
     // for ( auto const& t1_candidate : t1_candidates )
     // {
@@ -2363,7 +2393,7 @@ int main(int argc, char* argv[])  //
     //   fmt::print( "\t\tInput : Node {}, Node {}, Node {}\n", t1_candidate.first[0], t1_candidate.first[1], t1_candidate.first[2] );
     //   t1_candidate.second.report();
     // }
-    fmt::print( "# T1s : {}, # T1s with SUM and (INV)CBAR ports used : {}\n", num_t1_cells, num_t1_use_sum_cbar );
+    // fmt::print( "\t# T1s : {}, # T1s with more than 3 ouput ports used : {}\n", num_t1_cells, num_t1_use_more_than_3 );
 
     fmt::print( "Area before : {}, \tArea after : {}, \tRed. : {:>5.2f}%\n", raw_area, updated_area, ( ( static_cast<float>( raw_area ) - static_cast<float>( updated_area ) ) / static_cast<float>( raw_area ) * 100 ) );
     
