@@ -243,6 +243,11 @@ public:
   {
     return std::find( _storage->outputs.begin(), _storage->outputs.end(), n ) != _storage->outputs.end();
   }
+
+  bool is_dangling( node const& n ) const
+  {
+    return ( fanout_size( n ) == 0 ) && !is_po( n );
+  }
 #pragma endregion
 
 #pragma region Create unary functions
@@ -465,6 +470,16 @@ public:
     return _storage->nodes[n].data[0].h1;
   }
 
+  uint32_t incr_fanout_size( node const& n ) const
+  {
+    return _storage->nodes[n].data[0].h1++ & UINT32_C( 0x7FFFFFFF );
+  }
+
+  uint32_t decr_fanout_size( node const& n ) const
+  {
+    return --_storage->nodes[n].data[0].h1 & UINT32_C( 0x7FFFFFFF );
+  }
+
   bool is_function( node const& n ) const
   {
     return n > 1 && !is_ci( n );
@@ -685,6 +700,13 @@ public:
   void incr_trav_id() const
   {
     ++_storage->trav_id;
+  }
+#pragma endregion
+
+#pragma region Functional literals
+  uint32_t func_lit( node const& n ) const
+  {
+    return _storage->nodes[n].data[1].h1;
   }
 #pragma endregion
 

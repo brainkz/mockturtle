@@ -78,7 +78,7 @@ typedef mockturtle::aig_network   aig;
 typedef uint64_t node_t;
 
 // Sunmagnetics Technology Library
-constexpr std::array<int,12> COSTS_MAP = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0};
+constexpr std::array<int, 13> COSTS_MAP = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0, 25};
 
 template <typename Ntk>
 std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats> map_wo_pb 
@@ -178,7 +178,6 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
   return std::make_tuple( res, st, total_ndff, total_area, cec );
 }
 
-
 constexpr uint8_t PI_GATE = 0u;
 constexpr uint8_t AA_GATE = 1u;
 constexpr uint8_t AS_GATE = 2u;
@@ -241,7 +240,7 @@ public:
 };
 
 // #if false
-std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, std::unordered_map<ULL, Node> nodemap, std::unordered_map<std::string, LibEntry> entries, bool verbose = false)
+std::tuple<klut, std::unordered_map<klut::signal, Primitive<klut>>, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, phmap::flat_hash_map<ULL, Node> nodemap, phmap::flat_hash_map<std::string, LibEntry> entries, bool verbose = false)
 {
   /* record the information of each signal in tgt, including: signal index (why?), */
   /* truth table ( represented using an uint16 ), type ( PI/AA/AS/AS ), fan-ins,   */
@@ -584,9 +583,9 @@ struct T1_OUTPUTS
   // whether cbar (or3) output is used with DFF
   bool     has_cbar          : 1;
   /* TTs of the 3 outputs */
-  uint8_t   sum_truth_table{};
-  uint8_t carry_truth_table{};
-  uint8_t  cbar_truth_table{};
+  // uint8_t   sum_truth_table{};
+  // uint8_t carry_truth_table{};
+  // uint8_t  cbar_truth_table{};
   /* usage of the 5 output ports */
   klut::node       sum_to;
   klut::node     carry_to;
@@ -644,11 +643,16 @@ struct T1_OUTPUTS
   void report() const
   {
     fmt::print("\t\tInput phases : {{ {}0,{}1,{}2 }}\n", ( ( in_phase & 1 ) ? "~" : " " ), ( ( in_phase >> 1 & 1 ) ? "~" : " " ), ( ( in_phase >> 2 & 1 ) ? "~" : " " ) );
-    fmt::print("\t\t      Sum ( Node {} ): {0:08b} ( 0x{0:02x} )\n",       sum_to,    sum_truth_table );
-    fmt::print("\t\t    Carry ( Node {} ): {0:08b} ( 0x{0:02x} )\n",     carry_to,  carry_truth_table );
-    fmt::print("\t\tInv carry ( Node {} ): {0:08b} ( 0x{0:02x} )\n", inv_carry_to, ~carry_truth_table );
-    fmt::print("\t\t     Cbar ( Node {} ): {0:08b} ( 0x{0:02x} )\n",      cbar_to,   cbar_truth_table );
-    fmt::print("\t\tInv carry ( Node {} ): {0:08b} ( 0x{0:02x} )\n", inv_carry_to,  ~cbar_truth_table );
+    // fmt::print("\t\t      Sum ( Node {0} ): {1:08b} ( 0x{1:02x} )\n",       sum_to,    sum_truth_table );
+    // fmt::print("\t\t    Carry ( Node {0} ): {1:08b} ( 0x{1:02x} )\n",     carry_to,  carry_truth_table );
+    // fmt::print("\t\tInv carry ( Node {0} ): {1:08b} ( 0x{1:02x} )\n", inv_carry_to, ~carry_truth_table );
+    // fmt::print("\t\t     Cbar ( Node {0} ): {1:08b} ( 0x{1:02x} )\n",      cbar_to,   cbar_truth_table );
+    // fmt::print("\t\t Inv cbar ( Node {0} ): {1:08b} ( 0x{1:02x} )\n",  inv_cbar_to,  ~cbar_truth_table );
+    fmt::print("\t\t      Sum : {}\n", (            has_sum  ? "Node " + std::to_string(       sum_to ) : "N/A" ) );
+    fmt::print("\t\t    Carry : {}\n", (          has_carry  ? "Node " + std::to_string(     carry_to ) : "N/A" ) );
+    fmt::print("\t\tInv carry : {}\n", ( has_carry_inverted  ? "Node " + std::to_string( inv_carry_to ) : "N/A" ) );
+    fmt::print("\t\t     Cbar : {}\n", (           has_cbar  ? "Node " + std::to_string(      cbar_to ) : "N/A" ) );
+    fmt::print("\t\t Inv cbar : {}\n", (  has_cbar_inverted  ? "Node " + std::to_string(  inv_cbar_to ) : "N/A" ) );
 
   }
 };
@@ -691,6 +695,7 @@ glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & no
 
 void greedy_ntk_assign(const klut & ntk, const std::unordered_map<klut::signal, Primitive<klut>> & sig_params, const uint8_t n_phases, const std::unordered_map<unsigned int, unsigned int> & phase_assignment, const bool verbose = false)
 {
+  ( void )sig_params;
   mockturtle::topo_view<klut> ntk_topo ( ntk );
 
   // ntk.set_value(sig, node_data.value);
@@ -1478,7 +1483,7 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
     NodeData fo_data { ntk.value( dff.fanout ) };
     auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE );
     auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
-    if (it != path.targets.end() && (dff.sigma >= fanout_sigma ))
+    if (it != path.targets.end() && ( ( fanout_sigma < 0 ) || ( ( fanout_sigma >= 0 ) && ( dff.sigma >= static_cast<uint32_t>( fanout_sigma ) ) ) ) )
     {
       stack.emplace_back( hash );
     }
@@ -1720,9 +1725,8 @@ void config_t1_ports_connection( klut const& ntk, const bool output_phase,
     /* (2) its fanin node has more than one fanout,  */
     /* the fanin node of the target node shall be    */
     /* connected to the output port of inverted port */
-    if ( ntk.fanin_size( port ) == 1 )
+    if ( ntk.func_lit( target_node ) == 3 )
     {
-      /* TO CHECK: a valid standard to dectect INV?  */
       ntk.foreach_fanin( port, [&inv_port, &ntk]( auto const& ni ) {
         if ( ntk.fanout_size( ni ) > 1 )
         {
@@ -1734,7 +1738,7 @@ void config_t1_ports_connection( klut const& ntk, const bool output_phase,
   else
   {
     inv_port = ntk.index_to_node( target_node );
-    if ( ntk.fanin_size( inv_port ) == 1 )
+    if ( ntk.func_lit( target_node ) == 3 )
     {
       ntk.foreach_fanin( inv_port, [&port, &ntk]( auto const& ni ) {
         if ( ntk.fanout_size( ni ) > 1 )
@@ -1774,8 +1778,7 @@ uint32_t deref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint
     return 0u;
   }
 
-  /* TODO: is there a better way to access to the node function?         */
-  uint32_t gain = get_node_cost( ntk.index_to_node( n ).data[1].h1 );
+  uint32_t gain = get_node_cost( ntk.func_lit( n ) );
   ntk.foreach_fanin( n, [&]( auto const& ni ) {
     if ( ntk.decr_fanout_size( ni ) == 0 )
     {
@@ -1806,11 +1809,11 @@ void reref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint32_t
   } );
 }
 
-bool t1_usage_sanity_check( klut& ntk, std::tuple<std::array<uint32_t, 3>, T1_OUTPUTS>& t1_candidate )
+bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<uint32_t, 3>, T1_OUTPUTS>& t1_candidate, int64_t& updated_area )
 {
   int32_t gain{ 0 };
-  const std::array<uint32_t, 3> leaves = t1_candidate.first;
-  T1_OUTPUTS& t1_outputs = t1_candidate.second;
+  const std::array<uint32_t, 3> leaves = std::get<0>( t1_candidate );
+  T1_OUTPUTS& t1_outputs = std::get<1>( t1_candidate );
   std::array<uint32_t, 3> roots;
   roots[0] = ntk.node_to_index( t1_outputs.sum_to );
   roots[1] = std::max( ntk.node_to_index( t1_outputs.carry_to ), ntk.node_to_index( t1_outputs.inv_carry_to ) );
@@ -1820,27 +1823,29 @@ bool t1_usage_sanity_check( klut& ntk, std::tuple<std::array<uint32_t, 3>, T1_OU
   {
     if ( root != ntk.node_to_index( ntk.get_constant( false ) ) )
     {
-      gain += deref_root_node( ntk, leaves, root );
+      gain += static_cast<int32_t>( deref_node( ntk, leaves, root ) );
     }
   }
-  gain += __builtin_popcount( t1_outputs.in_phase ) * ( COSTS_MAP[fNOT] - COSTS_MAP[fDFF] );
+  gain -= static_cast<int32_t>( __builtin_popcount( t1_outputs.in_phase ) * ( COSTS_MAP[fNOT] - COSTS_MAP[fDFF] ) );
 
-  if ( gain -= COSTS_MAP[fFA]; gain < 0 )
+  if ( gain -= static_cast<int32_t>( COSTS_MAP[fFA] ); gain < 0 )
   {
     for ( const uint32_t root : roots )
     {
-      reref_root_node( ntk, leaves, root );
+      reref_node( ntk, leaves, root );
     }
 
     return false;
   }
 
   /* update gate type for the committed T1 cells */
-  if ( t1_outputs.has_sum ) { t1_outputs.sum_to.type = FA_GATE; }
-  if ( t1_outputs.has_carry ) { t1_outputs.carry_to.type = FA_GATE; }
-  if ( t1_outputs.has_carry_inverted ) { t1_outputs.inv_carry_to.type = FA_GATE; }
-  if ( t1_outputs.has_cbar ) { t1_outputs.cbar_to.type = FA_GATE; }
-  if ( t1_outputs.has_cbar_inverted ) { t1_outputs.inv_cbar_to.type = FA_GATE; }
+  if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, FA_GATE ).value ); }
+  if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, FA_GATE ).value ); }
+  if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, FA_GATE ).value ); }
+  if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, FA_GATE ).value ); }
+  if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, FA_GATE ).value ); }
+
+  updated_area -= gain;
 
   return true;
 }
@@ -1850,13 +1855,13 @@ void write_klut_specs_supporting_t1( klut const& ntk, phmap::flat_hash_map<std::
   std::ofstream spec_file( filename );
 
   ntk.foreach_gate( [&]( auto const& n ) {
-    if ( ntk.fanout_size( n ) == 0 && !ntk.is_po( n ) )
+    if ( ntk.is_dangling( n ) )
     {
       /* a dangling node due to the usage of T1 cells */
       return true;
     }
 
-    if ( n.type == FA_GATE )
+    if ( static_cast<NodeData>( ntk.value( n ) ).type == FA_GATE )
     {
       /* T1 cells would be handled together later     */
       return true;
@@ -1869,7 +1874,8 @@ void write_klut_specs_supporting_t1( klut const& ntk, phmap::flat_hash_map<std::
       n_fanins.push_back( ntk.node_to_index( ni ) );
     } );
 
-    spec_file << fmt::format( "{0},{1},{2}\n", ntk.node_to_index( n ), n.type, fmt::join( n_fanins, "|" ) );
+    spec_file << fmt::format( "{0},{1},{2}\n", ntk.node_to_index( n ), static_cast<NodeData>( ntk.value( n ) ).type, fmt::join( n_fanins, "|" ) );
+    return true;
   } );
 
   /* write information of the commited T1 cells into  */
@@ -1893,6 +1899,15 @@ void write_klut_specs_supporting_t1( klut const& ntk, phmap::flat_hash_map<std::
 
     spec_file << fmt::format( "{0},{1},{2}\n", fmt::join( output_ports, "|" ), 4u, fmt::join( input_ports, "|" ) );
   }
+}
+
+bool customized_T1_classifier( T1_OUTPUTS const& t1 )
+{
+  if ( t1.has_sum && ( !t1.has_carry && !t1.has_carry_inverted ) && ( t1.has_cbar || t1.has_cbar_inverted ) )
+  {
+    return true;
+  }
+  return false;
 }
 
 int main(int argc, char* argv[])  //
@@ -1936,6 +1951,10 @@ int main(int argc, char* argv[])  //
   {
     PHASES.push_back(std::stoi(argv[i]));
   }
+  if ( argc == 1 )
+  {
+    PHASES.push_back( 7 );
+  }
   fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
 
   fmt::print( "[i] processing technology library\n" );
@@ -1954,37 +1973,39 @@ int main(int argc, char* argv[])  //
   mockturtle::tech_library_params tps; // tps.verbose = true;
   tech_library<NUM_VARS, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
 
-  #pragma region benchmark_parsing
-    // *** BENCHMARKS OF INTEREST ***
-    auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
-    auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
-    benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+#pragma region benchmark_parsing
+  // *** BENCHMARKS OF INTEREST ***
+  auto benchmarks1 = epfl_benchmarks( experiments::arithmetic );
+  //auto benchmarks1 = epfl_benchmarks( experiments::adder );
+  //auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
+  //benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
-    // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::vector<std::string> BEEREL_BENCHMARKS 
-    {
-      "simple_spi-gates",
-      "des_area-gates",
-      "pci_bridge32-gates",
-      "spi-gates",
-      "mem_ctrl-gates"
-    };
+  // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
+  const std::vector<std::string> BEEREL_BENCHMARKS 
+  {
+    "simple_spi-gates",
+    "des_area-gates",
+    "pci_bridge32-gates",
+    "spi-gates",
+    "mem_ctrl-gates"
+  };
 
-    // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
-    benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
-    // std::reverse(benchmarks1.begin(), benchmarks1.end());
+  // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
+  //const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
+  //benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
+  // std::reverse(benchmarks1.begin(), benchmarks1.end());
 
-    // *** LIST ALL CONSIDERED BENCHMARKS ***
-    fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
-    
-    // *** READ COMPOUND GATE LIBRARY ***
-    const std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,2,2}, {0,1,2,3} } }; //  {0,1,1,3},
+  // *** LIST ALL CONSIDERED BENCHMARKS ***
+  fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
+  
+  // *** READ COMPOUND GATE LIBRARY ***
+  phmap::flat_hash_map<ULL, Node> GNM_global;
+  bool status = LoadFromFile(GNM_global, NODEMAP_BINARY_PREFIX);
+  assert(status);
 
-    std::unordered_map<ULL, Node> GNM_global = read_global_gnm( sets_of_levels, NODEMAP_PREFIX );
-    std::unordered_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
+  phmap::flat_hash_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
 
-  #pragma endregion benchmark_parsing
+#pragma endregion benchmark_parsing
 
   // *** START PROCESSING BECNHMARKS ***
   for ( auto const& benchmark : benchmarks1 )
@@ -2047,11 +2068,13 @@ int main(int argc, char* argv[])  //
     ce_params.cut_size = 3u;
   
     auto cuts = mockturtle::cut_enumeration<klut, true>( klut_decomposed, ce_params );
-    klut_decomposed.foreach_node( [&]( auto node ) {
-      auto idx = klut_decomposed.node_to_index( node );
-      auto & node_cuts = cuts.cuts( idx );
-      std::cout << node_cuts << "\n";
-    } );
+
+    /* print enumerated cuts */
+    // klut_decomposed.foreach_node( [&]( auto node ) {
+    //   auto idx = klut_decomposed.node_to_index( node );
+    //   auto & node_cuts = cuts.cuts( idx );
+    //   std::cout << node_cuts << "\n";
+    // } );
 
     phmap::flat_hash_map<std::array<uint32_t,3>, std::tuple<kitty::dynamic_truth_table, uint32_t>, ArrayHash<3>> maj3_cuts;
     phmap::flat_hash_map<std::array<uint32_t,3>, std::tuple<kitty::dynamic_truth_table, uint32_t>, ArrayHash<3>> xor3_cuts;
@@ -2079,7 +2102,7 @@ int main(int argc, char* argv[])  //
 
           std::ostringstream oss;
           oss << *cut_entry;
-          fmt::print("[{}]\t XOR3 cut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
+          // fmt::print("[{}]\t XOR3 cut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
         }
         if (std::find_if(maj3_tts.begin(), maj3_tts.end(), [&](const TT3 & maj3_tt){return tt._bits.front() == maj3_tt._bits;}) != maj3_tts.end())
         {
@@ -2089,7 +2112,7 @@ int main(int argc, char* argv[])  //
 
           std::ostringstream oss;
           oss << *cut_entry;
-          fmt::print("[{}]\t MAJ3 cut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
+          // fmt::print("[{}]\t MAJ3 cut {} with tt 0b{}=0x{}\n", benchmark, oss.str(), kitty::to_binary( tt ), kitty::to_hex( tt ));
         }
         if ( std::find_if( or3_tts.begin(), or3_tts.end(), [&]( TT3 const& or3_tt ) { return tt._bits.front() == or3_tt._bits; } ) != or3_tts.end() )
         {
@@ -2160,8 +2183,8 @@ int main(int argc, char* argv[])  //
             config_t1_ports_connection( klut_decomposed,  or_phase, std::get<1>(  or3_cuts[target_leaves] ),  cbar_to,  inv_cbar_to );
 
             /* instantiate an T1 cell */
-            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to == klut_decomposed.get_constant( false ), inv_cbar_to == klut_decomposed.get_constant( false ), 
-                                                              sum_to == klut_decomposed.get_constant( false ), carry_to == klut_decomposed.get_constant( false ), cbar_to == klut_decomposed.get_constant( false ), 
+            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to != klut_decomposed.get_constant( false ), inv_cbar_to != klut_decomposed.get_constant( false ), 
+                                                              sum_to != klut_decomposed.get_constant( false ), carry_to != klut_decomposed.get_constant( false ), cbar_to == klut_decomposed.get_constant( false ), 
                                                               sum_to, carry_to, inv_carry_to, cbar_to, inv_cbar_to ) );
             break;
             /* TODO: think about if it is possible that a design can be implemented under */
@@ -2206,8 +2229,8 @@ int main(int argc, char* argv[])  //
             config_t1_ports_connection( klut_decomposed, maj_phase, std::get<1>( maj3_cuts[target_leaves] ), carry_to, inv_carry_to );
 
             /* instantiate an T1 cell */
-            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to == klut_decomposed.get_constant( false ), false, 
-                                                              carry_to == klut_decomposed.get_constant( false ), false, 
+            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to != klut_decomposed.get_constant( false ), false, 
+                                                              true, carry_to != klut_decomposed.get_constant( false ), false, 
                                                               sum_to, carry_to, inv_carry_to, klut_decomposed.get_constant( false ), klut_decomposed.get_constant( false ) ) );
             break;
           }
@@ -2249,8 +2272,8 @@ int main(int argc, char* argv[])  //
             config_t1_ports_connection( klut_decomposed, or_phase, std::get<1>( or3_cuts[target_leaves] ), cbar_to, inv_cbar_to );
 
             /* instantiate an T1 cell */
-            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, false, inv_cbar_to == klut_decomposed.get_constant( false ), 
-                                                              false, cbar_to == klut_decomposed.get_constant( false ), 
+            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, false, inv_cbar_to != klut_decomposed.get_constant( false ), 
+                                                              true, false, cbar_to != klut_decomposed.get_constant( false ), 
                                                               sum_to, klut_decomposed.get_constant( false ), klut_decomposed.get_constant( false ), cbar_to, inv_cbar_to ) );
             break;
           }
@@ -2298,8 +2321,8 @@ int main(int argc, char* argv[])  //
             config_t1_ports_connection( klut_decomposed,  or_phase, std::get<1>(  or3_cuts[target_leaves] ),  cbar_to,  inv_cbar_to );
 
             /* instantiate an T1 cell */
-            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to == klut_decomposed.get_constant( false ), inv_cbar_to == klut_decomposed.get_constant( false ), 
-                                                              carry_to == klut_decomposed.get_constant( false ), cbar_to == klut_decomposed.get_constant( false ), 
+            t1_candidates.emplace( target_leaves, T1_OUTPUTS( t1_cell.in_phase, inv_carry_to != klut_decomposed.get_constant( false ), inv_cbar_to != klut_decomposed.get_constant( false ), 
+                                                              false, carry_to != klut_decomposed.get_constant( false ), cbar_to != klut_decomposed.get_constant( false ), 
                                                               klut_decomposed.get_constant( false ), carry_to, inv_carry_to, cbar_to, inv_cbar_to ) );
             break;
           }
@@ -2307,23 +2330,44 @@ int main(int argc, char* argv[])  //
       }
     }
 
-    fmt::print( "Potentially usage of the T1 cells:\n" );
-    for ( auto const& t1_candidate : t1_candidates )
-    {
-      t1_candidate.second.report();
-    }
-
     /* estimate the gain of implementing parts of the circuits using T1s instead */
-    for ( auto it_t1_cands{ t1_candidates.begin() }; it_t1_cands < t1_candidates.end(); ++i1_t1_cands )
+    auto updated_area{ raw_area };
+    uint32_t num_t1_use_sum_cbar{ 0u };
+    uint32_t num_t1_cells{ 0u };
+    for ( auto it_t1_cands{ t1_candidates.begin() }; it_t1_cands != t1_candidates.end(); ++it_t1_cands )
     {
-      if ( !t1_usage_sanity_check( klut_decomposed, *it_t1_cands ) )
+      if ( !t1_usage_sanity_check( klut_decomposed, *it_t1_cands, updated_area ) )
       {
         t1_candidates.erase( it_t1_cands );
       }
+      else
+      {
+        ++num_t1_cells;
+        if ( customized_T1_classifier( ( *it_t1_cands ).second ) )
+        {
+          ++num_t1_use_sum_cbar;
+        }
+      }
+      //fmt::print( "Area before : {}, \tArea after : {}, \tRed. : {:>5.2f}%\n", raw_area, updated_area, ( ( static_cast<float>( raw_area ) - static_cast<float>( updated_area ) ) / static_cast<float>( raw_area ) * 100 ) );
     }
-    
+
     /* bind the instantiated T1 cells to the 2-LUT network for csv generation    */
-    write_klut_specs_supporting_t1( klut_decomposed, t1_candidates, std::string const& filename )
+    std::string filename = benchmark + "_before_phase_assignment.csv";
+    write_klut_specs_supporting_t1( klut_decomposed, t1_candidates, filename );
+
+    fmt::print( "Usage of the T1 cells:\n" );
+    // uint32_t num_t1_cells{ 0u };
+    // for ( auto const& t1_candidate : t1_candidates )
+    // {
+    //   fmt::print( "[{}]\n", ++num_t1_cells );
+    //   fmt::print( "\t\tInput : Node {}, Node {}, Node {}\n", t1_candidate.first[0], t1_candidate.first[1], t1_candidate.first[2] );
+    //   t1_candidate.second.report();
+    // }
+    fmt::print( "# T1s : {}, # T1s with SUM and (INV)CBAR ports used : {}\n", num_t1_cells, num_t1_use_sum_cbar );
+
+    fmt::print( "Area before : {}, \tArea after : {}, \tRed. : {:>5.2f}%\n", raw_area, updated_area, ( ( static_cast<float>( raw_area ) - static_cast<float>( updated_area ) ) / static_cast<float>( raw_area ) * 100 ) );
+    
+    
 
     continue;
   
