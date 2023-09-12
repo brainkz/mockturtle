@@ -43,6 +43,7 @@ constexpr US fMAJ3  = 8;
 constexpr US fCB  = 9;
 constexpr US fSPL   = 10;
 constexpr US fPI  = 11;
+constexpr US fFA  = 12;
 constexpr US fNOFUNC= 99;
 
 // constexpr std::array<int,12> COSTS_CONNECT = {6, 10, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};

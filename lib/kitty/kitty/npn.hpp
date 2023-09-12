@@ -180,6 +180,7 @@ std::tuple<TT, uint32_t, std::vector<uint8_t>> exact_npn_canonization( const TT&
   auto tmin = std::min( t1, t2 );
   auto invo = tmin == t2;
 
+
   fn( t1 );
   fn( t2 );
 
