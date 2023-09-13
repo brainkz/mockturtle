@@ -1857,28 +1857,12 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<uint32_t, 3>, 
   roots[1] = std::max( ntk.node_to_index( t1_outputs.carry_to ), ntk.node_to_index( t1_outputs.inv_carry_to ) );
   roots[2] = std::max( ntk.node_to_index(  t1_outputs.cbar_to ), ntk.node_to_index(  t1_outputs.inv_cbar_to ) );
 
-
-  /* for debugging */
-  // bool debug{ false };
-  // if ( std::find( leaves.begin(), leaves.end(), 259 ) != leaves.end() )
-  // {
-  //   debug = true;
-  //   fmt::print( "[i] Node 259 is a input to the T1 cell rooted at Node {}, Node {}, and Node {}\n", roots[0], roots[1], roots[2] );
-  //   fmt::print( "[i] Before dereferencing, the fanout size of Node 259 is : {}\n", ntk.fanout_size( ntk.index_to_node( 259 ) ) );
-  // }
-
   for ( const uint32_t root : roots )
   {
     if ( root != ntk.node_to_index( ntk.get_constant( false ) ) )
     {
       gain += static_cast<int32_t>( deref_node( ntk, leaves, root ) );
     }
-
-    /* for debugging */
-    // if ( debug )
-    // {
-    //   fmt::print( "[i] After dereferencing rooted on Node {}, the fanout size of Node 259 is : {}\n", root, ntk.fanout_size( ntk.index_to_node( 259 ) ) );
-    // }
   }
   gain -= static_cast<int32_t>( __builtin_popcount( t1_outputs.in_phase ) * ( COSTS_MAP[fNOT] - COSTS_MAP[fDFF] ) );
 
@@ -1909,13 +1893,6 @@ void write_klut_specs_supporting_t1( klut const& ntk, phmap::flat_hash_map<std::
   std::ofstream spec_file( filename );
 
   ntk.foreach_gate( [&]( auto const& n ) {
-    /* for debugging */
-    // if ( ntk.node_to_index( n ) == 259 )
-    // {
-    //   //profile_klut_node( ntk, n );
-    //   fmt::print( "Node 259 {} dangling!\n", ( ntk.is_dangling( ntk.index_to_node( 259 ) ) ? "is" : "isn't" ) );
-    // }
-
     if ( ntk.is_dangling( n ) )
     {
       /* a dangling node due to the usage of T1 cells */
