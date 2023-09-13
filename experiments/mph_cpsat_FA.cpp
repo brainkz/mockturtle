@@ -1750,6 +1750,43 @@ void config_t1_ports_connection( klut const& ntk, const bool output_phase,
   }
 }
 
+/* this function is merely for debugging and can be removed */
+std::string get_gate_type( const uint32_t gate_type )
+{
+  switch( gate_type )
+  {
+  case 3:
+    return "a NOT gate";
+  case 4:
+    return "an AND gate";
+  case 6:
+    return "an OR gate";
+  case 12:
+    return "an XOR gate";
+  default:
+    return "an unknown gate with the functional literal of " + std::to_string( gate_type );
+  }
+}
+
+/* this function is merely for debugging and can be removed */
+void profile_klut_node( klut const& ntk, klut::node const& n )
+{
+  mockturtle::fanout_view<klut, false> ntk_fanout{ ntk };
+  fmt::print( "Profiling Node {} :\n", n );
+  fmt::print( "\tGate type : {}\n", get_gate_type( ntk.func_lit( n ) ) );
+  fmt::print( "\tFanins : " );
+  /* notice that 'signal' and 'node' are the same concept in KLUTs */
+  ntk.foreach_fanin( n, []( auto const& ni ) {
+    fmt::print( "Node {}  ", ni );
+  } );
+  fmt::print( "\n" );
+  fmt::print( "\tFanouts : " );
+  ntk_fanout.foreach_fanout( n, []( auto const& no ) {
+    fmt::print( "Node {}  ", no );
+  } );
+  fmt::print( "\n" );
+}
+
 uint32_t get_node_cost( const uint32_t gate_type )
 {
   switch( gate_type )
@@ -1770,17 +1807,18 @@ uint32_t get_node_cost( const uint32_t gate_type )
 
 uint32_t deref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint32_t n )
 {
-  /* return the number of nodes in the original cut that can be removed, */
-  /* if the function of current cut is implemented using an T1 cell,     */
-  /* i.e., the MFFC size                                                 */
-  if ( auto it_find = std::find( leaves.begin(), leaves.end(), n ); it_find != leaves.end() )
+  /* return the total cost of nodes in the original cut that can be      */
+  /* removed, if implemented using an T1 cell                            */
+  if ( std::find( leaves.begin(), leaves.end(), n ) != leaves.end() )
   {
     return 0u;
   }
 
   uint32_t gain = get_node_cost( ntk.func_lit( n ) );
   ntk.foreach_fanin( n, [&]( auto const& ni ) {
-    if ( ntk.decr_fanout_size( ni ) == 0 )
+    /* skip fanins that are leaves */
+    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+         ( ntk.decr_fanout_size( ni ) == 0 ) )
     {
       gain += deref_node( ntk, leaves, ntk.node_to_index( ni ) );
     }
@@ -1819,12 +1857,28 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<uint32_t, 3>, 
   roots[1] = std::max( ntk.node_to_index( t1_outputs.carry_to ), ntk.node_to_index( t1_outputs.inv_carry_to ) );
   roots[2] = std::max( ntk.node_to_index(  t1_outputs.cbar_to ), ntk.node_to_index(  t1_outputs.inv_cbar_to ) );
 
+
+  /* for debugging */
+  // bool debug{ false };
+  // if ( std::find( leaves.begin(), leaves.end(), 259 ) != leaves.end() )
+  // {
+  //   debug = true;
+  //   fmt::print( "[i] Node 259 is a input to the T1 cell rooted at Node {}, Node {}, and Node {}\n", roots[0], roots[1], roots[2] );
+  //   fmt::print( "[i] Before dereferencing, the fanout size of Node 259 is : {}\n", ntk.fanout_size( ntk.index_to_node( 259 ) ) );
+  // }
+
   for ( const uint32_t root : roots )
   {
     if ( root != ntk.node_to_index( ntk.get_constant( false ) ) )
     {
       gain += static_cast<int32_t>( deref_node( ntk, leaves, root ) );
     }
+
+    /* for debugging */
+    // if ( debug )
+    // {
+    //   fmt::print( "[i] After dereferencing rooted on Node {}, the fanout size of Node 259 is : {}\n", root, ntk.fanout_size( ntk.index_to_node( 259 ) ) );
+    // }
   }
   gain -= static_cast<int32_t>( __builtin_popcount( t1_outputs.in_phase ) * ( COSTS_MAP[fNOT] - COSTS_MAP[fDFF] ) );
 
@@ -1855,6 +1909,13 @@ void write_klut_specs_supporting_t1( klut const& ntk, phmap::flat_hash_map<std::
   std::ofstream spec_file( filename );
 
   ntk.foreach_gate( [&]( auto const& n ) {
+    /* for debugging */
+    // if ( ntk.node_to_index( n ) == 259 )
+    // {
+    //   //profile_klut_node( ntk, n );
+    //   fmt::print( "Node 259 {} dangling!\n", ( ntk.is_dangling( ntk.index_to_node( 259 ) ) ? "is" : "isn't" ) );
+    // }
+
     if ( ntk.is_dangling( n ) )
     {
       /* a dangling node due to the usage of T1 cells */
@@ -2005,8 +2066,8 @@ int main(int argc, char* argv[])  //
 
 #pragma region benchmark_parsing
   // *** BENCHMARKS OF INTEREST ***
-  auto benchmarks1 = epfl_benchmarks( experiments::arithmetic );
-  //auto benchmarks1 = epfl_benchmarks( experiments::adder );
+  //auto benchmarks1 = epfl_benchmarks( experiments::arithmetic );
+  auto benchmarks1 = epfl_benchmarks( experiments::adder );
   //auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
   //benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
