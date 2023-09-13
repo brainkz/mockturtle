@@ -565,7 +565,7 @@ static std::array<Standard_T1_CELL, 8> standard_T1_cells =
   Standard_T1_CELL( 3, 0x96, 0x71, 0xf7 ), 
   Standard_T1_CELL( 4, 0x69, 0x8e, 0xef ), 
   Standard_T1_CELL( 5, 0x96, 0x4d, 0xdf ), 
-  Standard_T1_CELL( 6, 0x69, 0xb2, 0xbf ), 
+  Standard_T1_CELL( 6, 0x96, 0x2b, 0xbf ), 
   Standard_T1_CELL( 7, 0x69, 0x17, 0x7f )
 };
 
@@ -1750,6 +1750,43 @@ void config_t1_ports_connection( klut const& ntk, const bool output_phase,
   }
 }
 
+/* this function is merely for debugging and can be removed */
+std::string get_gate_type( const uint32_t gate_type )
+{
+  switch( gate_type )
+  {
+  case 3:
+    return "a NOT gate";
+  case 4:
+    return "an AND gate";
+  case 6:
+    return "an OR gate";
+  case 12:
+    return "an XOR gate";
+  default:
+    return "an unknown gate with the functional literal of " + std::to_string( gate_type );
+  }
+}
+
+/* this function is merely for debugging and can be removed */
+void profile_klut_node( klut const& ntk, klut::node const& n )
+{
+  mockturtle::fanout_view<klut, false> ntk_fanout{ ntk };
+  fmt::print( "Profiling Node {} :\n", n );
+  fmt::print( "\tGate type : {}\n", get_gate_type( ntk.func_lit( n ) ) );
+  fmt::print( "\tFanins : " );
+  /* notice that 'signal' and 'node' are the same concept in KLUTs */
+  ntk.foreach_fanin( n, []( auto const& ni ) {
+    fmt::print( "Node {}  ", ni );
+  } );
+  fmt::print( "\n" );
+  fmt::print( "\tFanouts : " );
+  ntk_fanout.foreach_fanout( n, []( auto const& no ) {
+    fmt::print( "Node {}  ", no );
+  } );
+  fmt::print( "\n" );
+}
+
 uint32_t get_node_cost( const uint32_t gate_type )
 {
   switch( gate_type )
@@ -1770,17 +1807,18 @@ uint32_t get_node_cost( const uint32_t gate_type )
 
 uint32_t deref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint32_t n )
 {
-  /* return the number of nodes in the original cut that can be removed, */
-  /* if the function of current cut is implemented using an T1 cell,     */
-  /* i.e., the MFFC size                                                 */
-  if ( auto it_find = std::find( leaves.begin(), leaves.end(), n ); it_find != leaves.end() )
+  /* return the total cost of nodes in the original cut that can be      */
+  /* removed, if implemented using an T1 cell                            */
+  if ( std::find( leaves.begin(), leaves.end(), n ) != leaves.end() )
   {
     return 0u;
   }
 
   uint32_t gain = get_node_cost( ntk.func_lit( n ) );
   ntk.foreach_fanin( n, [&]( auto const& ni ) {
-    if ( ntk.decr_fanout_size( ni ) == 0 )
+    /* skip fanins that are leaves */
+    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+         ( ntk.decr_fanout_size( ni ) == 0 ) )
     {
       gain += deref_node( ntk, leaves, ntk.node_to_index( ni ) );
     }
@@ -2005,8 +2043,8 @@ int main(int argc, char* argv[])  //
 
 #pragma region benchmark_parsing
   // *** BENCHMARKS OF INTEREST ***
-  auto benchmarks1 = epfl_benchmarks( experiments::arithmetic );
-  //auto benchmarks1 = epfl_benchmarks( experiments::adder );
+  //auto benchmarks1 = epfl_benchmarks( experiments::arithmetic );
+  auto benchmarks1 = epfl_benchmarks( experiments::adder );
   //auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
   //benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
@@ -2197,7 +2235,7 @@ int main(int argc, char* argv[])  //
             {
               or_phase = true;
             }
-            else if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] == t1_cell.cbar_truth_table )
+            else if ( std::get<0>( or3_cuts[target_leaves] )._bits[0] != t1_cell.cbar_truth_table )
             {
               continue;
             }
