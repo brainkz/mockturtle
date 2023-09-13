@@ -1843,7 +1843,11 @@ void reref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint32_t
   }
 
   ntk.foreach_fanin( n, [&]( auto const& ni ) {
-    reref_node( ntk, leaves, ntk.node_to_index( ni ) );
+    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+         ( ntk.incr_fanout_size( ni ) == 0 ) )
+    {
+      reref_node( ntk, leaves, ntk.node_to_index( ni ) );
+    }
   } );
 }
 
@@ -2406,7 +2410,7 @@ int main(int argc, char* argv[])  //
     {
       if ( !t1_usage_sanity_check( klut_decomposed, *it_t1_cands, updated_area ) )
       {
-        t1_candidates.erase( it_t1_cands );
+        it_t1_cands = t1_candidates.erase( it_t1_cands );
       }
       // else
       // {
