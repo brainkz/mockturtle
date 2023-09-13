@@ -1,4 +1,3 @@
-
 /* mockturtle: C++ logic network library
  * Copyright (C) 2018-2022  EPFL
  *
@@ -39,7 +38,6 @@
 #include <mockturtle/algorithms/rsfq/rsfq_path_balancing.hpp>
 
 #include <mockturtle/algorithms/multiphase.hpp>
-// #include <mockturtle/algorithms/compound_gate_mapping.hpp>
 
 #include <mockturtle/algorithms/mapper.hpp>
 #include <mockturtle/algorithms/nodes.hpp>
@@ -73,17 +71,19 @@
 
 #include <experiments.hpp>
 
-#include <chrono>
+#define DEBUG_PRINT(format, ...) if (verbose) fmt::print(format, ##__VA_ARGS__)
 
-
-
+typedef mockturtle::klut_network klut;
+typedef mockturtle::xag_network   xag;
+typedef mockturtle::xmg_network   xmg;
+typedef mockturtle::mig_network   mig;
+typedef mockturtle::aig_network   aig;
+typedef uint64_t node_t;
 template <size_t N, typename T>
 using array_map = phmap::flat_hash_map<std::array<uint32_t, N>, T, ArrayHash<N>>;
 
-// // Sunmagnetics Technology Library
-// constexpr std::array<int,12> COSTS_MAP = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0};
 // Sunmagnetics Technology Library
-constexpr std::array<int,12> COSTS_MAP = COSTS_SUNMAGNETICS;
+constexpr std::array<int, 13> COSTS_MAP = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0, 25};
 
 template <typename Ntk>
 std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats> map_wo_pb 
@@ -117,8 +117,8 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
   const std::string & benchmark, 
   const Ntk & input_ntk, 
   const mockturtle::tech_library<4u, mockturtle::classification_type::p_configurations> & tech_lib, 
-  phmap::flat_hash_map<std::string, int> & nDFF_global, 
-  bool area_oriented = false
+  std::unordered_map<std::string, int> & nDFF_global, 
+  bool area_oriented = false 
 )
 {
   fmt::print("Started mapping of {}\n", benchmark);
@@ -183,37 +183,104 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
   return std::make_tuple( res, st, total_ndff, total_area, cec );
 }
 
-struct Snake
+const std::vector<std::string> GATE_TYPE { "PI", "AA", "AS", "SA", "FA" }; //, "PO"
+
+typedef uint32_t glob_phase_t;
+
+template <typename Ntk>
+struct Primitive
 {
-  std::deque<std::vector<uint64_t>> sections;
+  using ntk_signal = typename Ntk::signal;
+  ntk_signal sig; // id of the underlying node in the network
+  uint16_t  func; // 4-input function
+  uint8_t   type; 
+  std::vector<ntk_signal> fanins;
+  bool is_spl = false;
 
-  Snake(): sections({}) {}
-  Snake( const uint64_t head ): sections({ { head } }) {}
-  Snake( const std::deque<std::vector<uint64_t>> _sections ): sections(_sections) {}
-  Snake( const Snake & _other ): sections(_other.sections) {}
+  Primitive(ntk_signal _sig, uint16_t _func, uint8_t _type, std::vector<ntk_signal> _fanins) : 
+                   sig(_sig),    func(_func),   type(_type), fanins(_fanins), is_spl(false) {};
 
-  bool append(const uint64_t dff_hash, DFF_registry &DFF_REG, const uint8_t n_phases)
+  explicit Primitive(ntk_signal _sig, uint16_t _func, uint8_t _type, std::vector<ntk_signal> _fanins, bool _is_spl) : 
+                   sig(_sig),    func(_func),   type(_type), fanins(_fanins), is_spl(_is_spl) {};
+  Primitive( const Primitive & other )
   {
-    DFF_var & dff = DFF_REG.at( dff_hash );
+    sig = other.sig; // id of the underlying node in the network
+    func = other.func; // 4-input function
+    type = other.type; 
+    fanins = other.fanins;
+    is_spl = other.is_spl;
+  }
+};
 
-    std::vector<uint64_t> & head_section = sections.back();
-    uint64_t & head_hash = head_section.back();
-    DFF_var & head_dff = DFF_REG.at( head_hash );
-    if (dff.sigma == head_dff.sigma) // add to the same section
+template <typename Ntk>
+class fmt::formatter<Primitive<Ntk>> {
+public:
+  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+
+  template <typename Context>
+  constexpr auto format(const Primitive<Ntk>& primitive, Context& ctx) const {
+    return format_to(ctx.out(), "Primitive{{sig={}, func={}, type={}, fanins={}, is_spl={}}}",
+      primitive.sig, primitive.func, static_cast<int>(primitive.type),
+      fmt::join(primitive.fanins, ", "), primitive.is_spl);
+  }
+};
+
+struct Path
+{
+  std::set<klut::signal> sources;   // AS/SA gates
+  std::set<klut::signal> internals; // AA    gates
+  std::set<klut::signal> targets;   // AS/SA gates
+  Path(const std::set<klut::signal> & _sources, const std::set<klut::signal>& _internals, const std::set<klut::signal>& _targets)
+    : sources(_sources), internals(_internals), targets(_targets) {}
+  Path() : sources({}), internals({}), targets({}) {}
+  
+  void absorb(Path & other)
+  {
+    sources.insert(other.sources.begin(), other.sources.end());
+    internals.insert(other.internals.begin(), other.internals.end());
+    targets.insert(other.targets.begin(), other.targets.end());
+  }
+
+  void print() const
+  {
+    fmt::print("Path from [{}]\n\tvia [{}]\n\tto [{}]\n", fmt::join(sources, ","), fmt::join(internals, ","), fmt::join(targets, ","));
+  }
+  std::string format() const
+  {
+    return fmt::format("Path from [{}]\n\tvia [{}]\n\tto [{}]\n", fmt::join(sources, ","), fmt::join(internals, ","), fmt::join(targets, ","));
+  }
+
+  std::vector<klut::signal> preds(const klut::signal & sig, const klut & ntk) const
+  {
+    if ( sources.count(sig) != 0)
     {
-      head_section.push_back( dff_hash );
-      return false;
+      return {};
     }
-    else
-    {
-      // assert( head_dff.phase - dff.phase == 1 );
-      sections.push_back( { dff_hash } );
-      if (sections.size() > n_phases)
+
+    std::vector<klut::signal> predecessors;
+
+    ntk.foreach_fanin(sig, [&](const klut::signal & parent){
+      if ( internals.count(parent) != 0 || sources.count(parent) != 0 )
       {
-        sections.pop_front();
+        predecessors.push_back( parent );
       }
-      return true;
-    }
+    });
+    return predecessors;
+  }
+
+  std::vector<klut::signal> src_int() const
+  {
+    std::vector<klut::signal> out;
+    out.insert(out.end(), sources.begin(), sources.end());
+    out.insert(out.end(), internals.begin(), internals.end());
+    return out;
+  }
+  std::vector<klut::signal> int_tgt() const
+  {
+    std::vector<klut::signal> out;
+    out.insert(out.end(), internals.begin(), internals.end());
+    out.insert(out.end(), targets.begin(), targets.end());
+    return out;
   }
 };
 
@@ -228,7 +295,7 @@ struct Standard_T1_CELL
 
   Standard_T1_CELL( const unsigned in_phase_, const uint8_t sum_truth_table_, const uint8_t carry_truth_table_, const uint8_t cbar_truth_table_ )
     : in_phase( in_phase_ ), sum_truth_table( sum_truth_table_ ), carry_truth_table( carry_truth_table_ ), cbar_truth_table( cbar_truth_table_ ) {}
-  
+
   /// @brief Checks whether the truth table matches the carry TT of this T1 cell
   /// @param tt truth table to match
   /// @param phase - set to *true* if the matched to negated output, or *false* if matched to non-negated output
@@ -247,7 +314,6 @@ struct Standard_T1_CELL
     phase = false;
     return true;
   }
-
   /// @brief Checks whether the truth table matches the cbar TT of this T1 cell
   /// @param tt truth table to match
   /// @param phase - set to *true* if the matched to negated output, or *false* if matched to non-negated output
@@ -276,7 +342,7 @@ static std::array<Standard_T1_CELL, 8> standard_T1_cells =
   Standard_T1_CELL( 3, 0x96, 0x71, 0xf7 ), 
   Standard_T1_CELL( 4, 0x69, 0x8e, 0xef ), 
   Standard_T1_CELL( 5, 0x96, 0x4d, 0xdf ), 
-  Standard_T1_CELL( 6, 0x96, 0x2b, 0xbf ),
+  Standard_T1_CELL( 6, 0x69, 0xb2, 0xbf ), 
   Standard_T1_CELL( 7, 0x69, 0x17, 0x7f )
 };
 
@@ -384,7 +450,7 @@ array_map<3, std::tuple<kitty::dynamic_truth_table, uint32_t>> match_cuts( const
     for (const auto & cut_entry : node_cut_set)
     {
       const auto tt = cuts.truth_table( *cut_entry );
-      if (std::find_if(template_tts.begin(), template_tts.end(), [&](const TT3 & template_tt){return tt._bits[0] == template_tt._bits;}) != template_tts.end())
+      if (std::find_if(template_tts.begin(), template_tts.end(), [&](const TT3 & tt){return tt._bits.front() == tt._bits;}) != template_tts.end())
       {
         std::array<uint32_t,3> leaves;
         std::copy(cut_entry->begin(), cut_entry->end(), leaves.begin());
@@ -393,41 +459,6 @@ array_map<3, std::tuple<kitty::dynamic_truth_table, uint32_t>> match_cuts( const
     }
   } );
   return matching_cuts;
-}
-
-void config_t1_ports_connection( klut const& ntk, const bool output_phase, const uint32_t target_node, klut::node& port, klut::node& inv_port )
-{
-  if ( !output_phase )
-  {
-    /* connect the node to the output port */
-    port = ntk.index_to_node( target_node );
-    /* if (1) the target node is an inverter, and    */
-    /* (2) its fanin node has more than one fanout,  */
-    /* the fanin node of the target node shall be    */
-    /* connected to the output port of inverted port */
-    if ( ntk.func_lit( target_node ) == 3 )
-    {
-      ntk.foreach_fanin( port, [&inv_port, &ntk]( auto const& ni ) {
-        if ( ntk.fanout_size( ni ) > 1 )
-        {
-          inv_port = ni;
-        }
-      } );
-    }
-  }
-  else
-  {
-    inv_port = ntk.index_to_node( target_node );
-    if ( ntk.func_lit( target_node ) == 3 )
-    {
-      ntk.foreach_fanin( inv_port, [&port, &ntk]( auto const& ni ) {
-        if ( ntk.fanout_size( ni ) > 1 )
-        {
-          port = ni;
-        }
-      } );
-    }
-  }
 }
 
 array_map<3, T1_OUTPUTS> find_t1_candidates( 
@@ -482,8 +513,7 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
         inv_cbar_to  != ntk.get_constant( false ), 
         sum_to       != ntk.get_constant( false ), 
         carry_to     != ntk.get_constant( false ), 
-        // ??? equality ???
-        cbar_to      != ntk.get_constant( false ), 
+        cbar_to      == ntk.get_constant( false ), 
         sum_to, carry_to, inv_carry_to, cbar_to, inv_cbar_to ) );
       break;
       /* TODO: think about if it is possible that a design can be implemented under */
@@ -504,6 +534,7 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
     auto [maj3_tt, maj_index] = maj3_cuts.at(target_leaves);
     /* find a candidate potentially using 2 outputs of an T1 cell  */
     /* ( XOR3, MAJ3 ), check whether the combnation of tt is valid */
+    bool maj_phase{ false };
     for ( auto const& t1_cell : standard_T1_cells )
     {
       if ( xor3_tt._bits[0] != t1_cell.sum_truth_table )
@@ -552,6 +583,7 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
     auto [or3_tt, or_index] = or3_cuts.at(target_leaves); 
     /* find a candidate potentially using 2 outputs of an T1 cell  */
     /* ( XOR3,  OR3 ), check whether the combnation of tt is valid */
+    bool or_phase{ false };
     for ( auto const& t1_cell : standard_T1_cells )
     {
       if ( xor3_tt._bits[0] != t1_cell.sum_truth_table )
@@ -602,12 +634,18 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
     /* ( MAJ3,  OR3 ), check whether the combnation of tt is valid */
     for ( auto const& t1_cell : standard_T1_cells )
     {
-      
       bool maj_phase{ false }, or_phase{ false };
-      if (
-        !t1_cell.check_carry(maj3_tt, maj_phase) || 
-        !t1_cell.check_cbar(or3_tt, or_phase)
-      )
+      if ( maj3_tt._bits[0] == ~t1_cell.carry_truth_table )
+      {
+        maj_phase = true;
+      }
+      else if ( maj3_tt._bits[0] != t1_cell.carry_truth_table )
+      {
+        continue;
+      }
+
+      bool or_phase{ false };
+      if (!t1_cell.check_cbar(or3_tt, or_phase))
       {
         continue;
       }
@@ -640,6 +678,192 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
 
   return t1_candidates;
 }
+
+template <typename Ntk>
+glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & node, const uint8_t n_phases, const uint8_t type, const bool verbose)
+{
+  bool valid = false;
+  uint32_t phase = 0u;
+  ntk.foreach_fanin(node, [&] ( const typename Ntk::signal & parent )
+  {
+    if ( ntk.is_constant( parent ) )
+    {
+      DEBUG_PRINT("\t\tfanin {} is constant, skipping...\n", parent);
+      return;
+    }
+    valid = true;
+    NodeData parent_data = ntk.value( parent );
+
+    // if d==false, SA gate can be directly connected to fanin
+    //cannot directly connect PI (convention)
+    //cannot directly connect split signal 
+    //cannot directly connect SA/AA gates to SA gates
+    int d = (type == SA_GATE) && ( (ntk.is_pi(parent)) || (ntk.fanout_size(parent) > 1) || (parent_data.type != AS_GATE) );
+
+    phase = generic_max( phase, parent_data.sigma + d );
+
+    if (verbose)
+    {
+      unsigned int gp = static_cast<unsigned int>(parent_data.sigma);
+      fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
+    }
+  });
+  assert(valid);
+
+  // DEBUG_PRINT("\t{} GATE {} placed at ɸ={} [S={}, φ={}]\n",  node, phase, phase/n_phases, phase%n_phases);
+
+  return phase;
+}
+
+/// @brief Create binary variables for DFF placement in a given path
+/// @param path - a path object to insert DFFs into
+/// @param NR - unordered_map of NtkNode objects 
+/// @param n_phases - # of phases
+/// @param verbose - prints debug messages if set to *true*
+/// @return 
+std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(const Path & path, const klut & ntk, const uint8_t n_phases, bool verbose = false)
+{
+  DFF_registry DFF_REG;
+  std::vector<uint64_t> required_SA_DFFs;
+
+  std::vector<std::tuple<klut::signal, uint64_t>> stack;
+  for (const klut::signal & tgt : path.targets)
+  {
+    stack.emplace_back(tgt, 0);
+  }
+  DEBUG_PRINT("[DFF] Target nodes: {}\n", fmt::join(path.targets, ","));
+
+  auto precalc_ndff = 0u;
+  
+  while (!stack.empty())
+  { 
+    if (verbose)
+    {
+      DEBUG_PRINT("STACK :\n");
+      for (const auto & [ fo_node, earliest_child_hash ] : stack)
+      {
+        NodeData fo_data { ntk.value( fo_node ) };
+        if (earliest_child_hash != 0)
+        {
+          DEBUG_PRINT("\t{}({})[{}], {}\n", GATE_TYPE.at((int)fo_data.type), fo_node, (int)fo_data.sigma, DFF_REG.at(earliest_child_hash).str());
+        }
+        else
+        {
+          DEBUG_PRINT("\t{}({})[{}]\n", GATE_TYPE.at((int)fo_data.type), fo_node, (int)fo_data.sigma);
+        }
+      }
+    }
+    // fixing this stupid clang bug with structured bindings
+    auto node_tuple = stack.back();
+    const klut::signal fo_node = std::get<0>(node_tuple);
+    const uint64_t earliest_child_hash = std::get<1>(node_tuple);
+    // const auto & [ fo_node, earliest_child_hash ] = node_tuple ;
+    stack.pop_back();
+    NodeData fo_data { ntk.value( fo_node ) };
+
+    uint32_t latest_sigma = fo_data.sigma - (fo_data.type == AS_GATE);
+    DEBUG_PRINT("[DFF] Analyzing child: {}({})[{}]\n", GATE_TYPE.at(fo_data.type), fo_node, (int)fo_data.sigma);
+
+    ntk.foreach_fanin(fo_node, [&](const klut::signal & fi_node){
+      NodeData fi_data { ntk.value( fi_node ) };
+      uint32_t earliest_sigma = fi_data.sigma + (fi_data.type != AA_GATE);
+
+      DEBUG_PRINT("\t[DFF] Analyzing parent: {}({})[{}]\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma);
+
+      // check if the chain is straight - #DFF is just floor(delta-phase), no need to create the dff vars
+      if (fo_data.type != AA_GATE && fi_data.type != AA_GATE)
+      {
+        // special case when an AS gate feeds directly into SA gate
+        if (fo_data.sigma == fi_data.sigma)
+        {
+          DEBUG_PRINT("\t[DFF] Straight chain: AS{} -> SA{}\n", fi_node, fo_node);
+          // do nothing, no additional DFFs needed
+          assert(fo_data.type == SA_GATE && fi_data.type == AS_GATE && ntk.fanout_size(fi_node) == 1);
+        }
+        else
+        {
+          DEBUG_PRINT("\t[DFF] Straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_data.type), (int)fi_data.sigma, GATE_TYPE.at(fo_data.type), (int)fo_data.sigma);
+          // straight chain, just floor the difference!
+          precalc_ndff += (fo_data.sigma - fi_data.sigma)/n_phases + (fo_data.type == SA_GATE); //extra DFF before SA gate
+        }
+        return;
+      }
+
+      DEBUG_PRINT("\t[DFF] Non-straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_data.type), (int)fi_data.sigma, GATE_TYPE.at(fo_data.type), (int)fo_data.sigma);
+      std::vector<uint64_t> out_hashes;
+      DEBUG_PRINT("\tAdding new DFFs [reg size = {}]\n", DFF_REG.variables.size());
+
+      for (glob_phase_t sigma = earliest_sigma; sigma <= latest_sigma; ++sigma)
+      {
+        uint64_t new_hash = DFF_REG.add(fi_node, fo_node, sigma);
+        out_hashes.push_back(new_hash);
+        DEBUG_PRINT("\tAdded new DFFs at phase {} [reg size = {}]\n", sigma, DFF_REG.variables.size());
+      }
+      DEBUG_PRINT("\tConnecting new DFFs\n");
+      for (auto i = 1u; i < out_hashes.size(); ++i)
+      {
+        DFF_var & dff = DFF_REG.at( out_hashes[i] );
+        dff.parent_hashes.emplace(out_hashes[i-1]);
+      }
+      if (fo_data.type == SA_GATE)
+      {
+        assert( !out_hashes.empty() );
+        required_SA_DFFs.push_back(out_hashes.back());
+      }
+
+      uint64_t earliest_hash = (out_hashes.empty()) ? earliest_child_hash : out_hashes.front();
+      // if the node is internal, connect with the fanout phase
+      if (fo_data.type == AA_GATE && !out_hashes.empty() && earliest_hash != 0 && earliest_child_hash != 0)
+      {
+        DFF_var & child_dff = DFF_REG.at( earliest_child_hash );
+        DEBUG_PRINT("\tPrior node is {}[{}]\n", child_dff.str(), (int)child_dff.sigma); 
+        // assert(child_dff.fanin == fo_id);
+        child_dff.parent_hashes.emplace( out_hashes.back() );
+      }
+      if (fi_data.type == AA_GATE)
+      {
+        stack.emplace_back( fi_node, earliest_hash );
+        DEBUG_PRINT("\tEmplacing {}({})[{}], {}\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma, (earliest_hash!=0)?DFF_REG.at(earliest_hash).str():"");
+      }
+    });
+  }
+  return std::make_tuple(DFF_REG, precalc_ndff, required_SA_DFFs);
+}
+
+struct Snake
+{
+  std::deque<std::vector<uint64_t>> sections;
+
+  Snake(): sections({}) {}
+  Snake( const uint64_t head ): sections({ { head } }) {}
+  Snake( const std::deque<std::vector<uint64_t>> _sections ): sections(_sections) {}
+  Snake( const Snake & _other ): sections(_other.sections) {}
+
+  bool append(const uint64_t dff_hash, DFF_registry &DFF_REG, const uint8_t n_phases)
+  {
+    DFF_var & dff = DFF_REG.at( dff_hash );
+
+    std::vector<uint64_t> & head_section = sections.back();
+    uint64_t & head_hash = head_section.back();
+    DFF_var & head_dff = DFF_REG.at( head_hash );
+    if (dff.sigma == head_dff.sigma) // add to the same section
+    {
+      head_section.push_back( dff_hash );
+      return false;
+    }
+    else
+    {
+      // assert( head_dff.phase - dff.phase == 1 );
+      sections.push_back( { dff_hash } );
+      if (sections.size() > n_phases)
+      {
+        sections.pop_front();
+      }
+      return true;
+    }
+  }
+
+};
 
 void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
 {
@@ -696,7 +920,7 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
     NodeData fo_data { ntk.value( dff.fanout ) };
     auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE );
     auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
-    if (it != path.targets.end() && (dff.sigma >= fanout_sigma ))
+    if (it != path.targets.end() && ( ( fanout_sigma < 0 ) || ( ( fanout_sigma >= 0 ) && ( dff.sigma >= static_cast<uint32_t>( fanout_sigma ) ) ) ) )
     {
       stack.emplace_back( hash );
     }
@@ -900,6 +1124,41 @@ int cpsat_ortools(const std::string & cfg_name)
   }
 }
 
+void config_t1_ports_connection( klut const& ntk, const bool output_phase, const uint32_t target_node, klut::node& port, klut::node& inv_port )
+{
+  if ( !output_phase )
+  {
+    /*      connect the node to the output port      */
+    port = ntk.index_to_node( target_node );
+    /* if (1) the target node is an inverter, and    */
+    /* (2) its fanin node has more than one fanout,  */
+    /* the fanin node of the target node shall be    */
+    /* connected to the output port of inverted port */
+    if ( ntk.func_lit( target_node ) == 3 )
+    {
+      ntk.foreach_fanin( port, [&inv_port, &ntk]( auto const& ni ) {
+        if ( ntk.fanout_size( ni ) > 1 )
+        {
+          inv_port = ni;
+        }
+      } );
+    }
+  }
+  else
+  {
+    inv_port = ntk.index_to_node( target_node );
+    if ( ntk.func_lit( target_node ) == 3 )
+    {
+      ntk.foreach_fanin( inv_port, [&port, &ntk]( auto const& ni ) {
+        if ( ntk.fanout_size( ni ) > 1 )
+        {
+          port = ni;
+        }
+      } );
+    }
+  }
+}
+
 uint32_t get_node_cost( const uint32_t gate_type )
 {
   switch( gate_type )
@@ -967,7 +1226,7 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<uint32_t, 3>, 
   std::array<uint32_t, 3> roots;
   roots[0] = ntk.node_to_index( t1_outputs.sum_to );
   roots[1] = std::max( ntk.node_to_index( t1_outputs.carry_to ), ntk.node_to_index( t1_outputs.inv_carry_to ) );
-  roots[2] = std::max( ntk.node_to_index(  t1_outputs.cbar_to ), ntk.node_to_index(  t1_outputs.inv_cbar_to ) );
+  roots[2] = std::max( ntk.node_to_index( t1_outputs.cbar_to  ), ntk.node_to_index( t1_outputs.inv_cbar_to  ) );
 
   for ( const uint32_t root : roots )
   {
@@ -1001,49 +1260,29 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<uint32_t, 3>, 
 
 void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> const& t1s, std::string const& filename )
 {
-  std::set<klut::signal> t1_inputs;
-  for ( auto const& [leaves, t1_outputs] : t1s )
-  {
-    t1_inputs.insert(leaves.begin(), leaves.end());
-  }
-
   std::ofstream spec_file( filename );
 
-  spec_file << "PI";
-  ntk.foreach_pi( [&] (const auto & node)
-  {
-    spec_file << "," << node;
-  });
-  spec_file << "\n";
-
-  ntk.foreach_gate( [&]( auto const& n ) 
-  {
-    if ( ntk.is_dangling( n ) && t1_inputs.count( n ) == 0 && !ntk.is_po( n ) )
+  ntk.foreach_gate( [&]( auto const& n ) {
+    if ( ntk.is_dangling( n ) )
     {
-      fmt::print("Node {} is dangling\n", n);
       /* a dangling node due to the usage of T1 cells */
       return true;
     }
 
-    if ( static_cast<NodeData>( ntk.value( n ) ).type == T1_GATE )
+    if ( static_cast<NodeData>( ntk.value( n ) ).type == FA_GATE )
     {
-      fmt::print("Node {} is T1 output\n", n);
       /* T1 cells would be handled together later     */
       return true;
     }
-
-    fmt::print("Node {} is a regular node\n", n);
 
     std::vector<uint32_t> n_fanins;
     ntk.foreach_fanin( n, [&ntk, &n_fanins]( auto const& ni ) {
       /* notice that 'signal' and 'node' are equal    */
       /* in kluts                                     */
-      // n_fanins.push_back( ntk.node_to_index( ni ) );
-      n_fanins.push_back( ni );
+      n_fanins.push_back( ntk.node_to_index( ni ) );
     } );
 
-    spec_file << fmt::format( "{0},{1},{2}\n", n, static_cast<NodeData>( ntk.value( n ) ).type, fmt::join( n_fanins, "|" ) );
-    // spec_file << fmt::format( "{0},{1},{2}\n", ntk.node_to_index( n ), static_cast<NodeData>( ntk.value( n ) ).type, fmt::join( n_fanins, "|" ) );
+    spec_file << fmt::format( "{0},{1},{2}\n", ntk.node_to_index( n ), static_cast<NodeData>( ntk.value( n ) ).type, fmt::join( n_fanins, "|" ) );
     return true;
   } );
 
@@ -1070,11 +1309,49 @@ void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> c
   }
 }
 
+bool customized_T1_classifier( T1_OUTPUTS const& t1 )
+{
+  /* pay attention to T1s that use exclusively the    */
+  /* output ports of SUM and (inverted) CBAR          */
+  // if ( t1.has_sum && ( !t1.has_carry && !t1.has_carry_inverted ) && ( t1.has_cbar || t1.has_cbar_inverted ) )
+  // {
+  //   return true;
+  // }
+
+  /* pay attention to T1s that use more than 3 output */
+  /* ports                                            */
+  uint8_t num_output_ports_used{ 0u };
+  if ( t1.has_sum )
+  {
+    ++num_output_ports_used;
+  }
+  if ( t1.has_carry )
+  {
+    ++num_output_ports_used;
+  }
+  if ( t1.has_carry_inverted )
+  {
+    ++num_output_ports_used;
+  }
+  if ( t1.has_cbar )
+  {
+    ++num_output_ports_used;
+  }
+  if ( t1.has_cbar_inverted )
+  {
+    ++num_output_ports_used;
+  }
+  if ( num_output_ports_used > 3 )
+  {
+    return true;
+  }
+  return false;
+}
+
 int main(int argc, char* argv[])  //
 {
   using namespace experiments;
   using namespace mockturtle;
-
 
   TT3 XOR3, MAJ3, OR3;
   XOR3._bits = 0x96;
@@ -1087,18 +1364,19 @@ int main(int argc, char* argv[])  //
   auto add_xor3 = [&xor3_tts](const TT3 & tt){xor3_tts.push_back(tt);};
   auto add_maj3 = [&maj3_tts](const TT3 & tt){maj3_tts.push_back(tt);};
   auto add_or3  =  [&or3_tts](const TT3 & tt){ or3_tts.push_back(tt);};
+
   kitty::exact_npn_canonization(XOR3, add_xor3);
   kitty::exact_npn_canonization(MAJ3, add_maj3);
   kitty::exact_npn_canonization( OR3, add_or3 );
 
-  fmt::print("Compatible TTs:\n");
-  for (auto i = 0u; i < xor3_tts.size(); ++i)
-  {
-    fmt::print("\t[{}]:\n", i);
-    fmt::print("\t\tXOR3: {0:08b}={0:02x}={0:d}\n", xor3_tts[i]._bits);
-    fmt::print("\t\tMAJ3: {0:08b}={0:02x}={0:d}\n", maj3_tts[i]._bits);
-    fmt::print("\t\t OR3: {0:08b}={0:02x}={0:d}\n",  or3_tts[i]._bits);
-  }
+  // fmt::print("Compatible TTs:\n");
+  // for (auto i = 0u; i < xor3_tts.size(); ++i)
+  // {
+  //   fmt::print("\t[{}]:\n", i);
+  //   fmt::print("\t\tXOR3: {0:08b}={0:02x}={0:d}\n", xor3_tts[i]._bits);
+  //   fmt::print("\t\tMAJ3: {0:08b}={0:02x}={0:d}\n", maj3_tts[i]._bits);
+  //   fmt::print("\t\t OR3: {0:08b}={0:02x}={0:d}\n",  or3_tts[i]._bits);
+  // }
   // return 0;
 
   experiment<std::string, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay");
@@ -1110,6 +1388,10 @@ int main(int argc, char* argv[])  //
   for (auto i = 1; i < argc; ++i)
   {
     PHASES.push_back(std::stoi(argv[i]));
+  }
+  if ( argc == 1 )
+  {
+    PHASES.push_back( 7 );
   }
   fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
 
@@ -1129,48 +1411,45 @@ int main(int argc, char* argv[])  //
   mockturtle::tech_library_params tps; // tps.verbose = true;
   tech_library<NUM_VARS, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
 
-  #pragma region benchmark_parsing
-    // *** BENCHMARKS OF INTEREST ***
-    // experiments::adder | experiments::div  | 
-    auto benchmarks1 = epfl_benchmarks( experiments::adder  | experiments::multiplier );
-    // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
-    // auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
-    // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+#pragma region benchmark_parsing
+  // *** BENCHMARKS OF INTEREST ***
+  auto benchmarks1 = epfl_benchmarks( experiments::arithmetic );
+  //auto benchmarks1 = epfl_benchmarks( experiments::adder );
+  //auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
+  //benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
-    // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::vector<std::string> BEEREL_BENCHMARKS 
-    {
-      "simple_spi-gates",
-      "des_area-gates",
-      "pci_bridge32-gates",
-      "spi-gates",
-      "mem_ctrl-gates"
-    };
+  // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
+  const std::vector<std::string> BEEREL_BENCHMARKS 
+  {
+    "simple_spi-gates",
+    "des_area-gates",
+    "pci_bridge32-gates",
+    "spi-gates",
+    "mem_ctrl-gates"
+  };
 
-    // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
+  // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
+  //const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
+  //benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
+  // std::reverse(benchmarks1.begin(), benchmarks1.end());
 
-    // benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
-    // std::reverse(benchmarks1.begin(), benchmarks1.end());
+  // *** LIST ALL CONSIDERED BENCHMARKS ***
+  fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
+  
+  // *** READ COMPOUND GATE LIBRARY ***
+  phmap::flat_hash_map<ULL, Node> GNM_global;
+  bool status = LoadFromFile(GNM_global, NODEMAP_BINARY_PREFIX);
+  assert(status);
 
-    // *** LIST ALL CONSIDERED BENCHMARKS ***
-    fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
+  phmap::flat_hash_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
 
-    // *** READ COMPOUND GATE LIBRARY ***
-    phmap::flat_hash_map<ULL, Node> GNM_global;
-    bool status = LoadFromFile(GNM_global, NODEMAP_BINARY_PREFIX);
-    assert(status);
-
-    phmap::flat_hash_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
-
-  #pragma endregion benchmark_parsing
+#pragma endregion benchmark_parsing
 
   // *** START PROCESSING BECNHMARKS ***
   for ( auto const& benchmark : benchmarks1 )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
-    #pragma region load network
     // *** LOAD NETWORK INTO MIG ***
     mig ntk_original;
     if (benchmark.find("-gates") != std::string::npos) 
@@ -1209,25 +1488,19 @@ int main(int argc, char* argv[])  //
       }
       // convert_klut_to_graph<mig>(ntk_original, temp_klut);
     }
-    #pragma endregion
 
-    #pragma region mapping with compound gates 
     // *** MAP, NO NEED FOR RETIMING/PATH BALANCING ***
     fmt::print("Started mapping {}\n", benchmark);
     auto [res_wo_pb, st_wo_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
     fmt::print("Finished mapping {}\n", benchmark);
-    #pragma endregion
 
-    #pragma region decomposition of the mapped network into a klut
+
     // *** DECOMPOSE COMPOUND GATES INTO PRIMITIVES, REMOVE DFFS, REPLACE OR GATES WITH CB WHERE POSSIBLE ***
     auto _result = decompose_to_klut(res_wo_pb, GNM_global, entries, COSTS_MAP);
     auto klut_decomposed = std::get<0>(_result);
     auto raw_area = std::get<1>(_result);
     fmt::print("Decomposition complete\n");
-    #pragma endregion
 
-    // TODO: To be replaced with Mingfei's code
-    #pragma region cut enumeration to find TTs that could be shared with a T1 cell
     // *** ENUMERATE 3-CUTS ***
     cut_enumeration_params ce_params; 
     ce_params.cut_size = 3u;
@@ -1248,12 +1521,8 @@ int main(int argc, char* argv[])  //
     /* TODO: adopt the assumption that, it is a good deal if an implementation can make use of more than 2 out of the 3 outputs of T1,  */
     /* then we would need four rounds of matching: (1) 3 leaves using all 3 outputs; (2) ...using XOR and MAJ; (3) ...using MAJ and OR; */
     /* (4) ...using XOR and OR. For each 3 leaves found, check validity by deciding which of the 8 T1s to choose                        */
-
     array_map<3, T1_OUTPUTS> t1_candidates = find_t1_candidates(klut_decomposed, xor3_cuts, maj3_cuts, or3_cuts);
 
-    #pragma endregion
-
-    #pragma region leave only those cuts reducing area
     /* estimate the gain of implementing parts of the circuits using T1s instead */
     auto updated_area{ raw_area };
     // uint32_t num_t1_use_more_than_3{ 0u };
@@ -1272,28 +1541,47 @@ int main(int argc, char* argv[])  //
         ++it_t1_cands;
       }
     }
-    #pragma endregion
 
-    // start processing each possible number of phases
+    /* bind the instantiated T1 cells to the 2-LUT network for csv generation    */
+    std::string filename = benchmark + "_before_phase_assignment.csv";
+    write_klut_specs_supporting_t1( klut_decomposed, t1_candidates, filename );
+
+    // fmt::print( "Usage of the T1 cells:\n" );
+    // uint32_t num_t1_cells{ 0u };
+    // for ( auto const& t1_candidate : t1_candidates )
+    // {
+    //   fmt::print( "[{}]\n", ++num_t1_cells );
+    //   fmt::print( "\t\tInput : Node {}, Node {}, Node {}\n", t1_candidate.first[0], t1_candidate.first[1], t1_candidate.first[2] );
+    //   t1_candidate.second.report();
+    // }
+    // fmt::print( "\t# T1s : {}, # T1s with more than 3 ouput ports used : {}\n", num_t1_cells, num_t1_use_more_than_3 );
+
+    fmt::print( "Area before : {}, \tArea after : {}, \tRed. : {:>5.2f}%\n", raw_area, updated_area, ( ( static_cast<float>( raw_area ) - static_cast<float>( updated_area ) ) / static_cast<float>( raw_area ) * 100 ) );
+    
+
+    continue;
+  
+    // *** [temporary] GREEDILY ASSIGN A STAGE (sigma) TO EACH ELEMENT ***
+    std::unordered_map<klut::signal, glob_phase_t> glob_phase = greedy_assign(klut_decomposed, klut_prim_params, false);
+    printUnorderedMap(glob_phase);
+
+    // for (auto n_phases = MIN_N_PHASES; n_phases <= MAX_N_PHASES; ++n_phases)
     for (const auto n_phases : PHASES)
     {
       fmt::print("[i] Mapping with {} phases\n", n_phases);
       // *** IF i = 0, we assign phases with the CP-SAT
-      // *** IF i = 1, we assign phases greedily (currently unused)
+      // *** IF i = 1, we assign phases greedily
       // for (auto i = 0; i < 2; ++i)
       for (auto i = 0; i < 1; ++i)
       {
         klut network { klut_decomposed.clone() };
-        phmap::flat_hash_map<unsigned int, unsigned int> assignment;
+        std::unordered_map<unsigned int, unsigned int> assignment;
 
-        // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
-        // *** IF i = 1, "assignment" is empty
         if (i == 0)
         {
           const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
           fmt::print("\tWriting config {}\n", ilp_cfg_filename);
-          // write_klut_specs(network, ilp_cfg_filename);
-          write_klut_specs_supporting_t1( network, t1_candidates, ilp_cfg_filename );
+          write_klut_specs(network, klut_prim_params, glob_phase, ilp_cfg_filename);
 
           fmt::print("\tCalling OR-Tools\n");
           auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
@@ -1312,18 +1600,23 @@ int main(int argc, char* argv[])  //
         
         // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
         // *** IF i = 1, "assignment" is empty
-        assign_sigma(network, assignment, true );
+        greedy_ntk_assign(network, klut_prim_params, n_phases, assignment, true);
 
         // *** Greedily insert splitters
         splitter_ntk_insertion( network, true);
 
-        // network.foreach_node([&] ( const klut::signal & node ) {if ( network.fanout_size( node ) > 1 ){assert( network.node_function( node ) == 0x2 );};});
+        // network.foreach_node([&] ( const klut::signal & node ) 
+        // {
+        //   if ( network.fanout_size( node ) > 1 )
+        //   {
+        //     assert( network.node_function( node ) == 0x2 );
+        //   };
+        // });
 
         fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
 
         fmt::print("[i] EXTRACTING PATHS\n");
-        // TODO : adapt to our structure
-        std::vector<Path> paths = extract_paths_t1( network, true );
+        std::vector<Path> paths = extract_paths( network, true );
         // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
 
         auto total_num_dff = 0u;
@@ -1394,107 +1687,24 @@ int main(int argc, char* argv[])  //
   return 0;
 }
 
-#if false
-  int main() 
-  {
-    /*
-    // *** READ COMPOUND GATE LIBRARY ***
-    const std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,2,2}, {0,1,2,3} } }; //  {0,1,1,3},
+// Adder 18542 vs 24384
 
-    auto start_time_csv = std::chrono::high_resolution_clock::now();
 
-    phmap::flat_hash_map<ULL, Node> GNM_global = read_global_gnm( sets_of_levels, NODEMAP_PREFIX );
-
-    auto end_time_csv = std::chrono::high_resolution_clock::now();
-
-    // Calculate the duration in milliseconds
-    auto ms_csv = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_csv - start_time_csv);
-    fmt::print("CSV Runtime: {}ms\n", ms_csv.count());
-
-    const auto cost_it = std::max_element(GNM_global.begin(), GNM_global.end(), [&](const auto & pair1, const auto & pair2) { return pair1.second.cost < pair2.second.cost; });
-    const auto & [hash_cost, node_cost] = *cost_it;
-    fmt::print("The most expensive node: {} {}\n{}\n", hash_cost, node_cost.to_str(), node_cost.to_stack(GNM_global));
-
-    const auto depth_it = std::max_element(GNM_global.begin(), GNM_global.end(), [&](const auto & pair1, const auto & pair2) 
-    {
-      return pair1.second.depth < pair2.second.depth; 
-    });
-    const auto & [hash_depth, node_depth] = *depth_it;
-    fmt::print("The deepest node: {} {}\n{}\n", hash_depth, node_depth.to_str(), node_depth.to_stack(GNM_global));
-    */
-    const std::string DATABASE_PREFIX { "../GNM/GNM_global" };
-
-    // // Dump the map to a binary file
-    // SaveToFile(GNM_global, DATABASE_PREFIX);
-    // fmt::print("Saved to {}\n", DATABASE_PREFIX);
-    auto start_time_dat = std::chrono::high_resolution_clock::now();
-
-    // Load the map from the binary file
-    phmap::flat_hash_map<uint64_t, Node> loadedMap;
-    bool status = LoadFromFile(loadedMap, DATABASE_PREFIX);
-    if (!status)
-    {
-      fmt::print("READING FAILED");
-      return 1;
-    };
-
-    auto end_time_dat = std::chrono::high_resolution_clock::now();
-
-    auto ms_dat = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_dat - start_time_dat);
-
-    fmt::print("DAT Runtime: {}ms\n", ms_dat.count());
-    /*
-
-    for (const auto& [hash, old_node] : GNM_global) 
-    {
-      if (loadedMap.find(hash) == loadedMap.end())
-      {
-        fmt::print("Entry at {} is not found\n", hash);
-        continue;
-      };
-      const Node & new_node = loadedMap.at(hash);
-      if (old_node != new_node)
-      {
-        fmt::print("Entries at {} are not equivalent\n", hash);
-        fmt::print("\tOld: {}\n", old_node.to_str());
-        fmt::print("\tNew: {}\n", new_node.to_str());
-        continue;
-      };
-    }
-
-    */
-   
-    auto start_time_par = std::chrono::high_resolution_clock::now();
-
-    // Load the map from the binary file
-    phmap::flat_hash_map<uint64_t, Node> loadedMapPar = ParallelLoadFromFiles(DATABASE_PREFIX);
-
-    auto end_time_par = std::chrono::high_resolution_clock::now();
-
-    auto ms_par = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_par - start_time_par);
-
-    fmt::print("PAR Runtime: {}ms\n", ms_par.count());
-
-    for (const auto& [hash, old_node] : loadedMap) 
-    {
-      if (loadedMapPar.find(hash) == loadedMapPar.end())
-      {
-        fmt::print("Entry at {} is not found\n", hash);
-        continue;
-      };
-      const Node & new_node = loadedMapPar.at(hash);
-      if (old_node != new_node)
-      {
-        fmt::print("Entries at {} are not equivalent\n", hash);
-        fmt::print("\tOld: {}\n", old_node.to_str());
-        fmt::print("\tNew: {}\n", new_node.to_str());
-        continue;
-      };
-    }
-
-    
-
-    return 0;
-  }
-
-#endif
+/* 
+  7 phases
+  |-------------|--------------|--------------|--------|--------------|--------------|------------|---------|
+  |   benchmark | #DFF (tight) | #DFF (loose) | Ratio  | area (tight) | area (loose) | Area Ratio |  delay  |
+  |-------------|--------------|--------------|--------|--------------|--------------|------------|---------|
+  |   int2float |      217     |      217     |  1.00  |     5'136    |     5'136    |     1.00   |    2    |
+  |    priority |    3'375     |    3'284     |  1.03  |    45'724    |    45'087    |     1.01   |   12    |
+  |       voter |    2'380     |    2'180     |  1.09  |   164'204    |   162'804    |     1.01   |    6    |
+  |        c432 |      352     |      342     |  1.03  |     5'186    |     5'116    |     1.01   |    4    |
+  |        c880 |      270     |      254     |  1.06  |     6'302    |     6'190    |     1.02   |    3    |
+  |       c1355 |       46     |       46     |  1.00  |     4'515    |     4'515    |     1.00   |    2    |
+  |       c1908 |      125     |      125     |  1.00  |     3'529    |     3'529    |     1.00   |    2    |
+  |       c3540 |      579     |      589     |  0.98  |    16'946    |    17'016    |     1.00   |    3    |
+  |    s382.aig |      156     |       89     |  1.75  |     2'880    |     2'411    |     1.19   |    2    |
+  |   s5378.aig |      857     |      808     |  1.06  |    22'104    |    21'761    |     1.02   |    2    |
+  |  s13207.aig |    2'013     |    1'837     |  1.10  |    43'614    |    42'382    |     1.03   |    3    |
+  |-------------|--------------|--------------|--------|--------------|--------------|------------|---------|
+*/

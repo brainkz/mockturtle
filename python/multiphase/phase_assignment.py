@@ -22,39 +22,40 @@ TYPES = { "0": "PI",
 
 # TYPES = {"0": "AA", "1": "AS", "2": "SA"}
 
-class T1_cell:
-  __slots__ = ['xor3', 'maj3', 'min3', 'or3', 'nor3', 'inputs3']
-  def __init__(self, _outputs: dict[str, int], _inputs: list[tuple[int, bool]] ) -> None:
-    self.outputs = _outputs
-    self.inputs = _inputs
-    
-
 class Primitive:
-  __slots__ = ['sig', 'type', 'fanins', 'siblings']
-  def __init__(self, _sig: int, _type : str, _fanins : list, _siblings : dict = {}, _in_neg : list) -> None:
+  __slots__ = ['sig', 'type', 'fanins', 'in_neg']
+  def __init__(self, _sig: int, _type : str, _fanins : list, _in_neg : list = []) -> None:
     self.sig      = _sig
     self.type     = _type if _fanins else 'PI'
     self.fanins   = _fanins
-    self.siblings = _siblings
     self.in_neg = _in_neg
 
   def __repr__(self) -> str:
-    if self.siblings:
-      return f"Primitive(sig={self.sig}, type='{self.type}', fanins={self.fanins}, siblings={self.siblings}"
-    else:
-      return f"Primitive(sig={self.sig}, type='{self.type}', fanins={self.fanins}"
+    # if self.siblings:
+    #   return f"Primitive(sig={self.sig}, type='{self.type}', fanins={self.fanins}, siblings={self.siblings}"
+    # else:
+    #   return f"Primitive(sig={self.sig}, type='{self.type}', fanins={self.fanins}"
+    return f"Primitive(sig={self.sig}, type='{self.type}', fanins={self.fanins}, in_neg={self.in_neg}"
       
 def parse_specs(filename: str) -> tuple[dict[int, Primitive], list[dict[str, int]]]:
   items = {}
   t1_cells = []
   with open(filename, 'r') as f:
-    for line in f:
+    line_iter = iter(f)
+    
+    # first line is for PIs
+    pi_line = next(line_iter)
+    for _sig_str in pi_line.split(',')[1:]:
+      _sig = int(_sig_str)
+      items[_sig] = Primitive(_sig, "PI", [])
+    
+    for line in line_iter:
       line = line.strip()
       
-      _sig_str, _type_str, _fanin_str = line.split(',')
+      _all_sig_str, _type_str, _fanin_str = line.split(',')
       _type = TYPES[_type_str]
-      
-      if "|" in _sig_str:
+      print(f"Processing line: {line}")
+      if "|" in _all_sig_str:
         assert(_type_str == "4")
         _fanins = []
         _in_neg = []
@@ -66,18 +67,21 @@ def parse_specs(filename: str) -> tuple[dict[int, Primitive], list[dict[str, int
             _fanins.append(int(_fanin_sig))
             _in_neg.append(False)
         _siblings = {}
-        for _key, _sig in zip( ['XOR','MAJ','MIN','OR','NOR'],  _sig_str.split('|')):
-          if _sig != '0':
-            _siblings[_key] = (int(_sig), True)
-            items[g.sig] = Primitive(_sig, _type, _fanins, _in_neg)
+        for _key, _sig_str in zip( ['XOR','MAJ','MIN','OR','NOR'],  _all_sig_str.split('|')):
+          if _sig_str != '0':
+            _sig = int(_sig_str)
+            _siblings[_key] = _sig
+            items[_sig] = Primitive(_sig, _type, _fanins, _in_neg)
+            print(f"\tCreating: {items[_sig]}")
         assert('XOR' in _siblings)
         t1_cells.append(_siblings)
       else:
         assert(_type_str != "4")
         _fanins  = [int(_fanin_sig) for _fanin_sig in _fanin_str.split('|') if _fanin_sig]
-        _sig  = int(_sig_str)
+        _sig  = int(_all_sig_str)
         _type = TYPES[_type_str]
-        items[g.sig] = Primitive(_sig, TYPES[_type_str], _fanins)
+        items[_sig] = Primitive(_sig, TYPES[_type_str], _fanins)
+        print(f"\tCreating: {items[_sig]}")
   return items, t1_cells
 
 if __name__ == "__main__":
@@ -107,7 +111,7 @@ if __name__ == "__main__":
   print(f'Finished creating [all_signals]')
   pprint(all_signals)
   
-  max_phase = max(g.phase for g in all_signals.values() if g.phase is not None)
+  # max_phase = max(g.phase for g in all_signals.values() if g.phase is not None)
   
   # sigma_bounds = (0, max_phase + NPH)
   sigma_bounds = (0, 1000)
@@ -137,7 +141,9 @@ if __name__ == "__main__":
   already_processed = []
   for g in all_signals.values():
     # print(f"The type of the gate {g.sig} is {g.type}")
-    if g.type == 'AA':
+    if g.type == 'PI':
+      continue
+    elif g.type == 'AA':
       # any PI is the earliest fanin, with zero phase and zero clock stage
       # IMPORTANT: only 2-input CB is supported
       assert(len(g.fanins) == 2)
@@ -205,7 +211,8 @@ if __name__ == "__main__":
         if g.sig in sibling_list.values():
           cell_idx = i
           break
-        
+      else:
+        raise ValueError(f"T1 cell output\n {g} \n\tis not represented in all_t1_cells")
         
       assert(len(g.fanins) == 3)
       # sig_idx = [p_sig for p_sig in g.fanins]
@@ -213,10 +220,10 @@ if __name__ == "__main__":
         # TODO :    if the fanin is AA, add DFF/NOT to cost and [++SIGMA_EFF] (not accurate but too complex otherwise)
         # TODO :    if the fanin is AS/SA and negated, [++SIGMA_EFF]
       incr_Sigma = [0, 0, 0]
-      for i, (p_sig, p_neg) in enumerate(zip(g.fanins, g.in_neg)):
-        p = all_signals[p_sig]
-        if (p.type == 'AA') or (p.type in ('AS', 'SA') and p.p_neg):
-          incr_Sigma[i] += 1
+      # for i, (p_sig, p_neg) in enumerate(zip(g.fanins, g.in_neg)):
+      #   p = all_signals[p_sig]
+      #   if (p.type == 'AA') or (p.type in ('AS', 'SA') and p_neg):
+      #     incr_Sigma[i] += 1
       
         # TODO : create vars [ABS_MIN=min(A,B,C)], [MED=median(A,B,C)-ABS_MIN], [MAX=max(A,B,C)-ABS_MIN]
       ABS_MIN = model.NewIntVar(*sigma_bounds, f'absmin_{g.sig}')
@@ -231,37 +238,47 @@ if __name__ == "__main__":
       # IMPORTANT: this is the stage of the XOR cell only!!!
       # IMPORTANT: TODO: ADD the stages of other outputs
       T1_XOR_SIGMA        = model.NewIntVar(*sigma_bounds, f'sigma_xor_{g.sig}')
-      # T1_CARRY_SIGMA      = model.NewIntVar(*sigma_bounds, f'sigma_carry_{g.sig}')
-      # T1_CBAR_SIGMA       = model.NewIntVar(*sigma_bounds, f'sigma_cbar_{g.sig}')
-      # T1_CARRY_NOT_SIGMA  = model.NewIntVar(*sigma_bounds, f'sigma_carry_not_{g.sig}')
-      # T1_CBAR_NOT_SIGMA   = model.NewIntVar(*sigma_bounds, f'sigma_cbar_not_{g.sig}')
       model.Add(T1_XOR_SIGMA > ABS_MIN + 2)
       model.Add(T1_XOR_SIGMA > ABS_MED + 1)
       model.Add(T1_XOR_SIGMA > ABS_MAX    )
       
+      MED_MIN_diff_TMP = model.NewIntVar(*sigma_bounds, f'mod_med_min_diff_tmp_{g.sig}')
+      model.Add(MED_MIN_diff_TMP == ABS_MED - ABS_MIN)
       MED_MIN_diff = model.NewIntVar(*sigma_bounds, f'mod_med_min_diff_{g.sig}')
-      model.AddModuloEquality(MED_MIN_diff, ABS_MED - ABS_MIN, NPH)
+      model.AddModuloEquality(MED_MIN_diff, MED_MIN_diff_TMP, NPH)
       
+      MAX_MED_diff_TMP = model.NewIntVar(*sigma_bounds, f'mod_max_med_diff_tmp_{g.sig}')
+      model.Add(MAX_MED_diff_TMP == ABS_MAX - ABS_MED)
       MAX_MED_diff = model.NewIntVar(*sigma_bounds, f'mod_max_med_diff_{g.sig}')
-      model.AddModuloEquality(MAX_MED_diff, ABS_MAX - ABS_MED, NPH)
+      model.AddModuloEquality(MAX_MED_diff, MAX_MED_diff_TMP, NPH)
       
+      MAX_MIN_diff_TMP = model.NewIntVar(*sigma_bounds, f'mod_max_min_diff_tmp_{g.sig}')
+      model.Add(MAX_MIN_diff_TMP == ABS_MAX - ABS_MIN)
       MAX_MIN_diff = model.NewIntVar(*sigma_bounds, f'mod_max_min_diff_{g.sig}')
-      model.AddModuloEquality(MAX_MIN_diff, ABS_MAX - ABS_MIN, NPH)
+      model.AddModuloEquality(MAX_MIN_diff, MAX_MIN_diff_TMP, NPH)
       
+      FLOOR_DIFF_MIN_TMP = model.NewIntVar(-1000, 1000, f'floor_diff_min_tmp_{g.sig}')
+      model.Add(FLOOR_DIFF_MIN_TMP == T1_XOR_SIGMA-ABS_MIN-1)
       FLOOR_DIFF_MIN = model.NewIntVar(*sigma_bounds, f'floor_diff_min_{g.sig}')
-      model.AddDivisionEquality(FLOOR_DIFF_MIN, T1_XOR_SIGMA-ABS_MIN-1, NPH)
+      model.AddDivisionEquality(FLOOR_DIFF_MIN, FLOOR_DIFF_MIN_TMP, NPH)
 
+      FLOOR_DIFF_MED_TMP = model.NewIntVar(*sigma_bounds, f'floor_diff_med_tmp_{g.sig}')
+      model.Add(FLOOR_DIFF_MED_TMP == T1_XOR_SIGMA-ABS_MED-1)
       FLOOR_DIFF_MED = model.NewIntVar(*sigma_bounds, f'floor_diff_med_{g.sig}')
-      model.AddDivisionEquality(FLOOR_DIFF_MED, T1_XOR_SIGMA-ABS_MED-1, NPH)
+      model.AddDivisionEquality(FLOOR_DIFF_MED, FLOOR_DIFF_MED_TMP, NPH)
 
+      FLOOR_DIFF_MAX_TMP = model.NewIntVar(*sigma_bounds, f'floor_diff_max_tmp_{g.sig}')
+      model.Add(FLOOR_DIFF_MAX_TMP == T1_XOR_SIGMA-ABS_MAX-1)
       FLOOR_DIFF_MAX = model.NewIntVar(*sigma_bounds, f'floor_diff_max_{g.sig}')
-      model.AddDivisionEquality(FLOOR_DIFF_MAX, T1_XOR_SIGMA-ABS_MAX-1, NPH)
+      model.AddDivisionEquality(FLOOR_DIFF_MAX, FLOOR_DIFF_MAX_TMP, NPH)
       
       MIN_FLAG = model.NewBoolVar(f'min_flag_{g.sig}')
-      model.AddBoolAnd(MED_MIN_diff == 0, FLOOR_DIFF_MIN == 0).OnlyEnforceIf(MIN_FLAG)
+      model.Add(  MED_MIN_diff == 0).OnlyEnforceIf(MIN_FLAG)
+      model.Add(FLOOR_DIFF_MIN == 0).OnlyEnforceIf(MIN_FLAG)
       
       MED_FLAG = model.NewBoolVar(f'med_flag_{g.sig}')
-      model.AddBoolAnd(MAX_MED_diff == 0, FLOOR_DIFF_MED == 0).OnlyEnforceIf(MED_FLAG)
+      model.Add(  MAX_MED_diff == 0).OnlyEnforceIf(MED_FLAG)
+      model.Add(FLOOR_DIFF_MED == 0).OnlyEnforceIf(MED_FLAG)
       
       # place 
       for g_sig in sibling_list.values():
@@ -275,6 +292,8 @@ if __name__ == "__main__":
       expr.append( MED_FLAG )
       
       already_processed.extend(sibling_list.values())
+    else:
+      raise ValueError(f"{g}\nUnsupported gate type")
       
   model.Minimize(sum(expr))
 

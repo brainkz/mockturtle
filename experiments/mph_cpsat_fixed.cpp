@@ -508,7 +508,8 @@ int main(int argc, char* argv[])  //
 
   #pragma region benchmark_parsing
     // *** BENCHMARKS OF INTEREST ***
-    auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
+    // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
+    auto benchmarks1 = epfl_benchmarks( experiments::adder );
     auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
     benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
@@ -525,7 +526,7 @@ int main(int argc, char* argv[])  //
     // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
     const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
     benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
-    std::reverse(benchmarks1.begin(), benchmarks1.end());
+    // std::reverse(benchmarks1.begin(), benchmarks1.end());
 
     // *** LIST ALL CONSIDERED BENCHMARKS ***
     fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));

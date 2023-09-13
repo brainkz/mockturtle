@@ -30,6 +30,7 @@ typedef kitty::static_truth_table<4u> TT4;
 typedef kitty::static_truth_table<3u> TT3;
 typedef kitty::static_truth_table<2u> TT2;
 typedef kitty::static_truth_table<1u> TT1;
+// typedef kitty::dynamic_truth_table    DTT;
 
 constexpr US fDFF   = 0;
 constexpr US fNOT   = 1;
@@ -52,6 +53,7 @@ constexpr US fNOFUNC= 99;
 constexpr std::array<int,12> COSTS_CONNECT_CONSERVATIVE = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
 constexpr std::array<int,12> COSTS_CONNECT_PESSIMISTIC_3IN = {6, 9, 7, 7, 7, 11, 10, 10, 10, 7, 3, 0};
 constexpr std::array<int,12> COSTS_SUNMAGNETICS = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0};
+constexpr std::array<int,13> COSTS_SUNMAGNETICS_EXTENDED = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0, 25};
 
 constexpr UI kNumThreads = 100;
 
@@ -1444,7 +1446,6 @@ bool LoadFromFile(phmap::flat_hash_map<uint64_t, Node>& map, const std::string& 
       // fmt::print("Loading: {}\n", node.to_str());
       map.emplace( std::move(node).hash, std::move(node) );
     }
-    fmt::print("\n");
     infile.close();
     chunk_id++;
   }

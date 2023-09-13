@@ -19,13 +19,15 @@ typedef mockturtle::mig_network   mig;
 typedef mockturtle::aig_network   aig;
 typedef uint64_t node_t;
 
-enum GateType : uint8_t {
+enum GateType : uint8_t 
+{
     PI_GATE = 0u,
     AA_GATE = 1u,
     AS_GATE = 2u,
     SA_GATE = 3u,
     T1_GATE = 4u
 };
+
 const std::vector<std::string> GATE_TYPE { "PI", "AA", "AS", "SA", "T1" }; //, "PO"
 
 union NodeData 
@@ -318,6 +320,38 @@ glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & no
 
   return phase;
 }
+
+/// @brief Assigns stages to nodes based on stage assignment. If the assignment is not found, assigns a stage greedily
+/// @param ntk 
+/// @param n_phases 
+/// @param phase_assignment 
+/// @param verbose 
+void assign_sigma(const klut & ntk, const phmap::flat_hash_map<unsigned int, unsigned int> & phase_assignment, const bool verbose = false)
+{
+  mockturtle::topo_view<klut> ntk_topo ( ntk );
+
+  ntk_topo.foreach_node([&] ( const klut::signal & node ) 
+  {
+    if ( ntk_topo.is_constant( node ) )
+    {
+      return;
+    }
+
+
+    if (phase_assignment.count(node) != 0) // there is a precalculated phase assignment
+    {
+      uint8_t node_type = NodeData( ntk.value( node ) ).type;
+
+      NodeData node_data;
+      node_data.type = node_type;
+      node_data.sigma = phase_assignment.at( node );
+
+      ntk.set_value(node, node_data.value);
+      DEBUG_PRINT("{} GATE {}:\n", GATE_TYPE.at(node_type), node);
+    }
+  });
+}
+
 
 /// @brief Assigns stages to nodes based on stage assignment. If the assignment is not found, assigns a stage greedily
 /// @param ntk 
@@ -693,10 +727,7 @@ void write_klut_specs(const klut & ntk, const std::string & filename)
   });
 }
 
-void write_klut_specs_T1(const klut & ntk, 
-const phmap::flat_hash_map<klut::signal, std::vector<klut::signal>> & cut_leaves, 
-const phmap::flat_hash_map<klut::signal, klut::signal> & representatives, 
-const std::string & filename)
+void write_klut_specs_T1(const klut & ntk, const phmap::flat_hash_map<klut::signal, std::vector<klut::signal>> & cut_leaves, const phmap::flat_hash_map<klut::signal, klut::signal> & representatives, const std::string & filename)
 {
   auto ntk_fo = mockturtle::fanout_view<klut, false>( ntk );
   std::ofstream spec_file (filename);
@@ -733,7 +764,7 @@ std::vector<Path> extract_paths(const klut & ntk, bool verbose = false)
     DEBUG_PRINT("\t\t[i] PROCESSING NODE {}\n", fo_node);
     if (ntk.is_constant(fo_node) || ntk.is_pi(fo_node))
     {
-      DEBUG_PRINT("\t\t\t[NODE {}] the node is IS CONSTANT\n", fo_node);
+      DEBUG_PRINT("\t\t\t[NODE {}] the node is CONSTANT/PI\n", fo_node);
       return;
     }
     NodeData fo_node_data = ntk.value(fo_node);
@@ -887,6 +918,11 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
     if (ntk.is_constant(fo_node) || ntk.is_pi(fo_node))
     {
       DEBUG_PRINT("\t\t\t[NODE {}] the node is IS CONSTANT\n", fo_node);
+      return;
+    }
+    if ( ntk.is_dangling( fo_node ) ) 
+    {
+      DEBUG_PRINT("\t\t\t[NODE {}] the node is dangling, skipping\n", fo_node);
       return;
     }
     NodeData fo_node_data = ntk.value(fo_node);
@@ -1169,9 +1205,17 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
         dff.parent_hashes.emplace(dff_hashes[i-1]);
       }
 
-      // TODO : make sure that the inverted fanins of the T1 cell are placed at least one stage away from the fanin
       // ensure that the SA gate is placed at least one stage after the fanin 
       if (fo_data.type == SA_GATE)
+      {
+        //(there has to be at least one DFF)
+        assert( !dff_hashes.empty() );
+        // The last DFF in the chain is required
+        required_SA_DFFs.push_back(dff_hashes.back());
+      }
+      // TODO : make sure that the inverted fanins of the T1 cell are placed at least one stage away from the fanin
+      // ensure that the T1 gate is placed at least one stage after the inverted fanin 
+      if (fo_data.type == T1_GATE)
       {
         //(there has to be at least one DFF)
         assert( !dff_hashes.empty() );
