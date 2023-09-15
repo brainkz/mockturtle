@@ -169,6 +169,11 @@ protected:
     kitty::create_from_words( tt_xor3, &_xor3, &_xor3 + 1 );
     _storage->data.cache.insert( tt_xor3 );
 
+    static uint64_t _or3 = 0xfe;
+    kitty::dynamic_truth_table tt_or3( 3 );
+    kitty::create_from_words( tt_or3, &_or3, &_or3 + 1 );
+    _storage->data.cache.insert( tt_or3 );
+
     /* truth tables for constants */
     _storage->nodes[0].data[1].h1 = 0;
     _storage->nodes[1].data[1].h1 = 1;
@@ -308,6 +313,11 @@ public:
   signal create_xor3( signal a, signal b, signal c, const uint32_t ID = 0 )
   {
     return _create_node( { a, b, c }, 18, ID );
+  }
+
+  signal create_or3( signal a, signal b, signal c, const uint32_t ID = 0 )
+  {
+    return _create_node( { a, b, c }, 20, ID );
   }
 #pragma endregion
 

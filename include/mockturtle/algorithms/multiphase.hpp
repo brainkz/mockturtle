@@ -709,6 +709,19 @@ std::vector<klut::signal> get_fanins(const klut & ntk, const klut::signal & fo_n
   }
 }
 
+/* the version of 'get_fanins' that does not distinguish T1 gates from others */
+std::vector<klut::signal> get_fanins_unified( klut const& ntk, klut::signal const& n )
+{
+  std::vector<klut::signal> fanins;
+  ntk.foreach_fanin( n, [&]( klut::signal const& ni )
+  {
+    if ( !ntk.is_dangling( ni ) )
+    {
+      fanins.push_back( ni );
+    }
+  } );
+}
+
 void write_klut_specs(const klut & ntk, const std::string & filename)
 {
   auto ntk_fo = mockturtle::fanout_view<klut, false>( ntk );
@@ -858,7 +871,7 @@ std::vector<Path> extract_paths(const klut & ntk, bool verbose = false)
   return paths;
 }
 
-void buildPath(const klut & ntk, Path & node_path, std::vector<klut::signal> stack, const phmap::flat_hash_map<klut::signal, std::vector<klut::signal>> & cut_leaves, const bool verbose = false)
+void buildPath(const klut & ntk, Path & node_path, std::vector<klut::signal> stack, const bool verbose = false)
 {
   std::set<klut::signal> seen;
   while (!stack.empty())
@@ -891,7 +904,10 @@ void buildPath(const klut & ntk, Path & node_path, std::vector<klut::signal> sta
 
       ntk.foreach_fanin(n, [&](const klut::signal & sig)
       {
-        stack.push_back( sig );
+        if ( !ntk.is_dangling( sig ) )
+        {
+          stack.push_back( sig );
+        }  
       });
     }
     else
@@ -907,11 +923,12 @@ void buildPath(const klut & ntk, Path & node_path, std::vector<klut::signal> sta
 /// @param ntk 
 /// @param verbose 
 /// @return 
-std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<klut::signal, std::vector<klut::signal>> & cut_leaves, const phmap::flat_hash_map<klut::signal, klut::signal> & representatives, bool verbose = false)
+std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<klut::signal, klut::signal> & representatives, bool verbose = false)
 {
   DEBUG_PRINT("\t[i] ENTERED FUNCTION extract_paths\n");
   std::vector<Path> paths;
 
+  /* TO CONFIRM: better to call 'foreach_node' on topo_view? */
   ntk.foreach_node([&](const klut::signal & fo_node)
   {
     DEBUG_PRINT("\t\t[i] PROCESSING NODE {}\n", fo_node);
@@ -949,8 +966,8 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
 
       Path node_path;
       node_path.targets.emplace( fo_node );
-      std::vector<klut::signal> stack { get_fanins(ntk, fo_node, cut_leaves) };
-      buildPath(ntk, node_path, stack, cut_leaves, true);
+      std::vector<klut::signal> stack { get_fanins_unified( ntk, fo_node ) };
+      buildPath(ntk, node_path, stack, true);
       paths.push_back(node_path);
     }
     else if (fo_node_data.type == AS_GATE || fo_node_data.type == SA_GATE)
@@ -959,9 +976,11 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
       node_path.targets.emplace( fo_node );
       ntk.foreach_fanin( fo_node, [&] (const klut::signal & fi_node) 
       {
-        std::vector<klut::signal> stack { fi_node };
-        buildPath(ntk, node_path, stack, cut_leaves, true);
-        paths.push_back(node_path);
+        if ( !ntk.is_dangling( fi_node ) ){
+          std::vector<klut::signal> stack { fi_node };
+          buildPath(ntk, node_path, stack, true);
+          paths.push_back(node_path);
+        }
       });
     }
     else
@@ -971,18 +990,17 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
     }
   });
 
-  // TODO: NEED FUNCTION TO MERGE THE PATHS
-  // // Identify overlapping paths
-  // std::vector<size_t> to_merge;
-  // for (size_t i = 0u; i < paths.size(); ++i)
-  // {
-  //   Path & known_paths = paths[i];
-  //   // merge if there are sources in common
-  //   if( haveCommonElements( known_paths.sources, node_path.sources) )
-  //   {
-  //     to_merge.push_back(i);
-  //   }
-  // }
+  // Identify overlapping paths
+  std::vector<size_t> to_merge;
+  for (size_t i = 0u; i < paths.size(); ++i)
+  {
+    Path & known_paths = paths[i];
+    // merge if there are sources in common
+    if( haveCommonElements( known_paths.sources, node_path.sources) )
+    {
+      to_merge.push_back(i);
+    }
+  }
 
   return paths;
 }
@@ -1033,13 +1051,17 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(
     NodeData fo_data { ntk.value( fo_node ) };
 
     // AS gates and T1 gate are clocked, so one needs to start one stage earlier
-    uint32_t latest_sigma = fo_data.sigma - (fo_data.type == AS_GATE);
+    uint32_t latest_sigma = fo_data.sigma - (fo_data.type == AS_GATE || fo_data.type == T1_GATE);
     DEBUG_PRINT("[DFF] Analyzing child: {}({})[{}]\n", GATE_TYPE.at(fo_data.type), fo_node, (int)fo_data.sigma);
-
 
     ntk.foreach_fanin(fo_node, [&](const klut::signal & fi_node)
     {
+      if ( ntk.is_dangling( fi_node ) )
+      {
+        return true;
+      }
       NodeData fi_data { ntk.value( fi_node ) };
+      /* if fi_node is an AA gate, it is allowed to put a DFF at the phase that fi_node is assigned to */
       uint32_t earliest_sigma = fi_data.sigma + (fi_data.type != AA_GATE);
 
       DEBUG_PRINT("\t[DFF] Analyzing parent: {}({})[{}]\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma);
@@ -1058,7 +1080,7 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(
         {
           DEBUG_PRINT("\t[DFF] Straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_data.type), (int)fi_data.sigma, GATE_TYPE.at(fo_data.type), (int)fo_data.sigma);
           // straight chain, just floor the difference!
-          precalc_ndff += (fo_data.sigma - fi_data.sigma)/n_phases + (fo_data.type == SA_GATE); //extra DFF before SA gate
+          precalc_ndff += (fo_data.sigma - fi_data.sigma - 1)/n_phases + (fo_data.type == SA_GATE); //extra DFF before SA gate
         }
         return;
       }

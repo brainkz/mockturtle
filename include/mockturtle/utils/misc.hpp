@@ -108,12 +108,12 @@ Value getMaxValue(const std::unordered_map<Key, Value>& map)
 template <std::size_t ArrSize>
 struct ArrayHash
 {
-  size_t operator()(const std::array<uint32_t, ArrSize>& arr) const
+  size_t operator()(const std::array<uint64_t, ArrSize>& arr) const
   {
     size_t seed = 0;
-    for (uint32_t value : arr) 
+    for (uint64_t value : arr) 
     {
-      seed ^= value + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+      seed ^= value + 0x9e3779b97f4a7c55 + (seed << 6) + (seed >> 2);
     }
     return seed;
   }
