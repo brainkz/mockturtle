@@ -684,6 +684,9 @@ void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, con
 /// @param n_phases 
 /// @param verbose 
 /// @return 
+
+// TODO : make sure that the inverted fanins of the T1 cell are placed at least one stage away from the fanin
+// ensure that the T1 gate is placed at least one stage after the inverted fanin 
 std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry & DFF_REG, uint8_t n_phases, bool verbose = false)
 {
   std::vector<Snake> out_snakes; 
@@ -995,11 +998,11 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>
     return false;
   }
   /* update gate type for the committed T1 cells */
-  if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, T1_GATE ).value ); }
 
   updated_area -= gain;
 
@@ -1022,10 +1025,7 @@ void update_representative( klut const& ntk, klut::signal const& new_signal, klu
   {
     repr = new_signal;
   }
-  else
-  {
-    representatives.emplace( new_signal, repr );
-  }
+  representatives.emplace( new_signal, repr );
 }
 
 void update_network( klut& ntk, array_map<3, T1_OUTPUTS> const& t1_candidates, 
@@ -1154,7 +1154,7 @@ void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> c
   std::ofstream spec_file( filename );
 
   spec_file << "PI";
-  ntk.foreach_pi( [&] (const auto & noFTOde)
+  ntk.foreach_pi( [&] (const auto & node)
   {
     spec_file << "," << node;
   });
@@ -1517,7 +1517,7 @@ int main(int argc, char* argv[])  //
           // write_klut_specs_supporting_t1( network, t1_candidates, ilp_cfg_filename );
           write_klut_specs_supporting_t1_new( network, t1_candidates, ilp_cfg_filename, symbol2real );
 
-          continue;
+          //continue;
 
           fmt::print("\tCalling OR-Tools\n");
           auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
@@ -1546,8 +1546,11 @@ int main(int argc, char* argv[])  //
         fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
 
         fmt::print("[i] EXTRACTING PATHS\n");
-        // TODO : adapt to our structure
+        
         std::vector<Path> paths = extract_paths_t1( network, representatives, true );
+
+        continue;
+
         // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
 
         auto total_num_dff = 0u;

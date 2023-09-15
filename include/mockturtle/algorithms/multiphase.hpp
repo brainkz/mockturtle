@@ -715,10 +715,7 @@ std::vector<klut::signal> get_fanins( klut const& ntk, klut::signal const& n )
   std::vector<klut::signal> fanins;
   ntk.foreach_fanin( n, [&]( klut::signal const& ni )
   {
-    if ( !ntk.is_dangling( ni ) )
-    {
-      fanins.push_back( ni );
-    }
+    fanins.push_back( ni );
   } );
 }
 
@@ -924,12 +921,8 @@ void buildPath(const klut & ntk, Path & node_path, std::vector<klut::signal> sta
       DEBUG_PRINT("\t\t\tnode is INTERNAL adding fanins \n", n);
       node_path.internals.emplace( n );
 
-      ntk.foreach_fanin(n, [&](const klut::signal & sig)
-      {
-        if ( !ntk.is_dangling( sig ) )
-        {
-          stack.push_back( sig );
-        }  
+      ntk.foreach_fanin(n, [&](const klut::signal & sig){
+        stack.push_back( sig );
       });
     }
     else
@@ -987,7 +980,10 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
 
       Path node_path;
       node_path.targets.emplace( fo_node );
-      std::vector<klut::signal> stack { get_fanins( ntk, fo_node ) };
+      std::vector<klut::signal> stack;
+      ntk.foreach_fanin( fo_node, [&]( auto const& ni ) {
+        stack.push_back( ni );
+      } );
       buildPath(ntk, node_path, stack, true);
       merge_overlapping_paths( paths, node_path );
       paths.push_back(node_path);
@@ -996,15 +992,12 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
     {
       Path node_path;
       node_path.targets.emplace( fo_node );
-      ntk.foreach_fanin( fo_node, [&] (const klut::signal & fi_node) 
-      {
-        if ( !ntk.is_dangling( fi_node ) ){
-          std::vector<klut::signal> stack { fi_node };
-          buildPath(ntk, node_path, stack, true);
-          merge_overlapping_paths( paths, node_path );
-          paths.push_back(node_path);
-        }
-      });
+      ntk.foreach_fanin( fo_node, [&] (const klut::signal & fi_node) {
+        std::vector<klut::signal> stack { fi_node };
+        buildPath(ntk, node_path, stack, true);
+        merge_overlapping_paths( paths, node_path );
+        paths.push_back(node_path);
+      } );
     }
     else
     {
@@ -1067,11 +1060,6 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(
 
     ntk.foreach_fanin(fo_node, [&](const klut::signal & fi_node)
     {
-      if ( ntk.is_dangling( fi_node ) )
-      {
-        /* skip dangling fanins */
-        return;
-      }
       NodeData fi_data { ntk.value( fi_node ) };
       /* if fi_node is an AA gate, it is allowed to put a DFF at the phase that fi_node is assigned to */
       uint32_t earliest_sigma = fi_data.sigma + (fi_data.type != AA_GATE);
@@ -1141,8 +1129,6 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(
   }
   return std::make_tuple(DFF_REG, precalc_ndff, required_SA_DFFs);
 }
-
-
 
 /// @brief Create binary variables for DFF placement in a given path (with support of T1 cells)
 /// @param path - a path object to insert DFFs into
@@ -1247,15 +1233,7 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
         // The last DFF in the chain is required
         required_SA_DFFs.push_back(dff_hashes.back());
       }
-      // TODO : make sure that the inverted fanins of the T1 cell are placed at least one stage away from the fanin
-      // ensure that the T1 gate is placed at least one stage after the inverted fanin 
-      if (fo_data.type == T1_GATE)
-      {
-        //(there has to be at least one DFF)
-        assert( !dff_hashes.empty() );
-        // The last DFF in the chain is required
-        required_SA_DFFs.push_back(dff_hashes.back());
-      }
+
       // if there are DFFs, the earliest_hash is the first hash in the chain
       // otherwise, it is the earliest_hash of the previous chain
       uint64_t earliest_hash = (dff_hashes.empty()) ? earliest_child_hash : dff_hashes.front();
