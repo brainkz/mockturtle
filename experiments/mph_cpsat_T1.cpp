@@ -693,6 +693,8 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
   // get all DFFs 
   for (const auto & [hash, dff]: DFF_REG.variables)
   {
+    /* look for the DFFs closest to the targets of the current path */
+    /* (second closest, if the target is an AS gate)                */
     NodeData fo_data { ntk.value( dff.fanout ) };
     auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE );
     auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
@@ -1152,7 +1154,7 @@ void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> c
   std::ofstream spec_file( filename );
 
   spec_file << "PI";
-  ntk.foreach_pi( [&] (const auto & node)
+  ntk.foreach_pi( [&] (const auto & noFTOde)
   {
     spec_file << "," << node;
   });
@@ -1561,6 +1563,8 @@ int main(int argc, char* argv[])  //
           
           // *** Generate constraints
           std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, true);
+
+          /* If the target gate is a T1 gate, an extra constraint shall be added */
 
           fmt::print("\tCreated {} snakes\n", snakes.size());
           // *** If there's anything that needs optimization
