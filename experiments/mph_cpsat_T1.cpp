@@ -1229,7 +1229,7 @@ void write_klut_specs_supporting_t1_new( klut const& ntk, array_map<3, T1_OUTPUT
     {
       /* a dangling node due to the usage of T1 cells */
       fmt::print("Node {} is dangling\n", n);
-      profile_klut_node( ntk, n );
+      // profile_klut_node( ntk, n );
       return true;
     }
 

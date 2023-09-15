@@ -710,7 +710,7 @@ std::vector<klut::signal> get_fanins(const klut & ntk, const klut::signal & fo_n
 }
 
 /* the version of 'get_fanins' that does not distinguish T1 gates from others */
-std::vector<klut::signal> get_fanins_unified( klut const& ntk, klut::signal const& n )
+std::vector<klut::signal> get_fanins( klut const& ntk, klut::signal const& n )
 {
   std::vector<klut::signal> fanins;
   ntk.foreach_fanin( n, [&]( klut::signal const& ni )
@@ -871,6 +871,28 @@ std::vector<Path> extract_paths(const klut & ntk, bool verbose = false)
   return paths;
 }
 
+void merge_overlapping_paths( std::vector<Path>& paths, Path& current_path )
+{
+  /* identify overlapping paths that can be merged */
+  std::vector<size_t> index_to_merge;
+  for ( auto i{ 0u }; i < paths.size(); ++i )
+  {
+    Path& known_path = paths[i];
+    if ( haveCommonElements( known_path.sources, current_path.sources ) )
+    {
+      index_to_merge.push_back( i );
+    }
+  }
+
+  /* merge identified overlapping paths */
+  for ( auto it{ index_to_merge.rbegin() }; it != index_to_merge.rend(); ++it )
+  {
+    auto idx = *it;
+    current_path.absorb( paths[idx] );
+    paths.erase( paths.begin() + idx );
+  }
+}
+
 void buildPath(const klut & ntk, Path & node_path, std::vector<klut::signal> stack, const bool verbose = false)
 {
   std::set<klut::signal> seen;
@@ -928,8 +950,7 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
   DEBUG_PRINT("\t[i] ENTERED FUNCTION extract_paths\n");
   std::vector<Path> paths;
 
-  /* TO CONFIRM: better to call 'foreach_node' on topo_view? */
-  ntk.foreach_node([&](const klut::signal & fo_node)
+  mockturtle::topo_view<klut>( ntk ).foreach_node( [&](const klut::signal & fo_node)
   {
     DEBUG_PRINT("\t\t[i] PROCESSING NODE {}\n", fo_node);
     if (ntk.is_constant(fo_node) || ntk.is_pi(fo_node))
@@ -966,8 +987,9 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
 
       Path node_path;
       node_path.targets.emplace( fo_node );
-      std::vector<klut::signal> stack { get_fanins_unified( ntk, fo_node ) };
+      std::vector<klut::signal> stack { get_fanins( ntk, fo_node ) };
       buildPath(ntk, node_path, stack, true);
+      merge_overlapping_paths( paths, node_path );
       paths.push_back(node_path);
     }
     else if (fo_node_data.type == AS_GATE || fo_node_data.type == SA_GATE)
@@ -979,6 +1001,7 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
         if ( !ntk.is_dangling( fi_node ) ){
           std::vector<klut::signal> stack { fi_node };
           buildPath(ntk, node_path, stack, true);
+          merge_overlapping_paths( paths, node_path );
           paths.push_back(node_path);
         }
       });
@@ -988,19 +1011,7 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
       DEBUG_PRINT("\t\t\tSignal {}: {} is not recognized \n", fo_node, GATE_TYPE.at( fo_node_data.type ));
       throw "Unsupported case";
     }
-  });
-
-  // Identify overlapping paths
-  std::vector<size_t> to_merge;
-  for (size_t i = 0u; i < paths.size(); ++i)
-  {
-    Path & known_paths = paths[i];
-    // merge if there are sources in common
-    if( haveCommonElements( known_paths.sources, node_path.sources) )
-    {
-      to_merge.push_back(i);
-    }
-  }
+  } );
 
   return paths;
 }
@@ -1058,7 +1069,8 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(
     {
       if ( ntk.is_dangling( fi_node ) )
       {
-        return true;
+        /* skip dangling fanins */
+        return;
       }
       NodeData fi_data { ntk.value( fi_node ) };
       /* if fi_node is an AA gate, it is allowed to put a DFF at the phase that fi_node is assigned to */
