@@ -38,6 +38,7 @@
 #include <mockturtle/algorithms/rsfq/rsfq_network_conversion.hpp>
 #include <mockturtle/algorithms/rsfq/rsfq_path_balancing.hpp>
 
+#include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/multiphase.hpp>
 // #include <mockturtle/algorithms/compound_gate_mapping.hpp>
 
@@ -78,7 +79,7 @@
 
 
 template <size_t N, typename T>
-using array_map = phmap::flat_hash_map<std::array<uint32_t, N>, T, ArrayHash<N>>;
+using array_map = phmap::flat_hash_map<std::array<klut::node, N>, T, ArrayHash<N>>;
 
 // // Sunmagnetics Technology Library
 // constexpr std::array<int,12> COSTS_MAP = {7, 9, 8, 8, 12, 8, 999, 999, 999, 8, 3, 0};
@@ -369,9 +370,9 @@ struct T1_OUTPUTS
 };
 
 template <typename CutType>
-array_map<3, std::tuple<kitty::dynamic_truth_table, uint32_t>> match_cuts( const std::vector<TT3> & template_tts, const klut & ntk, const CutType & cuts)
+array_map<3, std::tuple<kitty::dynamic_truth_table, klut::node>> match_cuts( const std::vector<TT3> & template_tts, const klut & ntk, const CutType & cuts)
 {
-  array_map<3, std::tuple<kitty::dynamic_truth_table, uint32_t>> matching_cuts;
+  array_map<3, std::tuple<kitty::dynamic_truth_table, klut::node>> matching_cuts;
 
   ntk.foreach_node( [&]( const klut::signal & node ) 
   { 
@@ -386,21 +387,21 @@ array_map<3, std::tuple<kitty::dynamic_truth_table, uint32_t>> match_cuts( const
       const auto tt = cuts.truth_table( *cut_entry );
       if (std::find_if(template_tts.begin(), template_tts.end(), [&](const TT3 & template_tt){return tt._bits[0] == template_tt._bits;}) != template_tts.end())
       {
-        std::array<uint32_t,3> leaves;
+        std::array<klut::node,3> leaves;
         std::copy(cut_entry->begin(), cut_entry->end(), leaves.begin());
-        matching_cuts.emplace( leaves, std::make_tuple(tt, idx) );
+        matching_cuts.emplace( leaves, std::make_tuple(tt, node) );
       }
     }
   } );
   return matching_cuts;
 }
 
-void config_t1_ports_connection( klut const& ntk, const bool output_phase, const uint32_t target_node, klut::node& port, klut::node& inv_port )
+void config_t1_ports_connection( klut const& ntk, const bool output_phase, const klut::node target_node, klut::node& port, klut::node& inv_port )
 {
   if ( !output_phase )
   {
     /* connect the node to the output port */
-    port = ntk.index_to_node( target_node );
+    port = target_node;
     /* if (1) the target node is an inverter, and    */
     /* (2) its fanin node has more than one fanout,  */
     /* the fanin node of the target node shall be    */
@@ -417,7 +418,7 @@ void config_t1_ports_connection( klut const& ntk, const bool output_phase, const
   }
   else
   {
-    inv_port = ntk.index_to_node( target_node );
+    inv_port = target_node;
     if ( ntk.func_lit( target_node ) == 3 )
     {
       ntk.foreach_fanin( inv_port, [&port, &ntk]( auto const& ni ) {
@@ -432,9 +433,9 @@ void config_t1_ports_connection( klut const& ntk, const bool output_phase, const
 
 array_map<3, T1_OUTPUTS> find_t1_candidates( 
   const klut & ntk,
-  const array_map<3, std::tuple<kitty::dynamic_truth_table, uint32_t>>& xor3_cuts,
-  const array_map<3, std::tuple<kitty::dynamic_truth_table, uint32_t>>& maj3_cuts, 
-  const array_map<3, std::tuple<kitty::dynamic_truth_table, uint32_t>>& or3_cuts
+  const array_map<3, std::tuple<kitty::dynamic_truth_table, klut::node>>& xor3_cuts,
+  const array_map<3, std::tuple<kitty::dynamic_truth_table, klut::node>>& maj3_cuts, 
+  const array_map<3, std::tuple<kitty::dynamic_truth_table, klut::node>>& or3_cuts
 ) 
 {
   array_map<3, T1_OUTPUTS> t1_candidates;
@@ -482,7 +483,6 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
         inv_cbar_to  != ntk.get_constant( false ), 
         sum_to       != ntk.get_constant( false ), 
         carry_to     != ntk.get_constant( false ), 
-        // ??? equality ???
         cbar_to      != ntk.get_constant( false ), 
         sum_to, carry_to, inv_carry_to, cbar_to, inv_cbar_to ) );
       break;
@@ -693,10 +693,12 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
   // get all DFFs 
   for (const auto & [hash, dff]: DFF_REG.variables)
   {
+    /* look for the DFFs closest to the targets of the current path */
+    /* (second closest, if the target is an AS gate)                */
     NodeData fo_data { ntk.value( dff.fanout ) };
     auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE );
     auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
-    if (it != path.targets.end() && (dff.sigma >= fanout_sigma ))
+    if (it != path.targets.end() && ( ( fanout_sigma < 0 ) || ( ( fanout_sigma >= 0 ) && ( dff.sigma >= static_cast<uint32_t>( fanout_sigma ) ) ) ))
     {
       stack.emplace_back( hash );
     }
@@ -918,19 +920,20 @@ uint32_t get_node_cost( const uint32_t gate_type )
   }
 }
 
-uint32_t deref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint32_t n )
+uint32_t deref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::node n )
 {
-  /* return the number of nodes in the original cut that can be removed, */
-  /* if the function of current cut is implemented using an T1 cell,     */
-  /* i.e., the MFFC size                                                 */
-  if ( auto it_find = std::find( leaves.begin(), leaves.end(), n ); it_find != leaves.end() )
+  /* return the total cost of nodes in the original cut that can be      */
+  /* removed, if implemented using an T1 cell                            */
+  if ( std::find( leaves.begin(), leaves.end(), n ) != leaves.end() )
   {
     return 0u;
   }
 
   uint32_t gain = get_node_cost( ntk.func_lit( n ) );
   ntk.foreach_fanin( n, [&]( auto const& ni ) {
-    if ( ntk.decr_fanout_size( ni ) == 0 )
+    /* skip fanins that are leaves */
+    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+         ( ntk.decr_fanout_size( ni ) == 0 ) )
     {
       gain += deref_node( ntk, leaves, ntk.node_to_index( ni ) );
     }
@@ -945,7 +948,7 @@ uint32_t deref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint
   return gain;
 }
 
-void reref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint32_t n )
+void reref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::node n )
 {
   /* the inverse process of 'deref_root_node', invoked if the T1 cell    */
   /* based implementation turns out to be more expensive                 */
@@ -955,32 +958,36 @@ void reref_node( klut& ntk, const std::array<uint32_t, 3> leaves, const uint32_t
   }
 
   ntk.foreach_fanin( n, [&]( auto const& ni ) {
-    reref_node( ntk, leaves, ntk.node_to_index( ni ) );
+    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+         ( ntk.incr_fanout_size( ni ) == 0 ) )
+    {
+      reref_node( ntk, leaves, ntk.node_to_index( ni ) );
+    }
   } );
 }
 
-bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<uint32_t, 3>, T1_OUTPUTS>& t1_candidate, int64_t& updated_area )
+bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>, T1_OUTPUTS>& t1_candidate, int64_t& updated_area )
 {
   int32_t gain{ 0 };
-  const std::array<uint32_t, 3> leaves = std::get<0>( t1_candidate );
+  const std::array<klut::node, 3> leaves = std::get<0>( t1_candidate );
   T1_OUTPUTS& t1_outputs = std::get<1>( t1_candidate );
-  std::array<uint32_t, 3> roots;
+  std::array<klut::node, 3> roots;
   roots[0] = ntk.node_to_index( t1_outputs.sum_to );
   roots[1] = std::max( ntk.node_to_index( t1_outputs.carry_to ), ntk.node_to_index( t1_outputs.inv_carry_to ) );
   roots[2] = std::max( ntk.node_to_index(  t1_outputs.cbar_to ), ntk.node_to_index(  t1_outputs.inv_cbar_to ) );
 
-  for ( const uint32_t root : roots )
+  for ( const klut::node root : roots )
   {
-    if ( root != ntk.node_to_index( ntk.get_constant( false ) ) )
+    if ( root != ntk.get_constant( false ) )
     {
       gain += static_cast<int32_t>( deref_node( ntk, leaves, root ) );
     }
   }
   gain -= static_cast<int32_t>( __builtin_popcount( t1_outputs.in_phase ) * ( COSTS_MAP[fNOT] - COSTS_MAP[fDFF] ) );
 
-  if ( gain -= static_cast<int32_t>( COSTS_MAP[fFA] ); gain < 0 )
+  if ( gain -= static_cast<int32_t>( COSTS_SUNMAGNETICS_EXTENDED[fT1] ); gain < 0 )
   {
-    for ( const uint32_t root : roots )
+    for ( const auto root : roots )
     {
       reref_node( ntk, leaves, root );
     }
@@ -999,6 +1006,143 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<uint32_t, 3>, 
   return true;
 }
 
+void substitute_node( klut& ntk, klut::node const& old_node, klut::signal const& new_signal )
+{
+  NodeData old_node_data = ntk.value( old_node );
+  ntk.set_value( new_signal, NodeData( old_node_data.sigma, T1_GATE ).value );
+  ntk.substitute_node( old_node, new_signal );
+  fmt::print( "[i] Substitute {} with {}\n", old_node, new_signal );
+}
+
+void update_representative( klut const& ntk, klut::signal const& new_signal, klut::signal& repr, 
+                            phmap::flat_hash_map<klut::signal, klut::signal>& representatives )
+{
+  /* the first non-dangling output port is selected as the representitive */
+  if ( repr == ntk.get_constant( false ) )
+  {
+    repr = new_signal;
+  }
+  else
+  {
+    representatives.emplace( new_signal, repr );
+  }
+}
+
+void update_network( klut& ntk, array_map<3, T1_OUTPUTS> const& t1_candidates, 
+                     phmap::flat_hash_map<klut::signal, klut::node>& representatives, 
+                     phmap::flat_hash_map<klut::signal, klut::node>& symbol2real )
+{
+  for ( auto const& t1_candidate : t1_candidates )
+  {
+    auto const& leaves = std::get<0>( t1_candidate );
+    auto const& t1_outputs = std::get<1>( t1_candidate );
+    klut::node repr = ntk.get_constant( false );
+
+    if ( t1_outputs.has_sum )
+    {
+      const auto new_signal = ntk.create_xor3( leaves[0], leaves[1], leaves[2] );
+      fmt::print( "[i] Created SUM: {} = XOR3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
+      update_representative( ntk, new_signal, repr, representatives );
+      symbol2real.emplace( t1_outputs.sum_to, new_signal );
+    }
+    if ( t1_outputs.has_carry )
+    {
+      const auto new_signal = ntk.create_maj( leaves[0], leaves[1], leaves[2], 0 );
+      fmt::print( "[i] Created CARRY: {} = MAJ3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
+      update_representative( ntk, new_signal, repr, representatives  );
+      symbol2real.emplace( t1_outputs.carry_to, new_signal );
+    }
+    if ( t1_outputs.has_carry_inverted )
+    {
+      const auto new_signal = ntk.create_maj( leaves[0], leaves[1], leaves[2], 1 );
+      fmt::print( "[i] Created CARRY_INV: {} = MAJ3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
+      update_representative( ntk, new_signal, repr, representatives );
+      symbol2real.emplace( t1_outputs.inv_carry_to, new_signal );
+    }
+    if ( t1_outputs.has_cbar )
+    {
+      const auto new_signal = ntk.create_or3( leaves[0], leaves[1], leaves[2], 0 );
+      fmt::print( "[i] Created CBAR: {} = OR3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
+      update_representative( ntk, new_signal, repr, representatives );
+      symbol2real.emplace( t1_outputs.cbar_to, new_signal );
+    }
+    if ( t1_outputs.has_cbar_inverted )
+    {
+      const auto new_signal = ntk.create_or3( leaves[0], leaves[1], leaves[2], 1 );
+      fmt::print( "[i] Created CBAR_INV: {} = OR3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
+      update_representative( ntk, new_signal, repr, representatives );
+      symbol2real.emplace( t1_outputs.inv_cbar_to, new_signal );
+    }
+  }
+
+  /* since the enumeration of all T1 cells are performed in an unordered manner, */
+  /* the nodes creation and substitution have to be handled seperately           */
+  for ( auto const& t1_candidate : t1_candidates )
+  {
+    T1_OUTPUTS const& t1_outputs = std::get<1>( t1_candidate );
+
+    if ( t1_outputs.has_sum )
+    {
+      substitute_node( ntk, t1_outputs.sum_to, symbol2real.at( t1_outputs.sum_to ) );
+    }
+    if ( t1_outputs.has_carry )
+    {
+      substitute_node( ntk, t1_outputs.carry_to, symbol2real.at( t1_outputs.carry_to ) );
+    }
+    if ( t1_outputs.has_carry_inverted )
+    {
+      substitute_node( ntk, t1_outputs.inv_carry_to, symbol2real.at( t1_outputs.inv_carry_to ) );
+    }
+    if ( t1_outputs.has_cbar )
+    {
+      substitute_node( ntk, t1_outputs.cbar_to, symbol2real.at( t1_outputs.cbar_to ) );
+    }
+    if ( t1_outputs.has_cbar_inverted )
+    {
+      substitute_node( ntk, t1_outputs.inv_cbar_to, symbol2real.at( t1_outputs.inv_cbar_to ) );
+    }
+  }
+
+  //ntk = mockturtle::cleanup_dangling( ntk );
+}
+
+/* this function is merely for debugging and can be removed */
+std::string get_gate_type( const uint32_t gate_type )
+{
+  switch( gate_type )
+  {
+  case 3:
+    return "a NOT gate";
+  case 4:
+    return "an AND gate";
+  case 6:
+    return "an OR gate";
+  case 12:
+    return "an XOR gate";
+  default:
+    return "an unknown gate with the functional literal of " + std::to_string( gate_type );
+  }
+}
+
+/* this function is merely for debugging and can be removed */
+void profile_klut_node( klut const& ntk, klut::node const& n )
+{
+  mockturtle::fanout_view<klut, false> ntk_fanout{ ntk };
+  fmt::print( "Profiling Node {} :\n", n );
+  fmt::print( "\tGate type : {}\n", get_gate_type( ntk.func_lit( n ) ) );
+  fmt::print( "\tFanins : " );
+  /* notice that 'signal' and 'node' are the same concept in KLUTs */
+  ntk.foreach_fanin( n, []( auto const& ni ) {
+    fmt::print( "Node {}  ", ni );
+  } );
+  fmt::print( "\n" );
+  fmt::print( "\tFanouts ( Size = {} ): ", ntk.fanout_size( n ) );
+  ntk_fanout.foreach_fanout( n, []( auto const& no ) {
+    fmt::print( "Node {}  ", no );
+  } );
+  fmt::print( "\n" );
+}
+
 void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> const& t1s, std::string const& filename )
 {
   std::set<klut::signal> t1_inputs;
@@ -1010,7 +1154,7 @@ void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> c
   std::ofstream spec_file( filename );
 
   spec_file << "PI";
-  ntk.foreach_pi( [&] (const auto & node)
+  ntk.foreach_pi( [&] (const auto & noFTOde)
   {
     spec_file << "," << node;
   });
@@ -1034,8 +1178,8 @@ void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> c
 
     fmt::print("Node {} is a regular node\n", n);
 
-    std::vector<uint32_t> n_fanins;
-    ntk.foreach_fanin( n, [&ntk, &n_fanins]( auto const& ni ) {
+    std::vector<klut::node> n_fanins;
+    ntk.foreach_fanin( n, [&n_fanins]( auto const& ni ) {
       /* notice that 'signal' and 'node' are equal    */
       /* in kluts                                     */
       // n_fanins.push_back( ntk.node_to_index( ni ) );
@@ -1051,20 +1195,89 @@ void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> c
   /* the csv file                                      */
   for ( auto const& t1 : t1s )
   {
-    /* the 5 output ports are in the order of: sum,   */
-    /* carry, inverted carry, cbar, and inverted cbar */
-    std::vector<uint32_t> output_ports( 5, 0u );
-    output_ports[0] = ntk.node_to_index(       t1.second.sum_to );
-    output_ports[1] = ntk.node_to_index(     t1.second.carry_to );
-    output_ports[2] = ntk.node_to_index( t1.second.inv_carry_to );
-    output_ports[3] = ntk.node_to_index(      t1.second.cbar_to );
-    output_ports[4] = ntk.node_to_index(  t1.second.inv_cbar_to );
+    /* the 5 output ports are in the order of: sum,    */
+    /* carry, inverted carry, cbar, and inverted cbar  */
+    std::vector<klut::node> output_ports( 5, 0u );
+    output_ports[0] =       t1.second.sum_to;
+    output_ports[1] =     t1.second.carry_to;
+    output_ports[2] = t1.second.inv_carry_to;
+    output_ports[3] =      t1.second.cbar_to;
+    output_ports[4] =  t1.second.inv_cbar_to;
 
-    /* combine input phases with input ports          */
+    /* combine input phases with input ports           */
     std::array<std::string, 3> input_ports;
     input_ports[0] = ( ( t1.second.in_phase >> 0 & 1 ) ? "~" : "" ) + std::to_string( t1.first[0] );
     input_ports[1] = ( ( t1.second.in_phase >> 1 & 1 ) ? "~" : "" ) + std::to_string( t1.first[1] );
     input_ports[2] = ( ( t1.second.in_phase >> 2 & 1 ) ? "~" : "" ) + std::to_string( t1.first[2] );
+
+    spec_file << fmt::format( "{0},{1},{2}\n", fmt::join( output_ports, "|" ), 4u, fmt::join( input_ports, "|" ) );
+  }
+}
+
+void write_klut_specs_supporting_t1_new( klut const& ntk, array_map<3, T1_OUTPUTS> const& t1s, std::string const& filename, 
+                                         phmap::flat_hash_map<klut::signal, klut::signal> const& symbol2real )
+{
+  std::ofstream spec_file( filename );
+
+  spec_file << "PI";
+  ntk.foreach_pi( [&]( const auto & node ){
+    spec_file << "," << node;
+  } );
+  spec_file << "\n";
+
+  ntk.foreach_gate( [&]( auto const& n ) 
+  {
+    if ( ntk.is_dangling( n ) )
+    {
+      /* a dangling node due to the usage of T1 cells */
+      fmt::print("Node {} is dangling\n", n);
+      // profile_klut_node( ntk, n );
+      return true;
+    }
+
+    if ( static_cast<NodeData>( ntk.value( n ) ).type == T1_GATE )
+    {
+      fmt::print("Node {} is T1 output\n", n);
+      /* T1 cells would be handled together later     */
+      return true;
+    }
+
+    fmt::print("Node {} is a regular node\n", n);
+
+    std::vector<klut::node> n_fanins;
+    ntk.foreach_fanin( n, [&n_fanins]( auto const& ni ) {
+      /* notice that 'signal' and 'node' are equal    */
+      /* in kluts                                     */
+      // n_fanins.push_back( ntk.node_to_index( ni ) );
+      n_fanins.push_back( ni );
+    } );
+
+    spec_file << fmt::format( "{0},{1},{2}\n", n, static_cast<NodeData>( ntk.value( n ) ).type, fmt::join( n_fanins, "|" ) );
+    // spec_file << fmt::format( "{0},{1},{2}\n", ntk.node_to_index( n ), static_cast<NodeData>( ntk.value( n ) ).type, fmt::join( n_fanins, "|" ) );
+    return true;
+  } );
+
+  /* write information of the committed T1 cells into  */
+  /* the csv file                                      */
+  for ( auto const& t1 : t1s )
+  {
+    auto const& leaves = std::get<0>( t1 );
+    auto const& t1_outputs = std::get<1>( t1 );
+
+    /* the 5 output ports are in the order of: sum,    */
+    /* carry, inverted carry, cbar, and inverted cbar  */
+    std::vector<klut::node> output_ports( 5, 0u );
+    output_ports[0] = ntk.node_to_index( (       t1_outputs.sum_to == ntk.get_constant( false ) ) ? ntk.get_constant( false ) : symbol2real.at(       t1_outputs.sum_to ) );
+    output_ports[1] = ntk.node_to_index( (     t1_outputs.carry_to == ntk.get_constant( false ) ) ? ntk.get_constant( false ) : symbol2real.at(     t1_outputs.carry_to ) );
+    output_ports[2] = ntk.node_to_index( ( t1_outputs.inv_carry_to == ntk.get_constant( false ) ) ? ntk.get_constant( false ) : symbol2real.at( t1_outputs.inv_carry_to ) );
+    output_ports[3] = ntk.node_to_index( (      t1_outputs.cbar_to == ntk.get_constant( false ) ) ? ntk.get_constant( false ) : symbol2real.at(      t1_outputs.cbar_to ) );
+    output_ports[4] = ntk.node_to_index( (  t1_outputs.inv_cbar_to == ntk.get_constant( false ) ) ? ntk.get_constant( false ) : symbol2real.at(  t1_outputs.inv_cbar_to ) );
+
+    /* combine input phases with input ports           */
+    std::array<std::string, 3> input_ports;
+    input_ports[0] = ( ( t1.second.in_phase >> 0 & 1 ) ? "~" : "" ) + std::to_string( ( symbol2real.count( leaves[0] ) ) ? symbol2real.at( leaves[0] ) : leaves[0] );
+    input_ports[1] = ( ( t1.second.in_phase >> 1 & 1 ) ? "~" : "" ) + std::to_string( ( symbol2real.count( leaves[1] ) ) ? symbol2real.at( leaves[1] ) : leaves[1] );
+    input_ports[2] = ( ( t1.second.in_phase >> 2 & 1 ) ? "~" : "" ) + std::to_string( ( symbol2real.count( leaves[2] ) ) ? symbol2real.at( leaves[2] ) : leaves[2] );
 
     spec_file << fmt::format( "{0},{1},{2}\n", fmt::join( output_ports, "|" ), 4u, fmt::join( input_ports, "|" ) );
   }
@@ -1111,6 +1324,10 @@ int main(int argc, char* argv[])  //
   {
     PHASES.push_back(std::stoi(argv[i]));
   }
+  if ( PHASES.empty() )
+  {
+    PHASES.push_back( 7 );
+  }
   fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
 
   fmt::print( "[i] processing technology library\n" );
@@ -1132,7 +1349,7 @@ int main(int argc, char* argv[])  //
   #pragma region benchmark_parsing
     // *** BENCHMARKS OF INTEREST ***
     // experiments::adder | experiments::div  | 
-    auto benchmarks1 = epfl_benchmarks( experiments::adder  | experiments::multiplier );
+    auto benchmarks1 = epfl_benchmarks( experiments::adder );//  | experiments::multiplier );
     // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
     // auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
     // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
@@ -1226,7 +1443,6 @@ int main(int argc, char* argv[])  //
     fmt::print("Decomposition complete\n");
     #pragma endregion
 
-    // TODO: To be replaced with Mingfei's code
     #pragma region cut enumeration to find TTs that could be shared with a T1 cell
     // *** ENUMERATE 3-CUTS ***
     cut_enumeration_params ce_params; 
@@ -1272,6 +1488,11 @@ int main(int argc, char* argv[])  //
         ++it_t1_cands;
       }
     }
+
+    phmap::flat_hash_map<klut::signal, klut::signal> representatives;
+    phmap::flat_hash_map<klut::signal, klut::signal> symbol2real;
+    update_network( klut_decomposed, t1_candidates, representatives, symbol2real );
+
     #pragma endregion
 
     // start processing each possible number of phases
@@ -1293,7 +1514,10 @@ int main(int argc, char* argv[])  //
           const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
           fmt::print("\tWriting config {}\n", ilp_cfg_filename);
           // write_klut_specs(network, ilp_cfg_filename);
-          write_klut_specs_supporting_t1( network, t1_candidates, ilp_cfg_filename );
+          // write_klut_specs_supporting_t1( network, t1_candidates, ilp_cfg_filename );
+          write_klut_specs_supporting_t1_new( network, t1_candidates, ilp_cfg_filename, symbol2real );
+
+          continue;
 
           fmt::print("\tCalling OR-Tools\n");
           auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
@@ -1323,7 +1547,7 @@ int main(int argc, char* argv[])  //
 
         fmt::print("[i] EXTRACTING PATHS\n");
         // TODO : adapt to our structure
-        std::vector<Path> paths = extract_paths_t1( network, true );
+        std::vector<Path> paths = extract_paths_t1( network, representatives, true );
         // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
 
         auto total_num_dff = 0u;
@@ -1339,6 +1563,8 @@ int main(int argc, char* argv[])  //
           
           // *** Generate constraints
           std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, true);
+
+          /* If the target gate is a T1 gate, an extra constraint shall be added */
 
           fmt::print("\tCreated {} snakes\n", snakes.size());
           // *** If there's anything that needs optimization

@@ -268,7 +268,7 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
     NodeData fo_data { ntk.value( dff.fanout ) };
     auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE );
     auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
-    if (it != path.targets.end() && (dff.sigma >= fanout_sigma ))
+    if (it != path.targets.end() && ( ( fanout_sigma < 0 ) || ( ( fanout_sigma >= 0 ) && ( dff.sigma >= static_cast<uint32_t>( fanout_sigma ) ) ) ))
     {
       stack.emplace_back( hash );
     }
