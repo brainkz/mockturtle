@@ -235,6 +235,13 @@ struct Snake
     }
     return sections.size();
   }
+
+  /* for adding helper variables, which */
+  /* are not stored in 'DFF_REG'        */
+  void append( DFF_var const& dff )
+  {
+    sections.emplace_back( dff_hash( dff ) );
+  }
 };
 
 struct Standard_T1_CELL
@@ -660,7 +667,7 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
   return t1_candidates;
 }
 
-void write_snakes(const std::vector<Snake> & snakes, std::vector<std::vector<Snake>> const& t1_input_constraint, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
+void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
 {
   std::ofstream spec_file (cfg_name);
 
@@ -695,6 +702,13 @@ void write_snakes(const std::vector<Snake> & snakes, std::vector<std::vector<Sna
     spec_file << fmt::format("SA_REQUIRED,{}\n", DFF_REG.str( hash ));
   }
 }
+void write_snakes_t1( std::vector<Snake> const& snakes, phmap::flat_hash_map<klut::node, std::vector<Snake>> const& t1_input_constraint, 
+                      phmap::flat_hash_map<klut::node, std::array<bool, 3>> const& input_phases, DFF_registry & DFF_REG, 
+                      const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false )
+{
+
+}
+
 
 /// @brief 
 /// @param path 
@@ -758,10 +772,9 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
   return out_snakes;
 }
 
-std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_t1( Path const& path, klut const& ntk, 
-                                                                                    phmap::flat_hash_map<klut::node, std::array<bool, 3>> const& input_phases, 
-                                                                                    phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> const& DFF_closest_to_t1s, 
-                                                                                    DFF_registry& DFF_REG, uint8_t n_phases, bool verbose = false )
+std::tuple<std::vector<Snake>, phmap::flat_hash_map<klut::node, std::vector<Snake>>> sectional_snake_t1( Path const& path, klut const& ntk, 
+                                                                                                         phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> const& DFF_closest_to_t1s, 
+                                                                                                         DFF_registry& DFF_REG, uint8_t n_phases, bool verbose = false )
 {
   std::vector<Snake> out_snakes; 
   std::vector<Snake> stack;
@@ -815,7 +828,7 @@ std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_
   /* for the proper functioning of T1 gates, constraints shall be    */
   /* created to guarantee that the phases of the three inputs of an  */
   /* T1 gate are different                                           */
-  std::vector<std::vector<Snake>> t1_input_constraint; 
+  phmap::flat_hash_map<klut::node, std::vector<Snake>> t1_input_constraint; 
 
   for ( auto it{ DFF_closest_to_t1s.begin() }; it != DFF_closest_to_t1s.end(); ++it )
   {
@@ -849,6 +862,19 @@ std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_
           /* same phase                                              */
           const uint64_t hash = snake.sections[snake_len - 1][i];
           DFF_var const& dff = DFF_REG.at( hash );
+          if ( dff.parent_hashes.size() > 1 && ( static_cast<NodeData>( ntk.value( dff.fanin ) ).type == AA_GATE ) )
+          {
+            /* TODO: have to distinguish the two cases of early termination    */
+            /* ( encounter a CB ) and short chain ( encounter the source ) in  */
+            /* the returned snakes                                             */
+
+            /* early termination of tracking, because a CB is encountered      */
+            break;
+          }
+
+          /* TO CONFIRM: is it necessary to check the gate type of the fanin   */
+          /* to make sure the fanin is a confluence buffer?                    */
+          assert( dff.parent_hashes.size() <= 1 );
           for ( const uint64_t parent_hash : dff.parent_hashes )
           {
             uint32_t snake_len_tmp = snake.append( parent_hash, DFF_REG );
@@ -860,8 +886,14 @@ std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_
         /* smaller phase, it means we have already reached a source  */
         if ( snake_len_new == snake_len )
         {
-          /* helper variables shall be created                       */
-          /* TODO: better to handle it here, or in "write_snake"?    */
+          /* create helper variables if the source is an AS gate     */
+          DFF_var const& earliest_dff = DFF_REG.at( snake.sections.back().back() );
+          NodeData fanin_data{ ntk.value( earliest_dff.fanin ) };
+          if ( fanin_data.type == AS_GATE )
+          {
+            assert( fanin_data.sigma == earliest_dff.sigma - 1 );
+            snake.append( {earliest_dff.fanin, fanin_data.sigma } );
+          }
           break;
         }
         else
@@ -874,7 +906,7 @@ std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_
       snakes.push_back( snake );
     }
 
-    t1_input_constraint.push_back( snakes );
+    t1_input_constraint.emplace( it->first, snakes );
   }
 
   return std::make_tuple( out_snakes, t1_input_constraint );
@@ -1709,7 +1741,7 @@ int main(int argc, char* argv[])  //
           fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
           
           // *** Generate constraints
-          auto const& [snakes, t1_input_constraint] = sectional_snake_t1( path, network, input_phases, DFF_closest_to_t1s, DFF_REG, n_phases, true );
+          auto const& [snakes, t1_input_constraint] = sectional_snake_t1( path, network, DFF_closest_to_t1s, DFF_REG, n_phases, true );
 
           /* If the target gate is a T1 gate, extra constraints shall be added */
 
@@ -1718,7 +1750,7 @@ int main(int argc, char* argv[])  //
           if (!snakes.empty())
           {
             std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-            write_snakes(snakes, t1_input_constraint, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
+            write_snakes_t1( snakes, t1_input_constraint, input_phases, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true );
             auto num_dff = cpsat_ortools(cfg_file);
             // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
             total_num_dff += num_dff;

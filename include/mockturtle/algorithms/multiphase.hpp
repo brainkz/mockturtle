@@ -649,15 +649,28 @@ struct DFF_var
   DFF_var(const DFF_var& other)
       : fanin(other.fanin), fanout(other.fanout), sigma(other.sigma), parent_hashes(other.parent_hashes) {}
 
+  DFF_var( klut::signal _index, uint32_t _sigma, std::unordered_set<uint64_t> _parent_hashes = {} )
+      : fanin( 0u ), fanout( _index ), sigma( _sigma ), parent_hashes( _parent_hashes ) {}
+
   std::string str() 
   {
-      return fmt::format("var_{}_{}_{}", fanin, fanout, sigma);
+    if ( fanin == 0 )
+    {
+      return fmt::format( "gate_{}_{}", fanout, sigma );
+    }
+
+    return fmt::format("var_{}_{}_{}", fanin, fanout, sigma);
   }
 };
 
 uint64_t dff_hash(klut::signal _fanin, klut::signal _fanout, uint32_t _sigma)
 {
   return ( (uint64_t)_fanin << 40 ) | ( (uint64_t)_fanout << 16 ) | _sigma;
+}
+
+uint64_t dff_hash( DFF_var const& dff )
+{
+  return ( (uint64_t)dff.fanin << 40 ) | ( (uint64_t)dff.fanout << 16 ) | dff.sigma;
 }
 
 struct DFF_registry
@@ -1187,9 +1200,6 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
     ntk.foreach_valid_fanin(fo_node, [&](const klut::signal & fi_node)
     {
       NodeData fi_data { ntk.value( fi_node ) };
-      /* TO CONFIRM: would this extended condition filter out the corner case */
-      /* in the previous implementation that there would never be a DFF       */
-      /* between an AS followed by an AA in the same phase                    */
       uint32_t earliest_sigma = fi_data.sigma + static_cast<uint32_t>( fi_data.type != AA_GATE);
 
       DEBUG_PRINT("\t[DFF] Analyzing parent: {}({})[{}]\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma);
