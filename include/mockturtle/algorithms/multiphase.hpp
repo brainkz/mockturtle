@@ -981,7 +981,7 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
       Path node_path;
       node_path.targets.emplace( fo_node );
       std::vector<klut::signal> stack;
-      ntk.foreach_fanin( fo_node, [&]( auto const& ni ) {
+      ntk.foreach_valid_fanin( fo_node, [&]( auto const& ni ) {
         stack.push_back( ni );
       } );
       buildPath(ntk, node_path, stack, true);
@@ -992,7 +992,7 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
     {
       Path node_path;
       node_path.targets.emplace( fo_node );
-      ntk.foreach_fanin( fo_node, [&] (const klut::signal & fi_node) {
+      ntk.foreach_valid_fanin( fo_node, [&] (const klut::signal & fi_node) {
         std::vector<klut::signal> stack { fi_node };
         buildPath(ntk, node_path, stack, true);
         merge_overlapping_paths( paths, node_path );
@@ -1136,7 +1136,9 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(
 /// @param n_phases - # of phases
 /// @param verbose - prints debug messages if set to *true*
 /// @return 
-std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_T1(const Path & path, const klut & ntk, const uint8_t n_phases, bool verbose = false)
+std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_t1( const Path & path, const klut & ntk, const uint8_t n_phases, 
+                                                                                    phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>>& DFF_closest_to_t1s, 
+                                                                                    bool verbose = false )
 {
   DFF_registry DFF_REG;
   std::vector<uint64_t> required_SA_DFFs;
@@ -1178,16 +1180,22 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
     // AS gates and T1 gate are clocked, so one needs to start one stage earlier
     uint32_t latest_sigma = fo_data.sigma - (fo_data.type == AS_GATE || fo_data.type == T1_GATE);
     DEBUG_PRINT("[DFF] Analyzing child: {}({})[{}]\n", GATE_TYPE.at(fo_data.type), fo_node, (int)fo_data.sigma);
+    bool is_t1{ fo_data.type == T1_GATE };
+    std::array<uint64_t, 3> DFF_closest_to_t1;
+    uint8_t fanin_ind{ 0u };
 
-    ntk.foreach_fanin(fo_node, [&](const klut::signal & fi_node)
+    ntk.foreach_valid_fanin(fo_node, [&](const klut::signal & fi_node)
     {
       NodeData fi_data { ntk.value( fi_node ) };
-      uint32_t earliest_sigma = fi_data.sigma + (fi_data.type != AA_GATE);
+      /* TO CONFIRM: would this extended condition filter out the corner case */
+      /* in the previous implementation that there would never be a DFF       */
+      /* between an AS followed by an AA in the same phase                    */
+      uint32_t earliest_sigma = fi_data.sigma + static_cast<uint32_t>( fi_data.type != AA_GATE);
 
       DEBUG_PRINT("\t[DFF] Analyzing parent: {}({})[{}]\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma);
 
       // check if the chain is straight - #DFF is just floor(delta-phase), no need to create the DFF vars
-      if (  (fo_data.type == AS_GATE && fo_data.type == SA_GATE) // the gate should be AS or SA
+      if (  (fo_data.type == AS_GATE || fo_data.type == SA_GATE) // the gate should be AS or SA
             && fi_data.type != AA_GATE )                         // the fanin to the gate should be AS/SA/T1
       {
         // special case when an AS gate feeds directly into SA gate
@@ -1201,7 +1209,7 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
         {
           DEBUG_PRINT("\t[DFF] Straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_data.type), (int)fi_data.sigma, GATE_TYPE.at(fo_data.type), (int)fo_data.sigma);
           // straight chain, just floor the difference!
-          precalc_ndff += (fo_data.sigma - fi_data.sigma)/n_phases + (fo_data.type == SA_GATE); //extra DFF before SA gate
+          precalc_ndff += (fo_data.sigma - fi_data.sigma - 1)/n_phases + (fo_data.type == SA_GATE); //extra DFF before SA gate
         }
         return;
       }
@@ -1223,6 +1231,11 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
       {
         DFF_var & dff = DFF_REG.at( dff_hashes[i] );
         dff.parent_hashes.emplace(dff_hashes[i-1]);
+      }
+
+      if ( is_t1 )
+      {
+        DFF_closest_to_t1[fanin_ind++] = dff_hashes.back();
       }
 
       // ensure that the SA gate is placed at least one stage after the fanin 
@@ -1251,6 +1264,11 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
         DEBUG_PRINT("\tEmplacing {}({})[{}], {}\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma, (earliest_hash!=0)?DFF_REG.at(earliest_hash).str():"");
       }
     });
+
+    if ( is_t1 )
+    {
+      DFF_closest_to_t1s.emplace( fo_node, DFF_closest_to_t1 );
+    }
   }
   return std::make_tuple(DFF_REG, precalc_ndff, required_SA_DFFs);
 }

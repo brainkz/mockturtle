@@ -216,6 +216,25 @@ struct Snake
       return true;
     }
   }
+
+  uint32_t append( const uint64_t dff_hash, DFF_registry& DFF_REG )
+  {
+    DFF_var& dff = DFF_REG.at( dff_hash );
+    std::vector<uint64_t>& head_section = sections.back();
+    uint64_t& head_hash = head_section.back();
+    DFF_var& head_dff = DFF_REG.at( head_hash );
+
+    if ( dff.sigma == head_dff.sigma ) // add to the same section
+    {
+      head_section.push_back( dff_hash );
+    }
+    else
+    {
+      // assert( head_dff.phase - dff.phase == 1 );
+      sections.push_back( { dff_hash } );
+    }
+    return sections.size();
+  }
 };
 
 struct Standard_T1_CELL
@@ -641,7 +660,7 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
   return t1_candidates;
 }
 
-void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
+void write_snakes(const std::vector<Snake> & snakes, std::vector<std::vector<Snake>> const& t1_input_constraint, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
 {
   std::ofstream spec_file (cfg_name);
 
@@ -685,8 +704,6 @@ void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, con
 /// @param verbose 
 /// @return 
 
-// TODO : make sure that the inverted fanins of the T1 cell are placed at least one stage away from the fanin
-// ensure that the T1 gate is placed at least one stage after the inverted fanin 
 std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry & DFF_REG, uint8_t n_phases, bool verbose = false)
 {
   std::vector<Snake> out_snakes; 
@@ -696,8 +713,6 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
   // get all DFFs 
   for (const auto & [hash, dff]: DFF_REG.variables)
   {
-    /* look for the DFFs closest to the targets of the current path */
-    /* (second closest, if the target is an AS gate)                */
     NodeData fo_data { ntk.value( dff.fanout ) };
     auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE );
     auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
@@ -741,6 +756,128 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
     }
   }
   return out_snakes;
+}
+
+std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_t1( Path const& path, klut const& ntk, 
+                                                                                    phmap::flat_hash_map<klut::node, std::array<bool, 3>> const& input_phases, 
+                                                                                    phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> const& DFF_closest_to_t1s, 
+                                                                                    DFF_registry& DFF_REG, uint8_t n_phases, bool verbose = false )
+{
+  std::vector<Snake> out_snakes; 
+  std::vector<Snake> stack;
+
+  DEBUG_PRINT("[i]: Starting extraction of worms \n");
+  // get all DFFs 
+  for ( const auto & [hash, dff]: DFF_REG.variables )
+  {
+    NodeData fo_data { ntk.value( dff.fanout ) };
+    auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE || fo_data.type == T1_GATE );
+    if ( auto it = std::find( path.targets.begin(), path.targets.end(), dff.fanout ); it != path.targets.end() && ( dff.sigma == static_cast<uint32_t>( fanout_sigma ) ) )
+    {
+      stack.emplace_back( hash );
+    }
+  }
+  
+  while ( !stack.empty() )
+  {
+    DEBUG_PRINT("[i] Stack size is {} \n", stack.size());
+    Snake snake = stack.back();
+    stack.pop_back();
+
+    DEBUG_PRINT("\t[i] The snake has {} sections\n", snake.sections.size());
+    uint64_t hash = snake.sections.back().back();
+    DFF_var & dff = DFF_REG.at( hash );
+
+    // fmt::print("\tCurrent worm size {}, between phases {} and {} \n", worm.size(), DFF_REG.str(worm.front()), DFF_REG.str(worm.back()));
+
+
+    DEBUG_PRINT("\t\t[i] The DFF {} has {} parents\n", DFF_REG.at( hash ).str(),  dff.parent_hashes.size() );
+
+    bool returned_current_snake = false;
+    for (const uint64_t parent_hash : dff.parent_hashes)
+    {
+      Snake snake_copy = snake; 
+      DEBUG_PRINT("\t\t[i] Advancing towards fanin {}\n", DFF_REG.at( parent_hash ).str() );
+      bool status = snake_copy.append(parent_hash, DFF_REG, n_phases);
+      DEBUG_PRINT((status) ? "\t\t\tAdded new section!\n" :"\t\t\tExtended existing section!\n"  );
+      DEBUG_PRINT("\t\t\tThe new length is {}\n", snake_copy.sections.size() );
+      
+      stack.push_back( snake_copy );
+      if (status && !returned_current_snake && snake_copy.sections.size() == n_phases)
+      {
+        DEBUG_PRINT("\t\tAdding the snake to the output\n");
+        out_snakes.push_back(snake);
+        returned_current_snake = true;
+      }
+    }
+  }
+
+  /* for the proper functioning of T1 gates, constraints shall be    */
+  /* created to guarantee that the phases of the three inputs of an  */
+  /* T1 gate are different                                           */
+  std::vector<std::vector<Snake>> t1_input_constraint; 
+
+  for ( auto it{ DFF_closest_to_t1s.begin() }; it != DFF_closest_to_t1s.end(); ++it )
+  {
+    auto const& target_DFFs = it->second;
+    /* the eventual size of the 'snakes' vector is three             */
+    std::vector<Snake> snakes;
+
+    for ( auto target_DFF_hash : target_DFFs )
+    {
+      if ( target_DFF_hash == 0u )
+      {
+        /* TO CONFIRM: is this possible? */
+        snakes.push_back( Snake() );
+        continue;
+      }
+
+      Snake snake{ target_DFF_hash };
+      uint32_t snake_len = snake.sections.size();
+
+      /* only the DFF variables whose distance to the target T1 gate */
+      /* is no more than 'n_phases' are of interest                  */
+      while ( snake_len < n_phases )
+      {
+        uint32_t snake_len_new{ 0u };
+        /* collect the DFF variables within the phases of interest   */
+        /* in a breadth-first manner                                 */
+        for ( auto i{ 0u }; i < snake.sections[snake_len - 1].size(); ++i )
+        {
+          /* notice that the upper bound on 'i' is dynamic, as it is */
+          /* possible that a DFF and its parent are assigned to the  */
+          /* same phase                                              */
+          const uint64_t hash = snake.sections[snake_len - 1][i];
+          DFF_var const& dff = DFF_REG.at( hash );
+          for ( const uint64_t parent_hash : dff.parent_hashes )
+          {
+            uint32_t snake_len_tmp = snake.append( parent_hash, DFF_REG );
+            snake_len_new = ( snake_len_tmp > snake_len_new ) ? snake_len_tmp : snake_len_new;
+          }
+        }
+        /* if all the DFF variables belonging to the current phase   */
+        /* are iterated, but none of their parents belong to a       */
+        /* smaller phase, it means we have already reached a source  */
+        if ( snake_len_new == snake_len )
+        {
+          /* helper variables shall be created                       */
+          /* TODO: better to handle it here, or in "write_snake"?    */
+          break;
+        }
+        else
+        {
+          assert( snake_len_new > snake_len );
+          snake_len = snake_len_new;
+        }
+      }
+
+      snakes.push_back( snake );
+    }
+
+    t1_input_constraint.push_back( snakes );
+  }
+
+  return std::make_tuple( out_snakes, t1_input_constraint );
 }
 
 std::tuple<int, std::unordered_map<unsigned int, unsigned int>, std::string>  cpsat_macro_opt(const std::string & cfg_name, uint8_t n_phases) 
@@ -998,11 +1135,11 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>
     return false;
   }
   /* update gate type for the committed T1 cells */
-  // if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, T1_GATE ).value ); }
-  // if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, T1_GATE ).value ); }
-  // if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, T1_GATE ).value ); }
-  // if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, T1_GATE ).value ); }
-  // if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, T1_GATE ).value ); }
+  if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, T1_GATE ).value ); }
+  if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, T1_GATE ).value ); }
+  if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, T1_GATE ).value ); }
+  if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, T1_GATE ).value ); }
+  if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, T1_GATE ).value ); }
 
   updated_area -= gain;
 
@@ -1029,8 +1166,9 @@ void update_representative( klut const& ntk, klut::signal const& new_signal, klu
 }
 
 void update_network( klut& ntk, array_map<3, T1_OUTPUTS> const& t1_candidates, 
-                     phmap::flat_hash_map<klut::signal, klut::node>& representatives, 
-                     phmap::flat_hash_map<klut::signal, klut::node>& symbol2real )
+                     phmap::flat_hash_map<klut::node, klut::node>& representatives, 
+                     phmap::flat_hash_map<klut::node, klut::node>& symbol2real, 
+                     phmap::flat_hash_map<klut::node, std::array<bool, 3>>& input_phases )
 {
   for ( auto const& t1_candidate : t1_candidates )
   {
@@ -1073,6 +1211,10 @@ void update_network( klut& ntk, array_map<3, T1_OUTPUTS> const& t1_candidates,
       update_representative( ntk, new_signal, repr, representatives );
       symbol2real.emplace( t1_outputs.inv_cbar_to, new_signal );
     }
+
+    auto input_phase = t1_outputs.in_phase;
+    std::array<bool, 3> input_phase_bool{ { static_cast<bool>( input_phase >> 0 & 1 ), static_cast<bool>( input_phase >> 1 & 1 ), static_cast<bool>( input_phase >> 2 & 1 ) } };
+    input_phases.emplace( repr, input_phase_bool );
   }
 
   /* since the enumeration of all T1 cells are performed in an unordered manner, */
@@ -1245,10 +1387,10 @@ void write_klut_specs_supporting_t1_new( klut const& ntk, array_map<3, T1_OUTPUT
     fmt::print("Node {} is a regular node\n", n);
 
     std::vector<klut::node> n_fanins;
-    ntk.foreach_fanin( n, [&n_fanins]( auto const& ni ) {
+    ntk.foreach_valid_fanin( n, [&n_fanins]( auto const& ni ) {
       /* notice that 'signal' and 'node' are equal    */
       /* in kluts                                     */
-      // n_fanins.push_back( ntk.node_to_index( ni ) );
+
       n_fanins.push_back( ni );
     } );
 
@@ -1491,7 +1633,8 @@ int main(int argc, char* argv[])  //
 
     phmap::flat_hash_map<klut::signal, klut::signal> representatives;
     phmap::flat_hash_map<klut::signal, klut::signal> symbol2real;
-    update_network( klut_decomposed, t1_candidates, representatives, symbol2real );
+    phmap::flat_hash_map<klut::node, std::array<bool, 3>> input_phases;
+    update_network( klut_decomposed, t1_candidates, representatives, symbol2real, input_phases );
 
     #pragma endregion
 
@@ -1546,10 +1689,10 @@ int main(int argc, char* argv[])  //
         fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
 
         fmt::print("[i] EXTRACTING PATHS\n");
-        
+
         std::vector<Path> paths = extract_paths_t1( network, representatives, true );
 
-        continue;
+        //continue;
 
         // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
 
@@ -1560,27 +1703,30 @@ int main(int argc, char* argv[])  //
         {
           fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
           // *** Create binary variables
-          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, n_phases);
+          phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> DFF_closest_to_t1s;
+          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths_t1( path, network, n_phases, DFF_closest_to_t1s );
           total_num_dff += precalc_ndff;
           fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
           
           // *** Generate constraints
-          std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, true);
+          auto const& [snakes, t1_input_constraint] = sectional_snake_t1( path, network, input_phases, DFF_closest_to_t1s, DFF_REG, n_phases, true );
 
-          /* If the target gate is a T1 gate, an extra constraint shall be added */
+          /* If the target gate is a T1 gate, extra constraints shall be added */
 
           fmt::print("\tCreated {} snakes\n", snakes.size());
           // *** If there's anything that needs optimization
           if (!snakes.empty())
           {
             std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-            write_snakes(snakes, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
+            write_snakes(snakes, t1_input_constraint, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
             auto num_dff = cpsat_ortools(cfg_file);
             // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
             total_num_dff += num_dff;
             fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
           }
         }
+
+        continue;
 
         // *** Record maximum phase
         uint64_t max_phase = 0u;
