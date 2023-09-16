@@ -607,6 +607,20 @@ public:
     if ( n == 0 || is_ci( n ) )
       return;
 
+    // if ( is_dangling( n ) )
+    //   return;
+
+    using IteratorType = decltype( _storage->outputs.begin() );
+    detail::foreach_element_transform<IteratorType, uint32_t>(
+        _storage->nodes[n].children.begin(), _storage->nodes[n].children.end(), []( auto f ) { return f.index; }, fn );
+  }
+
+  template<typename Fn>
+  void foreach_valid_fanin( node const& n, Fn&& fn ) const
+  {
+    if ( n == 0 || is_ci( n ) )
+      return;
+
     if ( is_dangling( n ) )
       return;
 
