@@ -1186,7 +1186,7 @@ uint32_t get_node_cost( const uint32_t gate_type )
   }
 }
 
-uint32_t deref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::node n )
+uint32_t deref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::node n, std::vector<klut::node>& has_overlap )
 {
   /* return the total cost of nodes in the original cut that can be      */
   /* removed, if implemented using an T1 cell                            */
@@ -1197,11 +1197,17 @@ uint32_t deref_node( klut& ntk, const std::array<klut::node, 3> leaves, const kl
 
   uint32_t gain = get_node_cost( ntk.func_lit( n ) );
   ntk.foreach_fanin( n, [&]( auto const& ni ) {
-    /* skip fanins that are leaves */
-    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
-         ( ntk.decr_fanout_size( ni ) == 0 ) )
+    if ( ntk.fanout_size( ni ) == 0 )
     {
-      gain += deref_node( ntk, leaves, ntk.node_to_index( ni ) );
+      /* there is an overlap between the current cut and a previously    */
+      /* checked cut                                                     */
+      has_overlap.push_back( ni );
+    }
+    /* skip fanins that are leaves */
+    else if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+              ( ntk.decr_fanout_size( ni ) == 0 ) )
+    {
+      gain += deref_node( ntk, leaves, ntk.node_to_index( ni ), has_overlap );
     }
     else
     {
@@ -1232,6 +1238,28 @@ void reref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::
   } );
 }
 
+/* a special vertion of the 'reref_node' fuction, which has an extra param of 'has_overlap' */
+void reref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::node n, std::vector<klut::node> const& has_overlap )
+{
+  if ( auto it_find = std::find( leaves.begin(), leaves.end(), n ); it_find != leaves.end() )
+  {
+    return;
+  }
+
+  ntk.foreach_fanin( n, [&]( auto const& ni ) {
+    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+         ( std::find( has_overlap.begin(), has_overlap.end(), ni ) == has_overlap.end() ) && 
+         ( ntk.incr_fanout_size( ni ) == 0 ) )
+    {
+      reref_node( ntk, leaves, ntk.node_to_index( ni ), has_overlap );
+    }
+  } );
+}
+
+/* If an overlap if detected during the 'deref_node' process, i.e., a node whose fanout     */
+/* is already 0, this does not mean such a node is in the MFFC, but there is a conflict     */
+/* between current cut and a previously checked cut. Thus, to avoid conflict, the result of */
+/* the sanity check on the current cut would be directly set to false.                      */
 bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>, T1_OUTPUTS>& t1_candidate, int64_t& updated_area )
 {
   int32_t gain{ 0 };
@@ -1242,16 +1270,28 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>
   roots[1] = std::max( ntk.node_to_index( t1_outputs.carry_to ), ntk.node_to_index( t1_outputs.inv_carry_to ) );
   roots[2] = std::max( ntk.node_to_index(  t1_outputs.cbar_to ), ntk.node_to_index(  t1_outputs.inv_cbar_to ) );
 
+  std::vector<klut::node> has_overlap;
+
   for ( const klut::node root : roots )
   {
     if ( root != ntk.get_constant( false ) )
     {
-      gain += static_cast<int32_t>( deref_node( ntk, leaves, root ) );
+      gain += static_cast<int32_t>( deref_node( ntk, leaves, root, has_overlap ) );
     }
   }
   gain -= static_cast<int32_t>( __builtin_popcount( t1_outputs.in_phase ) * ( COSTS_MAP[fNOT] - COSTS_MAP[fDFF] ) );
+  gain -= static_cast<int32_t>( COSTS_SUNMAGNETICS_EXTENDED[fT1] );
 
-  if ( gain -= static_cast<int32_t>( COSTS_SUNMAGNETICS_EXTENDED[fT1] ); gain < 0 )
+  if ( !has_overlap.empty() )
+  {
+    for ( const auto root : roots )
+    {
+      reref_node( ntk, leaves, root, has_overlap );
+    }
+    return false;
+  }
+
+  if ( gain < 0 )
   {
     for ( const auto root : roots )
     {
@@ -1261,13 +1301,29 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>
     return false;
   }
   /* update gate type for the committed T1 cells */
-  if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, T1_GATE ).value ); }
 
   updated_area -= gain;
+
+  /* update the fanout size of the leaves */
+  mockturtle::fanout_view<klut> ntk_fo{ ntk };
+  for ( auto const& leaf : leaves )
+  {
+    uint32_t leaf_fanout_size{ 0u };
+    ntk_fo.foreach_fanout( leaf, [&]( auto const& no ) {
+      if ( !ntk.is_dangling( no ) )
+      {
+        ++leaf_fanout_size;
+      }
+    } );
+    /* increase by one as it is an input to the current T1 gate */
+    ++leaf_fanout_size;
+    ntk._storage->nodes[leaf].data[0].h1 = leaf_fanout_size;
+  }
 
   return true;
 }
@@ -1510,7 +1566,7 @@ void write_klut_specs_supporting_t1_new( klut const& ntk, array_map<3, T1_OUTPUT
       return true;
     }
 
-    fmt::print("Node {} is a regular node\n", n);
+    fmt::print("Node {} is a regular node, with fanout_size {}\n", n, ntk.fanout_size( n ) );
 
     std::vector<klut::node> n_fanins;
     ntk.foreach_valid_fanin( n, [&n_fanins]( auto const& ni ) {
@@ -1786,7 +1842,7 @@ int main(int argc, char* argv[])  //
           // write_klut_specs_supporting_t1( network, t1_candidates, ilp_cfg_filename );
           write_klut_specs_supporting_t1_new( network, t1_candidates, ilp_cfg_filename, symbol2real );
 
-          //continue;
+          continue;
 
           fmt::print("\tCalling OR-Tools\n");
           auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
@@ -1805,10 +1861,10 @@ int main(int argc, char* argv[])  //
         
         // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
         // *** IF i = 1, "assignment" is empty
-        assign_sigma(network, assignment, true );
+        assign_sigma(network, assignment, false );
 
         // *** Greedily insert splitters
-        splitter_ntk_insertion( network, true);
+        splitter_ntk_insertion( network, false );
 
         // network.foreach_node([&] ( const klut::signal & node ) {if ( network.fanout_size( node ) > 1 ){assert( network.node_function( node ) == 0x2 );};});
 
@@ -1830,7 +1886,7 @@ int main(int argc, char* argv[])  //
           fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
           // *** Create binary variables
           phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> DFF_closest_to_t1s;
-          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths_t1( path, network, n_phases, DFF_closest_to_t1s );
+          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths_t1( path, network, n_phases, DFF_closest_to_t1s, true );
           total_num_dff += precalc_ndff;
           fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
           
@@ -1845,6 +1901,11 @@ int main(int argc, char* argv[])  //
           {
             std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
             write_snakes_t1( snakes, t1_input_constraint, input_phases, helpers, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true );
+
+
+            continue;
+
+
             auto num_dff = cpsat_ortools(cfg_file);
             // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
             total_num_dff += num_dff;
