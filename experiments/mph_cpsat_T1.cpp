@@ -235,6 +235,13 @@ struct Snake
     }
     return sections.size();
   }
+
+  /* for adding helper variables, which */
+  /* are not stored in 'DFF_REG'        */
+  void append( DFF_var const& dff )
+  {
+    sections.emplace_back( dff_hash( dff ) );
+  }
 };
 
 struct Standard_T1_CELL
@@ -660,7 +667,7 @@ array_map<3, T1_OUTPUTS> find_t1_candidates(
   return t1_candidates;
 }
 
-void write_snakes(const std::vector<Snake> & snakes, std::vector<std::vector<Snake>> const& t1_input_constraint, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
+void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
 {
   std::ofstream spec_file (cfg_name);
 
@@ -695,6 +702,108 @@ void write_snakes(const std::vector<Snake> & snakes, std::vector<std::vector<Sna
     spec_file << fmt::format("SA_REQUIRED,{}\n", DFF_REG.str( hash ));
   }
 }
+
+void write_snakes_t1( std::vector<Snake> const& snakes, phmap::flat_hash_map<klut::node, std::vector<Snake>> const& t1_input_constraint, 
+                       phmap::flat_hash_map<klut::node, std::array<bool, 3>> const& input_phases, std::vector<DFF_var> const& helpers, 
+                       DFF_registry & DFF_REG, std::vector<uint64_t> const& required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false )
+{
+  std::ofstream spec_file( cfg_name );
+
+  /* basic constraints guanranteeing the correct functionality of the multiphase clocking scheme */
+  for (const Snake & snake : snakes)
+  {
+    std::vector<std::string> vars_bucket;
+    for (const std::vector<uint64_t> & section : snake.sections)
+    {
+      std::vector<std::string> vars;
+      for (uint64_t hash : section)
+      {
+        vars.push_back(DFF_REG.str( hash ));
+      }
+      DEBUG_PRINT("New single phase conflict : {}≤1\n", fmt::join(vars, "+"));
+      vars_bucket.push_back(fmt::format(vars.size()>1?"({})":"{}", fmt::join(vars, "+")));
+      if (vars.size() > 1)
+      {
+        spec_file << fmt::format("PHASE,{}\n", fmt::join(vars, ","));
+      }
+    }
+    std::reverse(vars_bucket.begin(), vars_bucket.end());
+    DEBUG_PRINT("New buffer requirement : ({})\n", fmt::join(vars_bucket, "|"));
+    if (vars_bucket.size() == n_phases)
+    {
+      spec_file << fmt::format("BUFFER,{}\n", fmt::join(vars_bucket, ","));
+    }
+  }
+  for (const uint64_t & hash : required_SA_DFFs)
+  {
+    DEBUG_PRINT("New SA_REQUIRED : {}\n", DFF_REG.str( hash ));
+    spec_file << fmt::format("SA_REQUIRED,{}\n", DFF_REG.str( hash ));
+  }
+
+  /* constraints supporting the usage of T1 gates under the multiphase clocking scheme */
+
+  /* (1) the phases of the three inputs to a T1 gate shall be different from each other*/
+  for ( auto it{ t1_input_constraint.begin() }; it != t1_input_constraint.end(); ++it )
+  {
+    const klut::node repr{ it->first };
+    for ( Snake const& snake : it->second )
+    {
+      /* for each of the three input signals */
+      spec_file << fmt::format( "T1,{},", repr );
+      for ( std::vector<uint64_t> const& section : snake.sections )
+      {
+        std::vector<std::string> vars;
+        for ( uint64_t hash : section )
+        {
+          vars.push_back( DFF_var( hash ).str() );
+        }
+        spec_file << fmt::format( "{},", fmt::join( vars, "|" ) );
+      }
+      spec_file << fmt::format( "\n" );
+    }
+  }
+
+  /* (2) a helper variable indicates that the source is an AS gate and the distance    */
+  /* between the source and the T1 gate is no more than one epoch; a helper variable   */
+  /* shall always be assigned to true                                                  */
+  for ( DFF_var const& helper : helpers )
+  {
+    spec_file << fmt::format( "HELPER,{}\n", helper.str() );
+  }
+
+  /* (3) if a input to a T1 is negated, there should be an inverter inserted in the    */
+  /* last epoche before the phase of the T1                                            */
+  for ( auto it{ t1_input_constraint.begin() }; it != t1_input_constraint.end(); ++it )
+  {
+    const klut::node repr{ it->first };
+    for ( auto i{ 0u }; i < 3u; ++i )
+    {
+      if ( input_phases.at( repr )[i] )
+      {
+        /* this input signal shall be negated, therefore */
+        /* at lease one of the variables have to be true */
+        auto const& sections = it->second[i].sections;
+        spec_file << fmt::format( "INVERTED_INPUT," );
+        for ( std::vector<uint64_t> const& section : sections )
+        {
+          std::vector<std::string> vars_no_helper;
+          for ( uint64_t hash : section )
+          {
+            if ( ( uint64_t )( hash >> 40 ) != 0u )
+            {
+              /* helper variables are skipped            */
+              vars_no_helper.push_back( DFF_var( hash ).str() );
+            }
+          }
+          spec_file << fmt::format( "{},", fmt::join( vars_no_helper, "," ) );
+        }
+        spec_file << fmt::format( "\n" );
+      }
+    }
+  }
+}
+
+
 
 /// @brief 
 /// @param path 
@@ -758,13 +867,14 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
   return out_snakes;
 }
 
-std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_t1( Path const& path, klut const& ntk, 
-                                                                                    phmap::flat_hash_map<klut::node, std::array<bool, 3>> const& input_phases, 
-                                                                                    phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> const& DFF_closest_to_t1s, 
-                                                                                    DFF_registry& DFF_REG, uint8_t n_phases, bool verbose = false )
+std::tuple<std::vector<Snake>, phmap::flat_hash_map<klut::node, std::vector<Snake>>, std::vector<DFF_var>> 
+ sectional_snake_t1( Path const& path, klut const& ntk, 
+                     phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> const& DFF_closest_to_t1s, 
+                     DFF_registry& DFF_REG, uint8_t n_phases, bool verbose = false )
 {
   std::vector<Snake> out_snakes; 
   std::vector<Snake> stack;
+  std::vector<DFF_var> helpers;
 
   DEBUG_PRINT("[i]: Starting extraction of worms \n");
   // get all DFFs 
@@ -815,9 +925,9 @@ std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_
   /* for the proper functioning of T1 gates, constraints shall be    */
   /* created to guarantee that the phases of the three inputs of an  */
   /* T1 gate are different                                           */
-  std::vector<std::vector<Snake>> t1_input_constraint; 
+  phmap::flat_hash_map<klut::node, std::vector<Snake>> t1_input_constraint;
 
-  for ( auto it{ DFF_closest_to_t1s.begin() }; it != DFF_closest_to_t1s.end(); ++it )
+  for ( auto it = DFF_closest_to_t1s.begin() ; it != DFF_closest_to_t1s.end(); ++it )
   {
     auto const& target_DFFs = it->second;
     /* the eventual size of the 'snakes' vector is three             */
@@ -842,13 +952,23 @@ std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_
         uint32_t snake_len_new{ 0u };
         /* collect the DFF variables within the phases of interest   */
         /* in a breadth-first manner                                 */
-        for ( auto i{ 0u }; i < snake.sections[snake_len - 1].size(); ++i )
+        for ( auto i = 0u; i < snake.sections[snake_len - 1].size(); ++i )
         {
           /* notice that the upper bound on 'i' is dynamic, as it is */
           /* possible that a DFF and its parent are assigned to the  */
           /* same phase                                              */
           const uint64_t hash = snake.sections[snake_len - 1][i];
           DFF_var const& dff = DFF_REG.at( hash );
+          if ( dff.parent_hashes.size() > 1 && ( static_cast<NodeData>( ntk.value( dff.fanin ) ).type == AA_GATE ) )
+          {
+            /* early termination of tracking, because a CB is encountered      */
+            break;
+          }
+
+          /* TO CONFIRM: is it necessary to check the gate type of the fanin   */
+          /* to make sure the fanin is a confluence buffer?                    */
+          assert( dff.parent_hashes.size() <= 1 );
+
           for ( const uint64_t parent_hash : dff.parent_hashes )
           {
             uint32_t snake_len_tmp = snake.append( parent_hash, DFF_REG );
@@ -860,8 +980,17 @@ std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_
         /* smaller phase, it means we have already reached a source  */
         if ( snake_len_new == snake_len )
         {
-          /* helper variables shall be created                       */
-          /* TODO: better to handle it here, or in "write_snake"?    */
+          /* create helper variables if the source is an AS gate     */
+          DFF_var const& earliest_dff = DFF_REG.at( snake.sections.back().back() );
+          NodeData fanin_data{ ntk.value( earliest_dff.fanin ) };
+          if ( fanin_data.type == AS_GATE )
+          {
+            assert( fanin_data.sigma == earliest_dff.sigma - 1 );
+            DFF_var helper{ earliest_dff.fanin, fanin_data.sigma };
+            snake.append( helper );
+            /* collect helper variables */
+            helpers.push_back( helper );
+          }
           break;
         }
         else
@@ -874,10 +1003,10 @@ std::tuple<std::vector<Snake>, std::vector<std::vector<Snake>>> sectional_snake_
       snakes.push_back( snake );
     }
 
-    t1_input_constraint.push_back( snakes );
+    t1_input_constraint.emplace( it->first, snakes );
   }
 
-  return std::make_tuple( out_snakes, t1_input_constraint );
+  return std::make_tuple( out_snakes, t1_input_constraint, helpers );
 }
 
 std::tuple<int, std::unordered_map<unsigned int, unsigned int>, std::string>  cpsat_macro_opt(const std::string & cfg_name, uint8_t n_phases) 
@@ -1105,7 +1234,7 @@ uint32_t get_node_cost( const uint32_t gate_type )
   }
 }
 
-uint32_t deref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::node n )
+uint32_t deref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::node n, std::vector<klut::node>& has_overlap )
 {
   /* return the total cost of nodes in the original cut that can be      */
   /* removed, if implemented using an T1 cell                            */
@@ -1116,11 +1245,17 @@ uint32_t deref_node( klut& ntk, const std::array<klut::node, 3> leaves, const kl
 
   uint32_t gain = get_node_cost( ntk.func_lit( n ) );
   ntk.foreach_fanin( n, [&]( auto const& ni ) {
-    /* skip fanins that are leaves */
-    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
-         ( ntk.decr_fanout_size( ni ) == 0 ) )
+    if ( ntk.fanout_size( ni ) == 0 )
     {
-      gain += deref_node( ntk, leaves, ntk.node_to_index( ni ) );
+      /* there is an overlap between the current cut and a previously    */
+      /* checked cut                                                     */
+      has_overlap.push_back( ni );
+    }
+    /* skip fanins that are leaves */
+    else if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+              ( ntk.decr_fanout_size( ni ) == 0 ) )
+    {
+      gain += deref_node( ntk, leaves, ntk.node_to_index( ni ), has_overlap );
     }
     else
     {
@@ -1151,6 +1286,28 @@ void reref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::
   } );
 }
 
+/* a special vertion of the 'reref_node' fuction, which has an extra param of 'has_overlap' */
+void reref_node( klut& ntk, const std::array<klut::node, 3> leaves, const klut::node n, std::vector<klut::node> const& has_overlap )
+{
+  if ( auto it_find = std::find( leaves.begin(), leaves.end(), n ); it_find != leaves.end() )
+  {
+    return;
+  }
+
+  ntk.foreach_fanin( n, [&]( auto const& ni ) {
+    if ( ( std::find( leaves.begin(), leaves.end(), ni ) == leaves.end() ) && 
+         ( std::find( has_overlap.begin(), has_overlap.end(), ni ) == has_overlap.end() ) && 
+         ( ntk.incr_fanout_size( ni ) == 0 ) )
+    {
+      reref_node( ntk, leaves, ntk.node_to_index( ni ), has_overlap );
+    }
+  } );
+}
+
+/* If an overlap if detected during the 'deref_node' process, i.e., a node whose fanout     */
+/* is already 0, this does not mean such a node is in the MFFC, but there is a conflict     */
+/* between current cut and a previously checked cut. Thus, to avoid conflict, the result of */
+/* the sanity check on the current cut would be directly set to false.                      */
 bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>, T1_OUTPUTS>& t1_candidate, int64_t& updated_area )
 {
   int32_t gain{ 0 };
@@ -1161,16 +1318,28 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>
   roots[1] = std::max( ntk.node_to_index( t1_outputs.carry_to ), ntk.node_to_index( t1_outputs.inv_carry_to ) );
   roots[2] = std::max( ntk.node_to_index(  t1_outputs.cbar_to ), ntk.node_to_index(  t1_outputs.inv_cbar_to ) );
 
+  std::vector<klut::node> has_overlap;
+
   for ( const klut::node root : roots )
   {
     if ( root != ntk.get_constant( false ) )
     {
-      gain += static_cast<int32_t>( deref_node( ntk, leaves, root ) );
+      gain += static_cast<int32_t>( deref_node( ntk, leaves, root, has_overlap ) );
     }
   }
   gain -= static_cast<int32_t>( __builtin_popcount( t1_outputs.in_phase ) * ( COSTS_MAP[fNOT] - COSTS_MAP[fDFF] ) );
+  gain -= static_cast<int32_t>( COSTS_SUNMAGNETICS_EXTENDED[fT1] );
 
-  if ( gain -= static_cast<int32_t>( COSTS_SUNMAGNETICS_EXTENDED[fT1] ); gain < 0 )
+  if ( !has_overlap.empty() )
+  {
+    for ( const auto root : roots )
+    {
+      reref_node( ntk, leaves, root, has_overlap );
+    }
+    return false;
+  }
+
+  if ( gain < 0 )
   {
     for ( const auto root : roots )
     {
@@ -1180,13 +1349,29 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>
     return false;
   }
   /* update gate type for the committed T1 cells */
-  if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, T1_GATE ).value ); }
-  if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_sum ) { ntk.set_value( t1_outputs.sum_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.sum_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_carry ) { ntk.set_value( t1_outputs.carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.carry_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_carry_inverted ) { ntk.set_value( t1_outputs.inv_carry_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_carry_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_cbar ) { ntk.set_value( t1_outputs.cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.cbar_to ) ).sigma, T1_GATE ).value ); }
+  // if ( t1_outputs.has_cbar_inverted ) { ntk.set_value( t1_outputs.inv_cbar_to, NodeData( static_cast<NodeData>( ntk.value( t1_outputs.inv_cbar_to ) ).sigma, T1_GATE ).value ); }
 
   updated_area -= gain;
+
+  /* update the fanout size of the leaves */
+  mockturtle::fanout_view<klut> ntk_fo{ ntk };
+  for ( auto const& leaf : leaves )
+  {
+    uint32_t leaf_fanout_size{ 0u };
+    ntk_fo.foreach_fanout( leaf, [&]( auto const& no ) {
+      if ( !ntk.is_dangling( no ) )
+      {
+        ++leaf_fanout_size;
+      }
+    } );
+    /* increase by one as it is an input to the current T1 gate */
+    ++leaf_fanout_size;
+    ntk._storage->nodes[leaf].data[0].h1 = leaf_fanout_size;
+  }
 
   return true;
 }
@@ -1363,7 +1548,7 @@ void write_klut_specs_supporting_t1( klut const& ntk, array_map<3, T1_OUTPUTS> c
       return true;
     }
 
-    fmt::print("Node {} is a regular node\n", n);
+    fmt::print("Node {} is a regular node, with fanout_size {}\n", n, ntk.fanout_size( n ) );
 
     std::vector<klut::node> n_fanins;
     ntk.foreach_fanin( n, [&n_fanins]( auto const& ni ) {
@@ -1536,10 +1721,10 @@ int main(int argc, char* argv[])  //
   #pragma region benchmark_parsing
     // *** BENCHMARKS OF INTEREST ***
     // experiments::adder | experiments::div  | 
-    // auto benchmarks1 = epfl_benchmarks( experiments::adder );//  | 
-    auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::bar  );// | experiments::max  | experiments::multiplier );
+    auto benchmarks1 = epfl_benchmarks( experiments::square );//  | 
+    // auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::bar  );// | experiments::max  | experiments::multiplier );
     // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
-    // auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
+    auto benchmarks2 = iscas_benchmarks( );
     // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
     std::reverse(benchmarks1.begin(), benchmarks1.end());
 
@@ -1729,7 +1914,7 @@ int main(int argc, char* argv[])  //
         assign_sigma(network, assignment, true );
 
         // *** Greedily insert splitters
-        splitter_ntk_insertion( network, true);
+        splitter_ntk_insertion_t1( network, representatives, false );
 
         // network.foreach_node([&] ( const klut::signal & node ) {if ( network.fanout_size( node ) > 1 ){assert( network.node_function( node ) == 0x2 );};});
 
@@ -1777,8 +1962,7 @@ int main(int argc, char* argv[])  //
             fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
             
             // *** Generate constraints
-            auto const& [snakes, t1_input_constraint] = sectional_snake_t1( path, network, input_phases, DFF_closest_to_t1s, DFF_REG, n_phases, true );
-
+            auto const& [snakes, t1_input_constraint, helpers] = sectional_snake_t1( path, network, DFF_closest_to_t1s, DFF_REG, n_phases, true );
             /* If the target gate is a T1 gate, extra constraints shall be added */
 
             fmt::print("\tCreated {} snakes\n", snakes.size());
@@ -1786,7 +1970,10 @@ int main(int argc, char* argv[])  //
             if (!snakes.empty())
             {
               std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-              write_snakes(snakes, t1_input_constraint, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
+              write_snakes_t1( snakes, t1_input_constraint, input_phases, helpers, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true );
+              
+              continue;
+
               auto num_dff = cpsat_ortools(cfg_file);
               // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
               total_num_dff += num_dff;

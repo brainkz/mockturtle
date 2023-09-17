@@ -582,12 +582,20 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
   // For each node in the fanout view:
   ntk_fo.foreach_node([&](const klut::signal & node)
   {
-    if (ntk_fo.is_dangling(node))
+    if ( ntk_fo.is_dangling( node ) )
     {
       return;
     }
+
     // Get the number of fanouts for the current node.
-    uint32_t fo_size = ntk_fo.fanout_size(node);
+    uint32_t fo_size{ 0u };
+    ntk_fo.foreach_fanout( node, [&]( auto const& no ) {
+      if ( !ntk_fo.is_dangling( no ) )
+      {
+        ++fo_size;
+      }
+    } );
+    ntk._storage->nodes[node].data[0].h1 = fo_size;
 
     DEBUG_PRINT("\t[NODE {}] FANOUT SIZE = {}\n", node, fo_size);
     // If the current node is a constant or it has fanout ≤ 1, skip to the next node.
@@ -601,12 +609,13 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
     fanouts.reserve(fo_size);
     ntk_fo.foreach_fanout(node, [&](const klut::signal & fo_node)
     {
-      if (ntk_fo.is_dangling(fo_node))
+      if ( ntk_fo.is_dangling( fo_node ) )
       {
         return;
       }
+
       fanouts.push_back(fo_node);
-      DEBUG_PRINT("\t\t[NODE {}] ADDING FANOUT {}\n", node, fo_node);
+      DEBUG_PRINT("\t\t[NODE {}] ADDING FANOUT\n", node, fo_node);
     });
 
     // Fix the fanout count (bugged fanouts_size()?)
@@ -634,11 +643,11 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
       // Create a new splitter node connected to 'last_spl'.
 
       DEBUG_PRINT("\t\t[NODE {}] CREATING SPL FOR {}\n", node, *it);
-      DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} #FANOUTS BEFORE: {}\n", node, last_spl, ntk.fanout_size(last_spl));
+      DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} FANOUT BEFORE: {}\n", node, last_spl, ntk.fanout_size(last_spl));
       const klut::signal spl = ntk._create_node({last_spl}, 2, last_spl);
       ntk.set_value(spl, spl_data.value);
       DEBUG_PRINT("\t\t[NODE {}] CREATED SPL {}\n", node, spl);
-      DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} #FANOUTS AFTER: {}\n", node, last_spl, ntk.fanout_size(last_spl));
+      DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} FANOUT AFTER: {}\n", node, last_spl, ntk.fanout_size(last_spl));
       DEBUG_PRINT("\t\t[NODE {}] SPL {} FANIN: {}\n", node, spl, ntk.fanin_size(spl));
 
       // auto n = ntk._storage->nodes[*it];
@@ -650,6 +659,11 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
       for (auto pred_it = ntk._storage->nodes[*it].children.begin();
                 pred_it < ntk._storage->nodes[*it].children.end(); pred_it++ )
       {
+        if ( ntk.is_dangling( pred_it->data ) )
+        {
+          continue;
+        }
+
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PRED {}\n", node, last_spl, pred_it->data);
         if (pred_it->data == node)
         {
@@ -682,6 +696,7 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
           // {
           //   (*fn)(*it, old_preds);
           // }
+          break;
         }
       }
       last_spl = spl;
@@ -695,6 +710,11 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
     for (auto pred_it = ntk._storage->nodes[fanouts.back()].children.begin();
               pred_it < ntk._storage->nodes[fanouts.back()].children.end(); pred_it++ )
     {
+      if ( ntk.is_dangling( pred_it->data ) )
+      {
+        continue;
+      }
+
       if (pred_it->data == node)
       {
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] RECORDING OLD PREDS\n", node, last_spl);
@@ -733,44 +753,48 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
     auto fo_ntk { mockturtle::fanout_view( ntk ) };
     for (const auto & node : fanouts)
     {
-      DEBUG_PRINT("\t\t\t node: {}, σ={}\n", node, NodeData(ntk.value(node)).sigma);
+      DEBUG_PRINT("\t\t\t node: {}\n", node);
       
       fo_ntk.foreach_fanin( node, [&](const klut::signal & fi_node)
       {
-        if (ntk_fo.is_dangling(fi_node))
+        if ( fo_ntk.is_dangling( fi_node ) )
         {
           return;
         }
-        DEBUG_PRINT("\t\t\t\t fanin : {}, σ={}\n", fi_node, NodeData(ntk.value(fi_node)).sigma);
+
+        DEBUG_PRINT("\t\t\t\t fanin : {}\n", fi_node);
       });
       fo_ntk.foreach_fanout( node, [&](const klut::signal & fo_node)
       {
-        if (ntk_fo.is_dangling(fo_node))
+        if ( fo_ntk.is_dangling( fo_node ) )
         {
           return;
         }
-        DEBUG_PRINT("\t\t\t\t fanout: {}, σ={}\n", fo_node, NodeData(ntk.value(fo_node)).sigma);
+
+        DEBUG_PRINT("\t\t\t\t fanout: {}\n", fo_node);
       });
     }
     for (const auto & node : splitters)
     {
-      DEBUG_PRINT("\t\t\t spl : {}, σ={}\n", node, NodeData(ntk.value(node)).sigma);
+      DEBUG_PRINT("\t\t\t spl : {}\n", node);
       
       fo_ntk.foreach_fanin( node, [&](const klut::signal & fi_node)
       {
-        if (ntk_fo.is_dangling(fi_node))
+        if ( fo_ntk.is_dangling( fi_node ) )
         {
           return;
         }
-        DEBUG_PRINT("\t\t\t\t fanin : {}, σ={}\n", fi_node, NodeData(ntk.value(fi_node)).sigma);
+
+        DEBUG_PRINT("\t\t\t\t fanin : {}\n", fi_node);
       });
       fo_ntk.foreach_fanout( node, [&](const klut::signal & fo_node)
       {
-        if (ntk_fo.is_dangling(fo_node))
+        if ( fo_ntk.is_dangling( fo_node ) )
         {
           return;
         }
-        DEBUG_PRINT("\t\t\t\t fanout: {}, σ={}\n", fo_node, NodeData(ntk.value(fo_node)).sigma);
+
+        DEBUG_PRINT("\t\t\t\t fanout: {}\n", fo_node);
       });
     }
     // Ensure that the current node's fan-out count is now 1 (since all other fanouts have been replaced by splitters).
@@ -778,6 +802,234 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
   });
 }
 
+void splitter_ntk_insertion_t1( klut& ntk, phmap::flat_hash_map<klut::signal, klut::signal> const& representatives, const bool verbose = false )
+{
+  // Lambda function for comparing the phases of two signals in the network.
+  auto phase_comp = [&](const klut::signal & a, const klut::signal & b)
+  {
+    return phase_ntk_comparison(a, b, ntk);
+  };
+
+  // Create a view of the network that provides access to fanout information.
+  auto ntk_fo = mockturtle::fanout_view<klut>(ntk);
+
+  // For each node in the fanout view:
+  ntk_fo.foreach_node( [&](const klut::signal & node) {
+    if ( ntk_fo.is_dangling( node ) )
+    {
+      return;
+    }
+    
+    // Populate the fanouts vector.
+    std::vector<klut::signal> fanouts;
+    ntk_fo.foreach_fanout( node, [&]( const klut::signal & fo_node ) {
+      if ( ntk_fo.is_dangling( fo_node ) )
+      {
+        return;
+      }
+
+      if ( static_cast<NodeData>( ntk.value( fo_node ) ).type == T1_GATE ) 
+      {
+        /* the current node is an output of a T1 gate */
+        if ( representatives.at( fo_node ) != fo_node )
+        {
+          /* the current node is not a representitive */
+          return;
+        }
+      }
+
+      fanouts.push_back( fo_node );
+      DEBUG_PRINT("\t\t[NODE {}] ADDING FANOUT {}\n", node, fo_node);
+    } );
+
+    uint32_t fo_size{ fanouts.size() };
+    ntk._storage->nodes[node].data[0].h1 = fo_size;
+    DEBUG_PRINT("\t[NODE {}] FANOUT SIZE = {}\n", node, fo_size );
+
+    // If the current node is a constant or it has fanout ≤ 1, skip to the next node.
+    if (ntk_fo.is_constant(node) || fo_size <= 1)
+    {
+      return;
+    }
+    // Sort the fanouts using the phase comparison function.
+    std::sort( fanouts.begin(), fanouts.end(), phase_comp );
+    DEBUG_PRINT( "\t[NODE {}] SORTED FANOUTS:\n", node );
+    printVector( fanouts, 2 );
+
+    // Create [fo_size - 1] splitter nodes.
+    klut::signal last_spl = node;
+    std::vector<klut::signal> splitters;
+    splitters.reserve( fanouts.size() - 1 );
+    for ( auto it = fanouts.begin(); it < fanouts.end() - 1; it++ )
+    {
+      DEBUG_PRINT("\t\t[NODE {}] LAST SPL: {}\n", node, last_spl);
+      // Copy sigma and type data from the first fanout for the splitter node data.
+      NodeData spl_data = ntk.value( *it );
+      // Change gate type to AA for the splitter node.
+      spl_data.type = AA_GATE;
+      // Create a new splitter node connected to 'last_spl'.
+
+      DEBUG_PRINT("\t\t[NODE {}] CREATING SPL FOR {}\n", node, *it);
+      DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} FANOUT BEFORE: {}\n", node, last_spl, ntk.fanout_size( last_spl ));
+      const klut::signal spl = ntk._create_node({last_spl}, 2, last_spl);
+      ntk.set_value(spl, spl_data.value);
+      DEBUG_PRINT("\t\t[NODE {}] CREATED SPL {}\n", node, spl);
+      DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} FANOUT AFTER: {}\n", node, last_spl, ntk.fanout_size( last_spl ));
+      DEBUG_PRINT("\t\t[NODE {}] SPL {} FANIN: {}\n", node, spl, ntk.fanin_size( spl ));
+
+      // auto n = ntk._storage->nodes[*it];
+      // auto& preds = n.children;
+
+      // Update the connections to reflect the splitter's presence.
+      DEBUG_PRINT("\t\t[NODE {}, LAST_SPL {}] UPDATING CONNECTIONS\n", node, last_spl);
+      // for (auto& pred : preds)
+      for (auto pred_it = ntk._storage->nodes[*it].children.begin();
+                pred_it < ntk._storage->nodes[*it].children.end(); pred_it++ )
+      {
+        if ( ntk.is_dangling( pred_it->data ) )
+        {
+          continue;
+        }
+
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PRED {}\n", node, last_spl, pred_it->data);
+        if ( pred_it->data == node )
+        {
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] RECORDING OLD PREDS\n", node, last_spl);
+          // Store the previous connections.
+          std::vector<klut::signal> old_preds(ntk._storage->nodes[*it].children.size());
+          std::transform(ntk._storage->nodes[*it].children.begin(), ntk._storage->nodes[*it].children.end(), old_preds.begin(), [](auto c) { return c.index; });
+          printVector(old_preds, 4);
+
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
+          for (const auto& entry : ntk._storage->nodes[*it].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+          pred_it->data = spl;                             // Replace the connection with the splitter.
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
+          for (const auto& entry : ntk._storage->nodes[*it].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
+          DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(spl));
+          ntk._storage->nodes[spl].data[0].h1++;  // Increment fan-out of the splitter.
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT  AFTER: {}\n", node, last_spl, spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
+          DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(spl));
+
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] NODE {} FANOUT BEFORE: {}\n", node, last_spl, node, static_cast<int>(ntk._storage->nodes[node].data[0].h1));
+          DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
+          ntk._storage->nodes[node].data[0].h1--; // Decrement fan-out of the current node.
+          DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] NODE {} FANOUT  AFTER: {}\n", node, last_spl, node, static_cast<int>(ntk._storage->nodes[node].data[0].h1));
+          DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
+
+          // // Notify listeners of the modification.
+          // for (auto const& fn : ntk._events->on_modified)
+          // {
+          //   (*fn)(*it, old_preds);
+          // }
+          break;
+        }
+      }
+      last_spl = spl;
+      splitters.push_back(spl);
+    }
+
+    // Process the last fanout.
+    // auto& preds = ntk._storage->nodes[fanouts.back()].children;
+    DEBUG_PRINT("\t\t[NODE {}, LAST_SPL {}] UPDATING CONNECTIONS TO LAST FANOUT {}\n", node, last_spl, fanouts.back());
+    // for (auto& pred : preds)
+    for (auto pred_it = ntk._storage->nodes[fanouts.back()].children.begin();
+              pred_it < ntk._storage->nodes[fanouts.back()].children.end(); pred_it++ )
+    {
+      if ( ntk.is_dangling( pred_it->data ) )
+      {
+        continue;
+      }
+
+      if (pred_it->data == node)
+      {
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] RECORDING OLD PREDS\n", node, last_spl);
+        // Store the previous connections.
+        std::vector<klut::signal> old_preds(ntk._storage->nodes[fanouts.back()].children.size());
+        std::transform(ntk._storage->nodes[fanouts.back()].children.begin(), ntk._storage->nodes[fanouts.back()].children.end(), old_preds.begin(), [](auto c) { return c.index; });
+        printVector(old_preds, 4);
+
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
+        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+        pred_it->data = last_spl;                            // Replace the connection with the last splitter.
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
+        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }     
+
+
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, last_spl, static_cast<int>(ntk._storage->nodes[last_spl].data[0].h1));
+        DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(last_spl));
+        ntk._storage->nodes[last_spl].data[0].h1++; // Increment fan-out of the last splitter.
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT  AFTER: {}\n", node, last_spl, last_spl, static_cast<int>(ntk._storage->nodes[last_spl].data[0].h1));
+        DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(last_spl));
+
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] NODE {} FANOUT BEFORE: {}\n", node, last_spl, node, static_cast<int>(ntk._storage->nodes[node].data[0].h1));
+        DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
+        ntk._storage->nodes[node].data[0].h1--;     // Decrement fan-out of the current node.
+        DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] NODE {} FANOUT  AFTER: {}\n", node, last_spl, node, static_cast<int>(ntk._storage->nodes[node].data[0].h1));
+        DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
+
+        // Notify listeners of the modification.
+        for (auto const& fn : ntk._events->on_modified)
+        {
+          (*fn)(fanouts.back(), old_preds);
+        }
+
+        break;
+      }
+    }
+
+    auto fo_ntk { mockturtle::fanout_view( ntk ) };
+    for (const auto & node : fanouts)
+    {
+      DEBUG_PRINT("\t\t\t node: {}\n", node);
+      
+      fo_ntk.foreach_fanin( node, [&](const klut::signal & fi_node)
+      {
+        if ( fo_ntk.is_dangling( fi_node ) )
+        {
+          return;
+        }
+
+        DEBUG_PRINT("\t\t\t\t fanin : {}\n", fi_node);
+      });
+      fo_ntk.foreach_fanout( node, [&](const klut::signal & fo_node)
+      {
+        if ( fo_ntk.is_dangling( fo_node ) )
+        {
+          return;
+        }
+
+        DEBUG_PRINT("\t\t\t\t fanout: {}\n", fo_node);
+      });
+    }
+    for (const auto & node : splitters)
+    {
+      DEBUG_PRINT("\t\t\t spl : {}\n", node);
+      
+      fo_ntk.foreach_fanin( node, [&](const klut::signal & fi_node)
+      {
+        if ( fo_ntk.is_dangling( fi_node ) )
+        {
+          return;
+        }
+
+        DEBUG_PRINT("\t\t\t\t fanin : {}\n", fi_node);
+      });
+      fo_ntk.foreach_fanout( node, [&](const klut::signal & fo_node)
+      {
+        if ( fo_ntk.is_dangling( fo_node ) )
+        {
+          return;
+        }
+
+        DEBUG_PRINT("\t\t\t\t fanout: {}\n", fo_node);
+      });
+    }
+    // Ensure that the current node's fan-out count is now 1 (since all other fanouts have been replaced by splitters).
+    assert( ntk._storage->nodes[node].data[0].h1 == 1 );
+  } );
+}
 
 /// @brief Structure representing the potential DFF location uniquely defined by fanin, fanout and stage
 struct DFF_var 
@@ -793,15 +1045,31 @@ struct DFF_var
   DFF_var(const DFF_var& other)
       : fanin(other.fanin), fanout(other.fanout), sigma(other.sigma), parent_hashes(other.parent_hashes) {}
 
+  DFF_var( klut::signal _index, uint32_t _sigma, std::unordered_set<uint64_t> _parent_hashes = {} )
+      : fanin( 0u ), fanout( _index ), sigma( _sigma ), parent_hashes( _parent_hashes ) {}
+
+  DFF_var( uint64_t dff_hash, std::unordered_set<uint64_t> _parent_hashes = {} )
+      : fanin( (uint64_t)dff_hash >> 40 ), fanout( (uint64_t)( dff_hash << 24 ) >> 40 ), sigma( (uint64_t)( dff_hash << 48 ) >> 40 ), parent_hashes( _parent_hashes ) {}
+
   std::string str() const
   {
-      return fmt::format("var_{}_{}_{}", fanin, fanout, sigma);
+    if ( fanin == 0 )
+    {
+      return fmt::format( "gate_{}_{}", fanout, sigma );
+    }
+
+    return fmt::format("var_{}_{}_{}", fanin, fanout, sigma);
   }
 };
 
 uint64_t dff_hash(klut::signal _fanin, klut::signal _fanout, uint32_t _sigma)
 {
-  return ( static_cast<uint64_t>(_fanin) << 40 ) | ( static_cast<uint64_t>(_fanout) << 16 ) | _sigma;
+  return ( (uint64_t)_fanin << 40 ) | ( (uint64_t)_fanout << 16 ) | _sigma;
+}
+
+uint64_t dff_hash( DFF_var const& dff )
+{
+  return ( (uint64_t)dff.fanin << 40 ) | ( (uint64_t)dff.fanout << 16 ) | dff.sigma;
 }
 
 struct DFF_registry
@@ -1743,9 +2011,6 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
     ntk.foreach_valid_fanin(fo_node, [&](const klut::signal & fi_node)
     {
       NodeData fi_data { ntk.value( fi_node ) };
-      /* TO CONFIRM: would this extended condition filter out the corner case */
-      /* in the previous implementation that there would never be a DFF       */
-      /* between an AS followed by an AA in the same phase                    */
       uint32_t earliest_sigma = fi_data.sigma + static_cast<uint32_t>( fi_data.type != AA_GATE);
 
       DEBUG_PRINT("\t[DFF] Analyzing parent: {}({})[{}]\n", GATE_TYPE.at(fi_data.type), fi_node, (int)fi_data.sigma);
@@ -1774,7 +2039,7 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
       
       // DFF locations from the earliest to the latest
       std::vector<uint64_t> dff_hashes;
-      DEBUG_PRINT("\tAdding new DFFs [reg size = {}]\n", DFF_REG.variables.size());
+      DEBUG_PRINT( "\tAdding new DFFs [reg size = {}] between phase {} and phase {}\n", DFF_REG.variables.size(), earliest_sigma, latest_sigma );
 
       for (glob_phase_t sigma = earliest_sigma; sigma <= latest_sigma; ++sigma)
       {
@@ -1791,7 +2056,9 @@ std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths_
 
       if ( is_t1 )
       {
-        DFF_closest_to_t1[fanin_ind++] = dff_hashes.back();
+        DEBUG_PRINT("\tNode {} is a T1 gate, ", fo_node );
+        DFF_closest_to_t1[fanin_ind] = dff_hashes.back();
+        DEBUG_PRINT("\t{} is the DFF variable closest to this T1, on the path of the {}th input.\n", DFF_REG.str( dff_hashes.back() ) , ++fanin_ind );
       }
 
       // ensure that the SA gate is placed at least one stage after the fanin 
