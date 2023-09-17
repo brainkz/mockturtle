@@ -566,7 +566,6 @@ bool phase_ntk_comparison(const klut::signal & a, const klut::signal & b, const 
   return a_data.sigma < b_data.sigma;
 }
 
-
 // Function to insert splitter nodes in a KLUT network.
 void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
 {
