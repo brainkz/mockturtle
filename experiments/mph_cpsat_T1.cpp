@@ -703,10 +703,103 @@ void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, con
   }
 }
 void write_snakes_t1( std::vector<Snake> const& snakes, phmap::flat_hash_map<klut::node, std::vector<Snake>> const& t1_input_constraint, 
-                      phmap::flat_hash_map<klut::node, std::array<bool, 3>> const& input_phases, DFF_registry & DFF_REG, 
-                      const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false )
+                      phmap::flat_hash_map<klut::node, std::array<bool, 3>> const& input_phases, std::vector<DFF_var> const& helpers, 
+                      DFF_registry & DFF_REG, std::vector<uint64_t> const& required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false )
 {
+  std::ofstream spec_file( cfg_name );
 
+  /* basic constraints guanranteeing the correct functionality of the multiphase clocking scheme */
+  for (const Snake & snake : snakes)
+  {
+    std::vector<std::string> vars_bucket;
+    for (const std::vector<uint64_t> & section : snake.sections)
+    {
+      std::vector<std::string> vars;
+      for (uint64_t hash : section)
+      {
+        vars.push_back(DFF_REG.str( hash ));
+      }
+      DEBUG_PRINT("New single phase conflict : {}≤1\n", fmt::join(vars, "+"));
+      vars_bucket.push_back(fmt::format(vars.size()>1?"({})":"{}", fmt::join(vars, "+")));
+      if (vars.size() > 1)
+      {
+        spec_file << fmt::format("PHASE,{}\n", fmt::join(vars, ","));
+      }
+    }
+    std::reverse(vars_bucket.begin(), vars_bucket.end());
+    DEBUG_PRINT("New buffer requirement : ({})\n", fmt::join(vars_bucket, "|"));
+    if (vars_bucket.size() == n_phases)
+    {
+      spec_file << fmt::format("BUFFER,{}\n", fmt::join(vars_bucket, ","));
+    }
+  }
+  for (const uint64_t & hash : required_SA_DFFs)
+  {
+    DEBUG_PRINT("New SA_REQUIRED : {}\n", DFF_REG.str( hash ));
+    spec_file << fmt::format("SA_REQUIRED,{}\n", DFF_REG.str( hash ));
+  }
+
+  /* constraints supporting the usage of T1 gates under the multiphase clocking scheme */
+
+  /* (1) the phases of the three inputs to a T1 gate shall be different from each other*/
+  for ( auto it{ t1_input_constraint.begin() }; it != t1_input_constraint.end(); ++it )
+  {
+    const klut::node repr{ it->first };
+    for ( Snake const& snake : it->second )
+    {
+      /* for each of the three input signals */
+      spec_file << fmt::format( "T1,{},", repr );
+      for ( std::vector<uint64_t> const& section : snake.sections )
+      {
+        std::vector<std::string> vars;
+        for ( uint64_t hash : section )
+        {
+          vars.push_back( DFF_var( hash ).str() );
+        }
+        spec_file << fmt::format( "{},", fmt::join( vars, "|" ) );
+      }
+      spec_file << fmt::format( "\n" );
+    }
+  }
+
+  /* (2) a helper variable indicates that the source is an AS gate and the distance    */
+  /* between the source and the T1 gate is no more than one epoch; a helper variable   */
+  /* shall always be assigned to true                                                  */
+  for ( DFF_var const& helper : helpers )
+  {
+    spec_file << fmt::format( "HELPER,{}\n", helper.str() );
+  }
+
+  /* (3) if a input to a T1 is negated, there should be an inverter inserted in the    */
+  /* last epoche before the phase of the T1                                            */
+  for ( auto it{ t1_input_constraint.begin() }; it != t1_input_constraint.end(); ++it )
+  {
+    const klut::node repr{ it->first };
+    for ( auto i{ 0u }; i < 3u; ++i )
+    {
+      if ( input_phases.at( repr )[i] )
+      {
+        /* this input signal shall be negated, therefore */
+        /* at lease one of the variables have to be true */
+        auto const& sections = it->second[i].sections;
+        spec_file << fmt::format( "INVERTED_INPUT," );
+        for ( std::vector<uint64_t> const& section : sections )
+        {
+          std::vector<std::string> vars_no_helper;
+          for ( uint64_t hash : section )
+          {
+            if ( ( uint64_t )( hash >> 40 ) != 0u )
+            {
+              /* helper variables are skipped            */
+              vars_no_helper.push_back( DFF_var( hash ).str() );
+            }
+          }
+          spec_file << fmt::format( "{},", fmt::join( vars_no_helper, "," ) );
+        }
+        spec_file << fmt::format( "\n" );
+      }
+    }
+  }
 }
 
 
@@ -772,12 +865,14 @@ std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry 
   return out_snakes;
 }
 
-std::tuple<std::vector<Snake>, phmap::flat_hash_map<klut::node, std::vector<Snake>>> sectional_snake_t1( Path const& path, klut const& ntk, 
-                                                                                                         phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> const& DFF_closest_to_t1s, 
-                                                                                                         DFF_registry& DFF_REG, uint8_t n_phases, bool verbose = false )
+std::tuple<std::vector<Snake>, phmap::flat_hash_map<klut::node, std::vector<Snake>>, std::vector<DFF_var>> 
+sectional_snake_t1( Path const& path, klut const& ntk, 
+                    phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> const& DFF_closest_to_t1s, 
+                    DFF_registry& DFF_REG, uint8_t n_phases, bool verbose = false )
 {
   std::vector<Snake> out_snakes; 
   std::vector<Snake> stack;
+  std::vector<DFF_var> helpers;
 
   DEBUG_PRINT("[i]: Starting extraction of worms \n");
   // get all DFFs 
@@ -864,10 +959,6 @@ std::tuple<std::vector<Snake>, phmap::flat_hash_map<klut::node, std::vector<Snak
           DFF_var const& dff = DFF_REG.at( hash );
           if ( dff.parent_hashes.size() > 1 && ( static_cast<NodeData>( ntk.value( dff.fanin ) ).type == AA_GATE ) )
           {
-            /* TODO: have to distinguish the two cases of early termination    */
-            /* ( encounter a CB ) and short chain ( encounter the source ) in  */
-            /* the returned snakes                                             */
-
             /* early termination of tracking, because a CB is encountered      */
             break;
           }
@@ -892,7 +983,10 @@ std::tuple<std::vector<Snake>, phmap::flat_hash_map<klut::node, std::vector<Snak
           if ( fanin_data.type == AS_GATE )
           {
             assert( fanin_data.sigma == earliest_dff.sigma - 1 );
-            snake.append( {earliest_dff.fanin, fanin_data.sigma } );
+            DFF_var helper{ earliest_dff.fanin, fanin_data.sigma };
+            snake.append( helper );
+            /* collect helper variables */
+            helpers.push_back( helper );
           }
           break;
         }
@@ -909,7 +1003,7 @@ std::tuple<std::vector<Snake>, phmap::flat_hash_map<klut::node, std::vector<Snak
     t1_input_constraint.emplace( it->first, snakes );
   }
 
-  return std::make_tuple( out_snakes, t1_input_constraint );
+  return std::make_tuple( out_snakes, t1_input_constraint, helpers );
 }
 
 std::tuple<int, std::unordered_map<unsigned int, unsigned int>, std::string>  cpsat_macro_opt(const std::string & cfg_name, uint8_t n_phases) 
@@ -1741,7 +1835,7 @@ int main(int argc, char* argv[])  //
           fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
           
           // *** Generate constraints
-          auto const& [snakes, t1_input_constraint] = sectional_snake_t1( path, network, DFF_closest_to_t1s, DFF_REG, n_phases, true );
+          auto const& [snakes, t1_input_constraint, helpers] = sectional_snake_t1( path, network, DFF_closest_to_t1s, DFF_REG, n_phases, true );
 
           /* If the target gate is a T1 gate, extra constraints shall be added */
 
@@ -1750,7 +1844,7 @@ int main(int argc, char* argv[])  //
           if (!snakes.empty())
           {
             std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-            write_snakes_t1( snakes, t1_input_constraint, input_phases, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true );
+            write_snakes_t1( snakes, t1_input_constraint, input_phases, helpers, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true );
             auto num_dff = cpsat_ortools(cfg_file);
             // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
             total_num_dff += num_dff;

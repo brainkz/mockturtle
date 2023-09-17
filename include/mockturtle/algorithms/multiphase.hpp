@@ -652,7 +652,10 @@ struct DFF_var
   DFF_var( klut::signal _index, uint32_t _sigma, std::unordered_set<uint64_t> _parent_hashes = {} )
       : fanin( 0u ), fanout( _index ), sigma( _sigma ), parent_hashes( _parent_hashes ) {}
 
-  std::string str() 
+  DFF_var( uint64_t dff_hash, std::unordered_set<uint64_t> _parent_hashes = {} )
+      : fanin( (uint64_t)dff_hash >> 40 ), fanout( (uint64_t)( dff_hash << 24 ) >> 40 ), sigma( (uint64_t)( dff_hash << 48 ) >> 40 ), parent_hashes( _parent_hashes ) {}
+
+  std::string str() const
   {
     if ( fanin == 0 )
     {
