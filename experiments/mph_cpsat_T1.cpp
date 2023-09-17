@@ -1864,7 +1864,7 @@ int main(int argc, char* argv[])  //
         assign_sigma(network, assignment, false );
 
         // *** Greedily insert splitters
-        splitter_ntk_insertion( network, false );
+        splitter_ntk_insertion_t1( network, representatives, false );
 
         // network.foreach_node([&] ( const klut::signal & node ) {if ( network.fanout_size( node ) > 1 ){assert( network.node_function( node ) == 0x2 );};});
 
