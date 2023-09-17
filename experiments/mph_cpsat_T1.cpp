@@ -1042,6 +1042,51 @@ int cpsat_ortools(const std::string & cfg_name)
   }
 }
 
+
+int cpsat_ortools_union(const std::string & cfg_name, const uint8_t n_phases) 
+{
+  std::string command = fmt::format("{} {} {} {}", PYTHON_EXECUTABLE, PYTHON_DFF_PLACEMENT_UNION, cfg_name, n_phases);
+  fmt::print("Executing command:\n{}\n", command);
+  std::string pattern = "Objective value: (\\d+)";
+
+  // Run the command and capture its output
+  FILE* pipe = popen(command.c_str(), "r");
+  if (!pipe) 
+  {
+    std::cerr << "Error running the command." << std::endl;
+    return -1;
+  }
+
+  char buffer[128];
+  std::string output;
+  while (fgets(buffer, sizeof(buffer), pipe) != nullptr) 
+  {
+    output += buffer;
+  }
+  fmt::print(output);
+
+  int result = pclose(pipe);
+  if (result == -1) 
+  {
+    std::cerr << "Error closing the command pipe." << std::endl;
+    return -1;
+  }
+
+  // Use regex to find the objective value in the output
+  std::regex regex(pattern);
+  std::smatch match;
+  if (std::regex_search(output, match, regex) && match.size() > 1) 
+  {
+    std::string value_str = match[1];
+    return std::stoi(value_str);
+  } 
+  else 
+  {
+    std::cerr << "Objective value not found in the output." << std::endl;
+    return -1;
+  }
+}
+
 uint32_t get_node_cost( const uint32_t gate_type )
 {
   switch( gate_type )
@@ -1491,10 +1536,12 @@ int main(int argc, char* argv[])  //
   #pragma region benchmark_parsing
     // *** BENCHMARKS OF INTEREST ***
     // experiments::adder | experiments::div  | 
-    auto benchmarks1 = epfl_benchmarks( experiments::adder );//  | experiments::multiplier );
+    // auto benchmarks1 = epfl_benchmarks( experiments::adder );//  | 
+    auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::bar  );// | experiments::max  | experiments::multiplier );
     // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
     // auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
     // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+    std::reverse(benchmarks1.begin(), benchmarks1.end());
 
     // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
     const std::vector<std::string> BEEREL_BENCHMARKS 
@@ -1692,42 +1739,61 @@ int main(int argc, char* argv[])  //
 
         std::vector<Path> paths = extract_paths_t1( network, representatives, true );
 
-        //continue;
+        auto total_num_dff = 0u;
+
+        auto cfg_file_ctr = 0u;
+        for (const Path & path : paths)
+        {
+          path.print_bfs(network);
+
+          auto [gate_vars, sa_dff, stage_constraints, buffer_constraints, inverted_t1_input, merger_t1_input, truncated_t1_paths] = dff_from_threads(network, path, n_phases, input_phases);
+
+          std::string cfg_file = fmt::format("{}_paths_{}.csv", benchmark, cfg_file_ctr);
+
+          write_dff_cfg(network, cfg_file, gate_vars, sa_dff, stage_constraints, buffer_constraints, inverted_t1_input,  merger_t1_input, truncated_t1_paths  );
+
+          auto num_dff = cpsat_ortools_union(cfg_file, n_phases);
+          fmt::print("OR Tools optimized to {} DFF\n", num_dff);
+          total_num_dff += num_dff;
+          fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
+
+          cfg_file_ctr++;
+        }
+        // continue;
 
         // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
 
-        auto total_num_dff = 0u;
-        auto file_ctr = 0u;
-        auto path_ctr = 0u;
-        for (const Path & path : paths)
-        {
-          fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
-          // *** Create binary variables
-          phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> DFF_closest_to_t1s;
-          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths_t1( path, network, n_phases, DFF_closest_to_t1s );
-          total_num_dff += precalc_ndff;
-          fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
-          
-          // *** Generate constraints
-          auto const& [snakes, t1_input_constraint] = sectional_snake_t1( path, network, input_phases, DFF_closest_to_t1s, DFF_REG, n_phases, true );
-
-          /* If the target gate is a T1 gate, extra constraints shall be added */
-
-          fmt::print("\tCreated {} snakes\n", snakes.size());
-          // *** If there's anything that needs optimization
-          if (!snakes.empty())
+        // auto total_num_dff = 0u;
+        #if false
+          auto file_ctr = 0u;
+          auto path_ctr = 0u;
+          for (const Path & path : paths)
           {
-            std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-            write_snakes(snakes, t1_input_constraint, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
-            auto num_dff = cpsat_ortools(cfg_file);
-            // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
-            total_num_dff += num_dff;
-            fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
+            fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
+            // *** Create binary variables
+            phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> DFF_closest_to_t1s;
+            auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths_t1( path, network, n_phases, DFF_closest_to_t1s );
+            total_num_dff += precalc_ndff;
+            fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
+            
+            // *** Generate constraints
+            auto const& [snakes, t1_input_constraint] = sectional_snake_t1( path, network, input_phases, DFF_closest_to_t1s, DFF_REG, n_phases, true );
+
+            /* If the target gate is a T1 gate, extra constraints shall be added */
+
+            fmt::print("\tCreated {} snakes\n", snakes.size());
+            // *** If there's anything that needs optimization
+            if (!snakes.empty())
+            {
+              std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
+              write_snakes(snakes, t1_input_constraint, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
+              auto num_dff = cpsat_ortools(cfg_file);
+              // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
+              total_num_dff += num_dff;
+              fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
+            }
           }
-        }
-
-        continue;
-
+        #endif
         // *** Record maximum phase
         uint64_t max_phase = 0u;
         // *** Record number of splitters and total number of DFFs (not only path balancing DFFs)

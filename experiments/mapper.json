@@ -602,5 +602,17 @@
       }
     ],
     "version": "401452ab"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 3231.0,
+        "N_PHASES": 7.0,
+        "area": 30898.0,
+        "benchmark": "adder_CPSAT",
+        "delay": 19.0
+      }
+    ],
+    "version": "0b78c5ad"
   }
 ]
