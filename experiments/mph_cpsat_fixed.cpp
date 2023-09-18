@@ -509,9 +509,21 @@ int main(int argc, char* argv[])  //
   #pragma region benchmark_parsing
     // *** BENCHMARKS OF INTEREST ***
     // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
-    auto benchmarks1 = epfl_benchmarks( experiments::adder );
-    auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
-    benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+    // auto benchmarks1 = epfl_benchmarks( experiments::adder );
+    // auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c880 | experiments::c1908 | experiments::c1355 | experiments::c3540 );
+
+    auto benchmarks1 = all_benchmarks( 
+      experiments::int2float | 
+      experiments::priority |
+      experiments::voter  |
+      experiments::c432 |
+      experiments::c880 |
+      experiments::c1908  |
+      experiments::c3540  |
+      experiments::c1355 
+    );
+    std::reverse(benchmarks1.begin(), benchmarks1.end());
+    // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
     // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
     const std::vector<std::string> BEEREL_BENCHMARKS 

@@ -220,10 +220,10 @@ if __name__ == "__main__":
         # TODO :    if the fanin is AA, add DFF/NOT to cost and [++SIGMA_EFF] (not accurate but too complex otherwise)
         # TODO :    if the fanin is AS/SA and negated, [++SIGMA_EFF]
       incr_Sigma = [0, 0, 0]
-      # for i, (p_sig, p_neg) in enumerate(zip(g.fanins, g.in_neg)):
-      #   p = all_signals[p_sig]
-      #   if (p.type == 'AA') or (p.type in ('AS', 'SA') and p_neg):
-      #     incr_Sigma[i] += 1
+      for i, (p_sig, p_neg) in enumerate(zip(g.fanins, g.in_neg)):
+        p = all_signals[p_sig]
+        if (p.type == 'AA') or (p.type in ('AS', 'SA') and p_neg):
+          incr_Sigma[i] += 1
       
         # TODO : create vars [ABS_MIN=min(A,B,C)], [MED=median(A,B,C)-ABS_MIN], [MAX=max(A,B,C)-ABS_MIN]
       ABS_MIN = model.NewIntVar(*sigma_bounds, f'absmin_{g.sig}')
@@ -300,7 +300,7 @@ if __name__ == "__main__":
   # Solves and prints out the solution.
   solver = cp_model.CpSolver()
   print(f'Starting Macro ILP')
-  solver.parameters.max_time_in_seconds = 300.0
+  solver.parameters.max_time_in_seconds = 600.0
   status = solver.Solve(model)
   print(f'Solve status: {solver.StatusName(status)}')
   if (solver.StatusName(status) in ("OPTIMAL", "FEASIBLE")):

@@ -400,7 +400,7 @@ std::tuple<klut, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, 
 
 
 template <typename Ntk>
-glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & node, const uint8_t n_phases, const uint8_t type, const bool verbose)
+glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & node, const uint8_t n_phases, const uint8_t type, const bool verbose = false)
 {
   bool valid = false;
   uint32_t phase = 0u;
@@ -425,7 +425,7 @@ glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & no
     if (verbose)
     {
       unsigned int gp = static_cast<unsigned int>(parent_data.sigma);
-      fmt::print("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
+      DEBUG_PRINT("\t\tfanin {} ɸ={} [S={}, φ={}]\n", parent, gp, gp/n_phases, gp%n_phases);
     }
   });
   assert(valid);
@@ -465,7 +465,7 @@ void assign_sigma(const klut & ntk, const phmap::flat_hash_map<unsigned int, uns
       ntk_topo.foreach_valid_fanin(node, [&](const klut::signal & fi_node)
       {
         NodeData fi_node_data;
-        fmt::print("\tFANIN {}, σ={}\n", fi_node, static_cast<int>(fi_node_data.sigma));
+        DEBUG_PRINT("\tFANIN {}, σ={}\n", fi_node, static_cast<int>(fi_node_data.sigma));
         // node_data.sigma = phase_assignment.at( node );
       });
     }
@@ -674,10 +674,10 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
           printVector(old_preds, 4);
 
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
-          for (const auto& entry : ntk._storage->nodes[*it].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+          for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
           pred_it->data = spl;                             // Replace the connection with the splitter.
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
-          for (const auto& entry : ntk._storage->nodes[*it].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+          for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
 
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
           DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(spl));
@@ -724,10 +724,10 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
         printVector(old_preds, 4);
 
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
-        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
         pred_it->data = last_spl;                            // Replace the connection with the last splitter.
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
-        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }     
+        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }     
 
 
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, last_spl, static_cast<int>(ntk._storage->nodes[last_spl].data[0].h1));
@@ -901,10 +901,10 @@ void splitter_ntk_insertion_t1( klut& ntk, phmap::flat_hash_map<klut::signal, kl
           printVector(old_preds, 4);
 
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
-          for (const auto& entry : ntk._storage->nodes[*it].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+          for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
           pred_it->data = spl;                             // Replace the connection with the splitter.
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
-          for (const auto& entry : ntk._storage->nodes[*it].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+          for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
 
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
           DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(spl));
@@ -951,10 +951,10 @@ void splitter_ntk_insertion_t1( klut& ntk, phmap::flat_hash_map<klut::signal, kl
         printVector(old_preds, 4);
 
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
-        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }
+        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
         pred_it->data = last_spl;                            // Replace the connection with the last splitter.
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
-        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { fmt::print("\t\t\t\t{}\n", entry.data); }     
+        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }     
 
 
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, last_spl, static_cast<int>(ntk._storage->nodes[last_spl].data[0].h1));
@@ -1436,7 +1436,7 @@ void write_dff_cfg(
   const std::set<std::vector<DFF_union>> & inverted_t1_input,  // inverted_t1_input: if AS/SA/T1 -> T1 and inverted, need 1+ DFF 
   const std::set<std::vector<DFF_union>> & merger_t1_input,   // merger_t1_input : if merger -> T1, need 1+ DFF (avoid double pulse)
   const std::map<klut::signal, std::set<std::vector<DFF_union>>> & truncated_t1_paths,
-  bool verbose = true
+  bool verbose = false
   )
 {
   // auto out = fmt::output_file(filename);
@@ -1808,7 +1808,7 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
       ntk.foreach_valid_fanin( fo_node, [&]( auto const& ni ) {
         stack.push_back( ni );
       } );
-      buildPath(ntk, node_path, stack, true);
+      buildPath(ntk, node_path, stack, verbose);
       merge_overlapping_paths( paths, node_path );
       paths.push_back(node_path);
     }
@@ -1818,7 +1818,7 @@ std::vector<Path> extract_paths_t1(const klut & ntk, const phmap::flat_hash_map<
       node_path.targets.emplace( fo_node );
       ntk.foreach_valid_fanin( fo_node, [&] (const klut::signal & fi_node) {
         std::vector<klut::signal> stack { fi_node };
-        buildPath(ntk, node_path, stack, true);
+        buildPath(ntk, node_path, stack, verbose);
         merge_overlapping_paths( paths, node_path );
         paths.push_back(node_path);
       } );
