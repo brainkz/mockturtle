@@ -1331,6 +1331,8 @@ bool t1_usage_sanity_check( klut& ntk, std::pair<const std::array<klut::node, 3>
   gain -= static_cast<int32_t>( __builtin_popcount( t1_outputs.in_phase ) * COSTS_MAP[fNOT] );
   gain -= static_cast<int32_t>( COSTS_SUNMAGNETICS_EXTENDED[fT1] );
 
+  
+
   if ( !has_overlap.empty() )
   {
     for ( const auto root : roots )
