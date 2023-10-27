@@ -29,6 +29,7 @@ const std::string PYTHON_PHASE_ASSIGNMENT { "../python/multiphase/phase_assignme
 // Python script that runs OR-tools for DFF placement
 const std::string PYTHON_DFF_PLACEMENT { "../python/multiphase/config_solver.py" };
 const std::string PYTHON_DFF_PLACEMENT_UNION { "../python/multiphase/config_solver_union.py" };
+// /Users/brainkz/Documents/GitHub/ortools_python/config_solver.py
 
 // Folder containing OPENCORES benchmarks in BLIF format
 const std::string OPENCORES_FOLDER { "../benchmarks/opencores" };

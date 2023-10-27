@@ -578,55 +578,46 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
   // Create a view of the network that provides access to fanout information.
   auto ntk_fo = mockturtle::fanout_view<klut>(ntk);
 
+  auto init_size = ntk.size();
   // For each node in the fanout view:
   ntk_fo.foreach_node([&](const klut::signal & node)
   {
-    if ( ntk_fo.is_dangling( node ) )
+    if ( ntk_fo.is_dangling( node ) || ntk_fo.is_constant(node) )
     {
       return;
     }
 
     // Get the number of fanouts for the current node.
     uint32_t fo_size{ 0u };
-    ntk_fo.foreach_fanout( node, [&]( auto const& no ) {
-      if ( !ntk_fo.is_dangling( no ) )
+    std::vector<klut::signal> fanouts;
+    fanouts.reserve(fo_size);
+    ntk_fo.foreach_fanout( node, [&]( auto const& fo_node ) {
+      if ( !ntk_fo.is_dangling( fo_node ) )
       {
         ++fo_size;
+        fanouts.push_back( fo_node );
       }
     } );
     ntk._storage->nodes[node].data[0].h1 = fo_size;
 
     DEBUG_PRINT("\t[NODE {}] FANOUT SIZE = {}\n", node, fo_size);
     // If the current node is a constant or it has fanout ≤ 1, skip to the next node.
-    if (ntk_fo.is_constant(node) || fo_size <= 1)
+    if ( fo_size <= 1 )
     {
       return;
     }
-
-    // Populate the fanouts vector.
-    std::vector<klut::signal> fanouts;
-    fanouts.reserve(fo_size);
-    ntk_fo.foreach_fanout(node, [&](const klut::signal & fo_node)
-    {
-      if ( ntk_fo.is_dangling( fo_node ) )
-      {
-        return;
-      }
-
-      fanouts.push_back(fo_node);
-      DEBUG_PRINT("\t\t[NODE {}] ADDING FANOUT\n", node, fo_node);
-    });
+    fmt::print("Processing node {:>5d} out of {:>5d}\r", node, init_size);
 
     // Fix the fanout count (bugged fanouts_size()?)
-    if ( fanouts.size() != fo_size )
-    {
-      ntk._storage->nodes[node].data[0].h1 = fanouts.size();
-    }
+    ntk._storage->nodes[node].data[0].h1 = fanouts.size();
 
     // Sort the fanouts using the phase comparison function.
     std::sort(fanouts.begin(), fanouts.end(), phase_comp);
     DEBUG_PRINT("\t[NODE {}] SORTED FANOUTS:\n", node);
-    printVector(fanouts, 2);
+    if (verbose) 
+    {
+      printVector(fanouts, 2);
+    }
 
     // Create [fo_size - 1] splitter nodes.
     klut::signal last_spl = node;
@@ -668,15 +659,18 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
         {
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] RECORDING OLD PREDS\n", node, last_spl);
           // Store the previous connections.
-          std::vector<klut::signal> old_preds(ntk._storage->nodes[*it].children.size());
-          std::transform(ntk._storage->nodes[*it].children.begin(), ntk._storage->nodes[*it].children.end(), old_preds.begin(), [](auto c) { return c.index; });
-          printVector(old_preds, 4);
+          // std::vector<klut::signal> old_preds(ntk._storage->nodes[*it].children.size());
+          // std::transform(ntk._storage->nodes[*it].children.begin(), ntk._storage->nodes[*it].children.end(), old_preds.begin(), [](auto c) { return c.index; });
+          // if (verbose)
+          // {
+          //   printVector(old_preds, 4);
+          // }
 
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
-          for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
+          // for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
           pred_it->data = spl;                             // Replace the connection with the splitter.
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
-          for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
+          // for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
 
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, spl, static_cast<int>(ntk._storage->nodes[spl].data[0].h1));
           DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(spl));
@@ -718,15 +712,18 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
       {
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] RECORDING OLD PREDS\n", node, last_spl);
         // Store the previous connections.
-        std::vector<klut::signal> old_preds(ntk._storage->nodes[fanouts.back()].children.size());
-        std::transform(ntk._storage->nodes[fanouts.back()].children.begin(), ntk._storage->nodes[fanouts.back()].children.end(), old_preds.begin(), [](auto c) { return c.index; });
-        printVector(old_preds, 4);
+        // std::vector<klut::signal> old_preds(ntk._storage->nodes[fanouts.back()].children.size());
+        // std::transform(ntk._storage->nodes[fanouts.back()].children.begin(), ntk._storage->nodes[fanouts.back()].children.end(), old_preds.begin(), [](auto c) { return c.index; });
+        // if (verbose)
+        // {
+        //   printVector(old_preds, 4);
+        // }
 
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
-        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
+        // for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
         pred_it->data = last_spl;                            // Replace the connection with the last splitter.
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS AFTER\n", node, last_spl);
-        for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }     
+        // for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }     
 
 
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] SPL {} FANOUT BEFORE: {}\n", node, last_spl, last_spl, static_cast<int>(ntk._storage->nodes[last_spl].data[0].h1));
@@ -742,10 +739,10 @@ void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
         DEBUG_PRINT("\t\t\t\t Call: {}\n", ntk.fanout_size(node));
 
         // Notify listeners of the modification.
-        for (auto const& fn : ntk._events->on_modified)
-        {
-          (*fn)(fanouts.back(), old_preds);
-        }
+        // for (auto const& fn : ntk._events->on_modified)
+        // {
+        //   (*fn)(fanouts.back(), old_preds);
+        // }
       }
     }
 
@@ -853,7 +850,10 @@ void splitter_ntk_insertion_t1( klut& ntk, phmap::flat_hash_map<klut::signal, kl
     // Sort the fanouts using the phase comparison function.
     std::sort( fanouts.begin(), fanouts.end(), phase_comp );
     DEBUG_PRINT( "\t[NODE {}] SORTED FANOUTS:\n", node );
-    printVector( fanouts, 2 );
+    if (verbose)
+    {
+      printVector( fanouts, 2 );
+    }
 
     // Create [fo_size - 1] splitter nodes.
     klut::signal last_spl = node;
@@ -897,7 +897,10 @@ void splitter_ntk_insertion_t1( klut& ntk, phmap::flat_hash_map<klut::signal, kl
           // Store the previous connections.
           std::vector<klut::signal> old_preds(ntk._storage->nodes[*it].children.size());
           std::transform(ntk._storage->nodes[*it].children.begin(), ntk._storage->nodes[*it].children.end(), old_preds.begin(), [](auto c) { return c.index; });
-          printVector(old_preds, 4);
+          if (verbose) 
+          {
+            printVector(old_preds, 4);
+          }
 
           DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
           for (const auto& entry : ntk._storage->nodes[*it].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
@@ -947,7 +950,10 @@ void splitter_ntk_insertion_t1( klut& ntk, phmap::flat_hash_map<klut::signal, kl
         // Store the previous connections.
         std::vector<klut::signal> old_preds(ntk._storage->nodes[fanouts.back()].children.size());
         std::transform(ntk._storage->nodes[fanouts.back()].children.begin(), ntk._storage->nodes[fanouts.back()].children.end(), old_preds.begin(), [](auto c) { return c.index; });
-        printVector(old_preds, 4);
+        if (verbose) 
+        {
+          printVector(old_preds, 4);
+        }
 
         DEBUG_PRINT("\t\t\t[NODE {}, LAST_SPL {}] PREDS BEFORE\n", node, last_spl);
         for (const auto& entry : ntk._storage->nodes[fanouts.back()].children)  { DEBUG_PRINT("\t\t\t\t{}\n", entry.data); }
@@ -1560,6 +1566,30 @@ void write_klut_specs(const klut & ntk, const std::string & filename)
   });
 }
 
+void write_klut_specs_new( const klut & ntk, const std::string & filename, const bool verbose = false )
+{
+  std::ofstream spec_file( filename );
+
+  spec_file << "PI";
+  ntk.foreach_pi( [&]( const auto & node ){
+    spec_file << "," << node;
+  } );
+  spec_file << "\n";
+
+  ntk.foreach_gate( [&]( auto const& n ) 
+  {
+    std::vector<klut::node> n_fanins;
+    ntk.foreach_fanin( n, [&n_fanins]( auto const& ni ) 
+    {
+      n_fanins.push_back( ni );
+    } );
+
+    spec_file << fmt::format( "{0},{1},{2}\n", n, static_cast<NodeData>( ntk.value( n ) ).type, fmt::join( n_fanins, "|" ) );
+    // spec_file << fmt::format( "{0},{1},{2}\n", ntk.node_to_index( n ), static_cast<NodeData>( ntk.value( n ) ).type, fmt::join( n_fanins, "|" ) );
+    return true;
+  } );
+}
+
 void write_klut_specs_T1(const klut & ntk, const phmap::flat_hash_map<klut::signal, std::vector<klut::signal>> & cut_leaves, const phmap::flat_hash_map<klut::signal, klut::signal> & representatives, const std::string & filename)
 {
   auto ntk_fo = mockturtle::fanout_view<klut, false>( ntk );
@@ -1625,7 +1655,10 @@ std::vector<Path> extract_paths(const klut & ntk, bool verbose = false)
       while (!stack.empty())
       {
         DEBUG_PRINT("\t\t\t[NODE {}][FANIN {}] stack contents:\n", fo_node, fi_node);
-        printVector(stack, 4);
+        if (verbose) 
+        {
+          printVector(stack, 4);
+        }
 
         const klut::signal & n = stack.back();
         stack.pop_back();
@@ -1719,7 +1752,10 @@ void buildPath(const klut & ntk, Path & node_path, std::vector<klut::signal> sta
   while (!stack.empty())
   {
     DEBUG_PRINT("\t\t\tStack contents:\n");
-    printVector(stack, 4);
+    if (verbose) 
+    {
+      printVector(stack, 4);
+    }
 
     const klut::signal & n = stack.back();
     stack.pop_back();

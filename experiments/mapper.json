@@ -666,5 +666,157 @@
       }
     ],
     "version": "abe8ece8"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 4407.0,
+        "N_PHASES": 7.0,
+        "area": 39892.0,
+        "benchmark": "adder_no_T1",
+        "committed_FA": 0,
+        "delay": 19.0,
+        "found_FA": 0,
+        "time": 22.828726125
+      }
+    ],
+    "version": "083b3aaa"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 2252.0,
+        "DFF_insertion": 9.168683667,
+        "N_PHASES": 7.0,
+        "area": 45287.0,
+        "benchmark": "s13207.aig_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.277016125,
+        "phase_assgn": 0.857043917,
+        "spl_insertion": 19.362797791,
+        "total": 32.6655415
+      },
+      {
+        "#DFF": 807.0,
+        "DFF_insertion": 2.2955845,
+        "N_PHASES": 7.0,
+        "area": 21754.0,
+        "benchmark": "s5378.aig_CPSAT",
+        "delay": 2.0,
+        "mapping": 2.923135042,
+        "phase_assgn": 0.460665209,
+        "spl_insertion": 1.845583333,
+        "total": 7.524968084000001
+      },
+      {
+        "#DFF": 48.0,
+        "DFF_insertion": 0.043591875,
+        "N_PHASES": 7.0,
+        "area": 2124.0,
+        "benchmark": "s382.aig_CPSAT",
+        "delay": 1.0,
+        "mapping": 2.5786335,
+        "phase_assgn": 0.163808167,
+        "spl_insertion": 0.007781959,
+        "total": 2.793815501
+      },
+      {
+        "#DFF": 578.0,
+        "DFF_insertion": 4.259508208,
+        "N_PHASES": 7.0,
+        "area": 16939.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.00673,
+        "phase_assgn": 0.488715542,
+        "spl_insertion": 0.511545959,
+        "total": 8.266499709
+      },
+      {
+        "#DFF": 99.0,
+        "DFF_insertion": 2.613120458,
+        "N_PHASES": 7.0,
+        "area": 3347.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 2.0,
+        "mapping": 2.775452958,
+        "phase_assgn": 0.245412959,
+        "spl_insertion": 0.0325295,
+        "total": 5.666515875
+      },
+      {
+        "#DFF": 44.0,
+        "DFF_insertion": 0.071216542,
+        "N_PHASES": 7.0,
+        "area": 4501.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 2.0,
+        "mapping": 3.01886875,
+        "phase_assgn": 0.272142334,
+        "spl_insertion": 0.06914425,
+        "total": 3.431371876
+      },
+      {
+        "#DFF": 247.0,
+        "DFF_insertion": 2.522108583,
+        "N_PHASES": 7.0,
+        "area": 6141.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 2.0,
+        "mapping": 2.675627292,
+        "phase_assgn": 0.281117625,
+        "spl_insertion": 0.071982917,
+        "total": 5.550836417
+      },
+      {
+        "#DFF": 342.0,
+        "DFF_insertion": 3.397018583,
+        "N_PHASES": 7.0,
+        "area": 5116.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 3.0,
+        "mapping": 2.618968625,
+        "phase_assgn": 0.243971375,
+        "spl_insertion": 0.028096208,
+        "total": 6.288054791
+      },
+      {
+        "#DFF": 1833.0,
+        "DFF_insertion": 17.084784583,
+        "N_PHASES": 7.0,
+        "area": 160375.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 6.0,
+        "mapping": 11.476592125,
+        "phase_assgn": 5.066316917,
+        "spl_insertion": 971.257952208,
+        "total": 1004.885645833
+      },
+      {
+        "#DFF": 3484.0,
+        "DFF_insertion": 19.822657875,
+        "N_PHASES": 7.0,
+        "area": 46487.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 12.0,
+        "mapping": 2.877991667,
+        "phase_assgn": 4.105443584,
+        "spl_insertion": 3.450882875,
+        "total": 30.256976000999998
+      },
+      {
+        "#DFF": 217.0,
+        "DFF_insertion": 0.666097167,
+        "N_PHASES": 7.0,
+        "area": 5136.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 2.0,
+        "mapping": 2.652529125,
+        "phase_assgn": 0.261277833,
+        "spl_insertion": 0.037778333,
+        "total": 3.617682458
+      }
+    ],
+    "version": "067afda1"
   }
 ]

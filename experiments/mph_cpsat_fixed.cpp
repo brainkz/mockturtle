@@ -28,6 +28,7 @@
 #include <set>
 #include <cstdio>
 #include <filesystem>
+#include <thread>
 
 #include <fmt/format.h>
 #include <lorina/aiger.hpp>
@@ -256,7 +257,7 @@ void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, con
 /// @param n_phases 
 /// @param verbose 
 /// @return 
-std::vector<Snake> sectional_snake(const Path & path, klut & ntk,  DFF_registry & DFF_REG, uint8_t n_phases, bool verbose = false)
+std::vector<Snake> sectional_snake(const Path & path, const klut & ntk,  DFF_registry & DFF_REG, const uint8_t n_phases, const bool verbose = false)
 {
   std::vector<Snake> out_snakes; 
   std::vector<Snake> stack;
@@ -473,12 +474,44 @@ int cpsat_ortools(const std::string & cfg_name)
   }
 }
 
+void process_path(std::vector<int> & local_num_dff, const int idx, const Path& path, const klut& network, const size_t n_phases, const std::string benchmark)
+{
+  bool verbose = true;
+  DEBUG_PRINT("\tAnalyzing the path\n");
+
+  // *** Create binary variables
+  auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, n_phases);
+  local_num_dff[idx] += precalc_ndff;
+  DEBUG_PRINT("\t\t\t\t[i]: Precalculated {} DFFs\n", precalc_ndff);
+
+  // if (!DFF_REG.variables.empty())
+  // {
+  //   return;
+  // }
+
+  // *** Generate constraints
+  std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, verbose);
+  DEBUG_PRINT("\tCreated {} snakes\n", snakes.size());
+
+  // *** If there's anything that needs optimization
+  if (!snakes.empty())
+  {
+    std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_mt_{}.csv", benchmark, idx);
+    write_snakes(snakes, DFF_REG, required_SA_DFFs, cfg_file, n_phases, verbose);
+    auto num_dff = cpsat_ortools(cfg_file);
+    // DEBUG_PRINT("OR Tools optimized to {} DFF\n", num_dff);
+    local_num_dff[idx] += num_dff;
+    DEBUG_PRINT("\t\t\t\t[i] total CPSAT #DFF = {}\n", local_num_dff[idx]);
+  }
+}
+
+
 int main(int argc, char* argv[])  //
 {
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay");
+  experiment<std::string, double, double, double, double, double, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay", "mapping", "phase_assgn", "spl_insertion", "DFF_insertion", "total");
 
   // uint8_t MIN_N_PHASES = std::stoi(argv[1]);
   // uint8_t MAX_N_PHASES = std::stoi(argv[2]);
@@ -522,7 +555,6 @@ int main(int argc, char* argv[])  //
       experiments::c3540  |
       experiments::c1355 
     );
-    std::reverse(benchmarks1.begin(), benchmarks1.end());
     // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
     // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
@@ -538,7 +570,7 @@ int main(int argc, char* argv[])  //
     // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
     const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
     benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
-    // std::reverse(benchmarks1.begin(), benchmarks1.end());
+    std::reverse(benchmarks1.begin(), benchmarks1.end());
 
     // *** LIST ALL CONSIDERED BENCHMARKS ***
     fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
@@ -552,6 +584,7 @@ int main(int argc, char* argv[])  //
     phmap::flat_hash_map<ULL, Node> GNM_global;
     bool status = LoadFromFile(GNM_global, NODEMAP_BINARY_PREFIX);
     assert(status);
+    
 
     phmap::flat_hash_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
 
@@ -579,10 +612,18 @@ int main(int argc, char* argv[])  //
         continue;
       }
     }
-    else if (benchmark.find(".aig") != std::string::npos) // ISCAS89 benchmark
+    else if ( benchmark.find(".aig") != std::string::npos ) // ISCAS89 benchmark
     {
       fmt::print("USING THE BENCH READER\n");
-      std::string path = fmt::format("{}{}", ISCAS89_FOLDER, benchmark);
+      std::string path = fmt::format("{}/{}", ISCAS89_FOLDER, benchmark);
+      fmt::print("READING {}\n", path);
+
+      std::filesystem::path currentDir = std::filesystem::current_path();
+      // Convert the path to a string and print it
+      std::string currentDirStr = currentDir.string();
+      std::cout << "Current Working Directory: " << currentDirStr << std::endl;
+
+
       if ( lorina::read_aiger( path, aiger_reader( ntk_original ) ) != lorina::return_code::success )
       {
         fmt::print("Failed to read {}\n", benchmark);
@@ -601,6 +642,9 @@ int main(int argc, char* argv[])  //
       // convert_klut_to_graph<mig>(ntk_original, temp_klut);
     }
 
+
+    std::chrono::high_resolution_clock::time_point mapping_start = std::chrono::high_resolution_clock::now();
+
     // *** MAP, NO NEED FOR RETIMING/PATH BALANCING ***
     fmt::print("Started mapping {}\n", benchmark);
     auto [res_w_pb, st_w_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
@@ -611,6 +655,12 @@ int main(int argc, char* argv[])  //
     auto klut_decomposed = std::get<0>(_result);
     auto raw_area = std::get<1>(_result);
     fmt::print("Decomposition complete\n");
+
+    // Stop the timer
+    std::chrono::high_resolution_clock::time_point mapping_end = std::chrono::high_resolution_clock::now();
+
+    // Calculate elapsed time
+    std::chrono::duration<double> mapping_seconds = mapping_end - mapping_start;
   
     for (const auto n_phases : PHASES)
     {
@@ -623,11 +673,13 @@ int main(int argc, char* argv[])  //
         klut network { klut_decomposed.clone() };
         phmap::flat_hash_map<unsigned int, unsigned int> assignment;
 
+        std::chrono::high_resolution_clock::time_point pa_start = std::chrono::high_resolution_clock::now();
+
         if (i == 0)
         {
           const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
           fmt::print("\tWriting config {}\n", ilp_cfg_filename);
-          write_klut_specs(network, ilp_cfg_filename);
+          write_klut_specs_new(network, ilp_cfg_filename);
 
           fmt::print("\tCalling OR-Tools\n");
           auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
@@ -646,10 +698,27 @@ int main(int argc, char* argv[])  //
         
         // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
         // *** IF i = 1, "assignment" is empty
-        greedy_ntk_assign(network, n_phases, assignment, true );
+        greedy_ntk_assign(network, n_phases, assignment, false );
+
+        // Stop the timer
+        std::chrono::high_resolution_clock::time_point pa_end = std::chrono::high_resolution_clock::now();
+
+        // Calculate elapsed time
+        std::chrono::duration<double> pa_seconds = pa_end - pa_start;
+
+
+
+        // Start the timer
+        std::chrono::high_resolution_clock::time_point spl_start = std::chrono::high_resolution_clock::now();
 
         // *** Greedily insert splitters
-        splitter_ntk_insertion( network, true );
+        splitter_ntk_insertion( network, false );
+
+        // Stop the timer
+        std::chrono::high_resolution_clock::time_point spl_end = std::chrono::high_resolution_clock::now();
+
+        // Calculate elapsed time
+        std::chrono::duration<double> spl_seconds = spl_end - spl_start;
 
         // network.foreach_node([&] ( const klut::signal & node ) 
         // {
@@ -661,36 +730,76 @@ int main(int argc, char* argv[])  //
 
         fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
 
+
+        // Start the timer
+        std::chrono::high_resolution_clock::time_point dff_start = std::chrono::high_resolution_clock::now();
+
+
         fmt::print("[i] EXTRACTING PATHS\n");
-        std::vector<Path> paths = extract_paths( network, true );
+        std::vector<Path> paths = extract_paths( network, false );
         // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
 
-        auto total_num_dff = 0u;
-        auto file_ctr = 0u;
-        auto path_ctr = 0u;
+
+        std::vector<int> local_num_dff( paths.size() );
+        std::vector<std::thread> threads;
+        threads.reserve(paths.size());
+
+        int idx = 0;
         for (const Path & path : paths)
         {
-          fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
-          // *** Create binary variables
-          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, n_phases);
-          total_num_dff += precalc_ndff;
-          fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
-          
-          // *** Generate constraints
-          std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, true);
-
-          fmt::print("\tCreated {} snakes\n", snakes.size());
-          // *** If there's anything that needs optimization
-          if (!snakes.empty())
-          {
-            std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-            write_snakes(snakes, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
-            auto num_dff = cpsat_ortools(cfg_file);
-            // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
-            total_num_dff += num_dff;
-            fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
-          }
+          threads.emplace_back(process_path, std::ref(local_num_dff), idx, std::ref(path), std::ref(network), n_phases, benchmark);
+          idx++;
         }
+        // Wait for all threads to finish
+        for (auto& thread : threads) {
+            thread.join();
+        }
+
+        fmt::print("{}\n", fmt::join(local_num_dff, ","));
+        auto total_num_dff = std::accumulate(local_num_dff.begin(), local_num_dff.end(), 0);
+
+        // std::vector<int> local_num_dff_seq( paths.size() );
+        // int total_num_dff = 0u;
+        // int file_ctr = 0u;
+        // int path_ctr = 0u;
+        // int seq_idx = 0;
+        // for (const Path & path : paths)
+        // {
+        //   fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
+        //   // *** Create binary variables
+        //   auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, n_phases);
+        //   total_num_dff += precalc_ndff;
+        //   local_num_dff_seq[seq_idx] += precalc_ndff;
+        //   fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
+          
+        //   // *** Generate constraints
+        //   std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, true);
+
+        //   fmt::print("\tCreated {} snakes\n", snakes.size());
+        //   // *** If there's anything that needs optimization
+        //   if (!snakes.empty())
+        //   {
+        //     std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
+        //     write_snakes(snakes, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
+        //     auto num_dff = cpsat_ortools(cfg_file);
+        //     // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
+        //     total_num_dff += num_dff;
+        //     local_num_dff_seq[seq_idx] += num_dff;
+        //     fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
+        //   }
+        //   seq_idx++;
+        // }
+
+        // for (auto i = 0; i < paths.size(); ++i)
+        // {
+        //   fmt::print("[{}]\tMT: {}\tSEQ: {}\n", i, local_num_dff[i], local_num_dff_seq[i]);
+        // }
+
+        // Stop the timer
+        std::chrono::high_resolution_clock::time_point dff_end = std::chrono::high_resolution_clock::now();
+
+        // Calculate elapsed time
+        std::chrono::duration<double> dff_seconds = dff_end - dff_start;
 
         // *** Record maximum phase
         uint64_t max_stage = 0u;
@@ -699,9 +808,9 @@ int main(int argc, char* argv[])  //
         network.foreach_gate([&](const klut::signal & node)
         {
           NodeData node_data { network.value(node) };
-          fmt::print("[Node {}] old max_stage = {}\tnode_data = {}\t", node, max_stage, static_cast<int>(node_data.sigma));
+          // fmt::print("[Node {}] old max_stage = {}\tnode_data = {}\t", node, max_stage, static_cast<int>(node_data.sigma));
           max_stage = generic_max(max_stage, node_data.sigma);
-          fmt::print("new max_stage = {}\n", max_stage);
+          // fmt::print("new max_stage = {}\n", max_stage);
 
           auto fo_size = network.fanout_size(node);
           if (fo_size > 1)
@@ -713,17 +822,19 @@ int main(int argc, char* argv[])  //
         network.foreach_po([&](const klut::signal & node)
         {
           NodeData node_data { network.value(node) };
-          fmt::print("[PO {}] max_stage = {}, sigma = {}, node #DFF = {}\n", node, max_stage, static_cast<int>(node_data.sigma), ( (max_stage - node_data.sigma) / n_phases ) );
+          // fmt::print("[PO {}] max_stage = {}, sigma = {}, node #DFF = {}\n", node, max_stage, static_cast<int>(node_data.sigma), ( (max_stage - node_data.sigma) / n_phases ) );
           total_num_dff += (max_stage - node_data.sigma) / n_phases;
-          fmt::print("\t\t\t\t[i] total #DFF = {}\n", total_num_dff);
+          // fmt::print("\t\t\t\t[i] total #DFF = {}\n", total_num_dff);
         });
 
-        fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
+        // fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
         int total_area = raw_area + total_num_dff * COSTS_MAP[fDFF] + total_num_spl * COSTS_MAP[fSPL];
-        fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
-        fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_stage);
+        // fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
+        // fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_stage);
 
-        exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_stage - 1) / n_phases + 1 ));
+        exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_stage - 1) / n_phases + 1 ),
+        mapping_seconds.count(), pa_seconds.count(), spl_seconds.count(), dff_seconds.count(),
+        mapping_seconds.count() + pa_seconds.count() + spl_seconds.count() + dff_seconds.count());
         exp.save();
         exp.table();
       }
