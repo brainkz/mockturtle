@@ -1644,7 +1644,7 @@ void write_snakes(const std::vector<Snake> & snakes, const std::unordered_map<no
   }
 }
 
-std::vector<Snake> sectional_snake(const Path & path, std::unordered_map<node_t, NtkNode> &NR,  DFF_registry & DFF_REG, uint8_t n_phases, bool verbose = false)
+std::vector<Snake> sectional_snake(const Path & path, const std::unordered_map<node_t, NtkNode> & NR,  DFF_registry & DFF_REG, uint8_t n_phases, bool verbose = false)
 {
   std::vector<Snake> out_snakes; 
   std::vector<Snake> stack;
@@ -1831,7 +1831,7 @@ void write_klut_specs(const klut & ntk, const std::unordered_map<klut::signal, P
 
 std::tuple<int, std::unordered_map<unsigned int, unsigned int>, std::string>  cpsat_macro_opt(const std::string & cfg_name, uint8_t n_phases) 
 {
-  std::string command = fmt::format("/Users/brainkz/anaconda3/bin/python /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp_2.py {} {}", n_phases, cfg_name);
+  std::string command = fmt::format("/Users/brainkz/anaconda3/bin/python /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp_3.py {} {}", n_phases, cfg_name);
   // std::string command = fmt::format("/Users/brainkz/anaconda3/bin/ipython --pdb --no-banner /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp.py {} {}", n_phases, cfg_name);
   // std::string command = fmt::format("/Users/brainkz/anaconda3/bin/ipython -i --pdb --no-banner /Users/brainkz/Documents/GitHub/SFQ/multiphase/decomposed_ilp.py {} {}", n_phases, cfg_name);
   
@@ -1993,6 +1993,28 @@ int cpsat_ortools(const std::string & cfg_name)
   }
 }
 
+
+void process_path(std::vector<int> & local_num_dff, int idx, const Path & path, const std::unordered_map<node_t, NtkNode> & NR, const int n_phases, const std::string benchmark)
+{
+  // fmt::print("\tAnalyzing the path {} out of {}\r", ++path_ctr, paths.size());
+  auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single(path, NR, n_phases);
+  local_num_dff[idx] += precalc_ndff;
+  // fmt::print("[i]: Precalculated {} DFFs\n", precalc_ndff);
+
+  std::vector<Snake> snakes = sectional_snake(path, NR, DFF_REG, n_phases);
+
+  // fmt::print("\tCreated {} snakes\n", snakes.size());
+  if (!snakes.empty())
+  {
+    std::string cfg_file = fmt::format("/Users/brainkz/Documents/GitHub/ortools_python/{}_cfgNR_{}.csv", benchmark, idx);
+    write_snakes(snakes, NR, DFF_REG, required_SA_DFFs, cfg_file, n_phases);
+    auto num_dff = cpsat_ortools(cfg_file);
+    // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
+    local_num_dff[idx] += num_dff;
+  }
+}
+
+
 /* Gate costs are based on CONNECT library (from Japan) */
 // const std::string DATABASE_PATH { "LIBRARY_2023_05_19_CONNECT.genlib" } ;
 /* CONNECT library (from Japan) */
@@ -2015,7 +2037,8 @@ int main(int argc, char* argv[])  //
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay");
+  // experiment<std::string, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay");
+  experiment<std::string, double, double, double, double, double, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay", "mapping", "phase_assgn", "spl_insertion", "DFF_insertion", "total");
 
   // uint8_t MIN_N_PHASES = std::stoi(argv[1]);
   // uint8_t MAX_N_PHASES = std::stoi(argv[2]);
@@ -2063,13 +2086,17 @@ int main(int argc, char* argv[])  //
   };
   // benchmarks1.insert(benchmarks1.end(), BEEREL_BENCHMARKS.begin(), BEEREL_BENCHMARKS.end());
 
-  const std::string iscas89_folder = "/Users/brainkz/Downloads/IWLS_benchmarks_2005_V_1.0 2/iscas/blif/";
+  // const std::string iscas89_folder = "/Users/brainkz/Downloads/IWLS_benchmarks_2005_V_1.0 2/iscas/blif";
+  const std::string iscas89_folder = "/Users/brainkz/Downloads/IWLS_benchmarks_2005_V_1.0/iscas/blif";
+  
+  // Folder containing ISCAS89 benchmarks in AIG format 
+  const std::string ISCAS89_FOLDER { "../benchmarks/iscas89" };
   const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
   benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
 
   std::reverse(benchmarks1.begin(), benchmarks1.end());
 
-  fmt::print("Benchmarks:\n{}\n", fmt::join(benchmarks1, "\n\t"));
+  fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
   
   const std::string nodemap_prefix = "/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_20230427/x3";
   const std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,2,2}, {0,1,2,3} } }; //  {0,1,1,3},
@@ -2079,6 +2106,7 @@ int main(int argc, char* argv[])  //
   std::unordered_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
 
   for ( auto const& benchmark : benchmarks1 )
+  // for ( auto const& benchmark : epfl_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
 
@@ -2098,10 +2126,18 @@ int main(int argc, char* argv[])  //
         continue;
       }
     }
-    else if (benchmark.find(".aig") != std::string::npos) // ISCAS89 benchmark
+    else if ( benchmark.find(".aig") != std::string::npos ) // ISCAS89 benchmark
     {
       fmt::print("USING THE BENCH READER\n");
-      std::string path = fmt::format("{}{}", iscas89_folder, benchmark);
+      std::string path = fmt::format("{}/{}", iscas89_folder, benchmark);
+      fmt::print("READING {}\n", path);
+
+      std::filesystem::path currentDir = std::filesystem::current_path();
+      // Convert the path to a string and print it
+      std::string currentDirStr = currentDir.string();
+      std::cout << "Current Working Directory: " << currentDirStr << std::endl;
+
+
       if ( lorina::read_aiger( path, aiger_reader( ntk_original ) ) != lorina::return_code::success )
       {
         fmt::print("Failed to read {}\n", benchmark);
@@ -2124,6 +2160,10 @@ int main(int argc, char* argv[])  //
     // refactoring( ntk_original, resyn );
     // ntk_original = cleanup_dangling( ntk_original );
 
+
+    std::chrono::high_resolution_clock::time_point mapping_start = std::chrono::high_resolution_clock::now();
+
+
     fmt::print("Started mapping of {}\n", benchmark);
     auto [res_w_pb, st_w_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
     fmt::print("Finished mapping of {}\n", benchmark);
@@ -2133,16 +2173,24 @@ int main(int argc, char* argv[])  //
 
     // std::vector<AsyncPath> async_paths = extract_async_paths(klut_decomposed, klut_prim_params);
 
+    std::chrono::high_resolution_clock::time_point mapping_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> mapping_time = mapping_end - mapping_start;
+
     std::unordered_map<klut::signal, glob_phase_t> glob_phase = greedy_assemble(klut_decomposed, klut_prim_params, false);
+
+    std::chrono::high_resolution_clock::time_point pa_start = std::chrono::high_resolution_clock::now();
+
+
 
     std::string ilp_filename = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/{}.csv", benchmark);
     write_klut_specs(klut_decomposed, klut_prim_params, glob_phase, ilp_filename);
+    fmt::print("Completed {}\n", ilp_filename);
 
     // for (auto n_phases = MIN_N_PHASES; n_phases <= MAX_N_PHASES; ++n_phases)
     for (const auto n_phases : PHASES)
     {
       fmt::print("[i] Mapping with {} phases\n", n_phases);
-      for (auto i = 0; i < 2; ++i)
+      for (auto i = 0; i < 1; ++i) // skipping greedy part
       {
         std::unordered_map<unsigned int, unsigned int> assignment;
 
@@ -2162,9 +2210,17 @@ int main(int argc, char* argv[])  //
           }
         }
         
-        std::unordered_map<node_t, NtkNode> NR = greedy_ntknode_assemble(klut_decomposed, klut_prim_params, n_phases, assignment, false);
+        std::chrono::high_resolution_clock::time_point pa_end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> pa_time = pa_end - pa_start;
 
+
+        std::chrono::high_resolution_clock::time_point spl_start = std::chrono::high_resolution_clock::now();
+
+        std::unordered_map<node_t, NtkNode> NR = greedy_ntknode_assemble(klut_decomposed, klut_prim_params, n_phases, assignment, false);
         splitter_insertion( NR );
+
+        std::chrono::high_resolution_clock::time_point spl_end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> spl_time = spl_end - spl_start;
 
         for (auto & [id, ntk_node] : NR)
         {
@@ -2179,38 +2235,69 @@ int main(int argc, char* argv[])  //
         }
         fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
 
+        std::chrono::high_resolution_clock::time_point dff_start = std::chrono::high_resolution_clock::now();
+
         fmt::print("[i] EXTRACTING PATHS\n");
         std::vector<Path> paths = extract_paths(NR, false);
         // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
 
-        auto total_num_dff = 0u;
-        auto file_ctr = 0u;
-        auto path_ctr = 0u;
-        for (const Path & path : paths)
+        std::vector<int> local_num_dff( paths.size() );
+
+        int idx = 0;
+        while (idx < paths.size())
         {
-          fmt::print("\tAnalyzing the path {} out of {}\r", ++path_ctr, paths.size());
-          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single(path, NR, n_phases);
-          total_num_dff += precalc_ndff;
-          // fmt::print("[i]: Precalculated {} DFFs\n", precalc_ndff);
+          const int chunk_size = std::min(static_cast<int>(paths.size() - idx), 12);
+          std::vector<std::thread> threads;
+          threads.reserve(chunk_size);
 
-          std::vector<Snake> snakes = sectional_snake(path, NR, DFF_REG, n_phases);
-
-          // fmt::print("\tCreated {} snakes\n", snakes.size());
-          if (!snakes.empty())
+          // for (const Path & path : paths)
+          for (auto i = 0u; i < chunk_size; ++i)
           {
-            std::string cfg_file = fmt::format("/Users/brainkz/Documents/GitHub/ortools_python/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-            write_snakes(snakes, NR, DFF_REG, required_SA_DFFs, cfg_file, n_phases);
-            auto num_dff = cpsat_ortools(cfg_file);
-            // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
-            total_num_dff += num_dff;
+            threads.emplace_back(process_path, std::ref(local_num_dff), idx, std::ref(paths[idx]), std::ref(NR), n_phases, benchmark);
+            idx++;
           }
+          // Wait for all threads to finish
+          for (auto& thread : threads) {
+              thread.join();
+          }
+          // fmt::print("{}\n", fmt::join(local_num_dff, ","));
+          fmt::print("{}\n", fmt::join(local_num_dff.begin() + idx - chunk_size, local_num_dff.begin() + idx, ","));
         }
+        
+        fmt::print("{}\n", fmt::join(local_num_dff, ","));
+        auto total_num_dff = std::accumulate(local_num_dff.begin(), local_num_dff.end(), 0);
+
+        // auto total_num_dff = 0u;
+        // auto file_ctr = 0u;
+        // auto path_ctr = 0u;
+        // for (const Path & path : paths)
+        // {
+        //   fmt::print("\tAnalyzing the path {} out of {}\r", ++path_ctr, paths.size());
+        //   auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single(path, NR, n_phases);
+        //   total_num_dff += precalc_ndff;
+        //   // fmt::print("[i]: Precalculated {} DFFs\n", precalc_ndff);
+
+        //   std::vector<Snake> snakes = sectional_snake(path, NR, DFF_REG, n_phases);
+
+        //   // fmt::print("\tCreated {} snakes\n", snakes.size());
+        //   if (!snakes.empty())
+        //   {
+        //     std::string cfg_file = fmt::format("/Users/brainkz/Documents/GitHub/ortools_python/{}_cfgNR_{}.csv", benchmark, file_ctr++);
+        //     write_snakes(snakes, NR, DFF_REG, required_SA_DFFs, cfg_file, n_phases);
+        //     auto num_dff = cpsat_ortools(cfg_file);
+        //     // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
+        //     total_num_dff += num_dff;
+        //   }
+        // }
+
+        std::chrono::high_resolution_clock::time_point dff_end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> dff_time = dff_end - dff_start;
 
         auto phase_it = std::max_element(NR.begin(), NR.end(), [&](const auto & a, const auto & b) {return a.second.phase < b.second.phase;});
         int64_t max_phase = phase_it->second.phase;
         
         uint64_t total_num_spl = 0;
-        for (const auto & [node, node_obj] : NR)
+        for ( const auto & [node, node_obj] : NR )
         {
           if (!node_obj.fanouts.empty())
           {
@@ -2227,7 +2314,10 @@ int main(int argc, char* argv[])  //
         fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
         fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_phase);
 
-        exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_phase - 1) / n_phases + 1 ));
+        // exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_phase - 1) / n_phases + 1 ));
+        exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_phase - 1) / n_phases + 1 ),
+        mapping_time.count(), pa_time.count(), spl_time.count(), dff_time.count(),
+        mapping_time.count() + pa_time.count() + spl_time.count() + dff_time.count());
         exp.save();
         exp.table();
       }
