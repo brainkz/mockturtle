@@ -289,10 +289,11 @@ int main()
   tech_library<4, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
 
   // // Where to find the MCNC benchmarks?
-  auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::sin | experiments::cavlc | experiments::int2float | experiments::priority | experiments::i2c | experiments::voter | experiments::dec );
+  // auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::sin | experiments::cavlc | experiments::int2float | experiments::priority | experiments::i2c | experiments::voter | experiments::dec );
   // //   auto benchmarks1 = epfl_benchmarks( experiments::epfl & ~experiments::div & ~experiments::hyp & ~experiments::log2 & ~experiments::sqrt );
-  auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c499 | experiments::c880 | experiments::c1355 | experiments::c1908 | experiments::c3540 | experiments::c5315 | experiments::c7552 );
-  benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+  // auto benchmarks2 = iscas_benchmarks( experiments::c432 | experiments::c499 | experiments::c880 | experiments::c1355 | experiments::c1908 | experiments::c3540 | experiments::c5315 | experiments::c7552 );
+  // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+  std::vector<std::string> benchmarks1 = { "adder","c7552","c6288","sin","voter","square","multiplier","log2" };
 
   for ( auto const& benchmark : benchmarks1 )
   {

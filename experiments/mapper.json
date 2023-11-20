@@ -818,5 +818,114 @@
       }
     ],
     "version": "067afda1"
+  },
+  {
+    "entries": [
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 48768.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 156369.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "adder delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 128.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 451.5072021484375
+      },
+      {
+        "#DFF (base)": 2429.0,
+        "#DFF (our)": 4744.0,
+        "#DFF (ratio)": 1.9530671058048579,
+        "area (base)": 48482.0,
+        "area (our)": 31792.0,
+        "area (ratio)": 0.655748525225857,
+        "benchmark": "c7552 delay",
+        "delay (base)": 19.0,
+        "delay (our)": 19.0,
+        "delay (ratio)": 1.0,
+        "time": 1230.100830078125
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 2578.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 38255.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "c6288 delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 31.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 2687.361572265625
+      },
+      {
+        "#DFF (base)": 13666.0,
+        "#DFF (our)": 17627.0,
+        "#DFF (ratio)": 1.2898434069954632,
+        "area (base)": 215318.0,
+        "area (our)": 136606.0,
+        "area (ratio)": 0.6344383655802116,
+        "benchmark": "sin delay",
+        "delay (base)": 182.0,
+        "delay (our)": 92.0,
+        "delay (ratio)": 0.5054945054945055,
+        "time": 5004.076171875
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 8446.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 189622.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "voter delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 41.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 8806.029296875
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 53195.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 413469.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "square delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 126.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 13763.9296875
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 58512.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 513283.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "multiplier delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 129.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 24106.3515625
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 89990.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 716381.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "log2 delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 163.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 34437.1875
+      }
+    ],
+    "version": "e5405c2e"
   }
 ]

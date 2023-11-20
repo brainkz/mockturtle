@@ -1602,7 +1602,7 @@ void write_klut_specs_supporting_t1_new( klut const& ntk, array_map<3, T1_OUTPUT
     {
       /* a dangling node due to the usage of T1 cells */
       DEBUG_PRINT("Node {} is dangling\n", n);
-      // profile_klut_node( ntk, n );
+      // profile_klu/t_node( ntk, n );
       return true;
     }
 
@@ -1693,7 +1693,7 @@ int main(int argc, char* argv[])  //
   PHASES.push_back( std::stoi(argv[1]) );
   const bool search_FA = ( std::stoi(argv[2]) != 0 );
 
-  std::ofstream outputFile( fmt::format("{}_{}_hyp.txt", fmt::join(PHASES, ""), search_FA) );
+  std::ofstream outputFile( fmt::format("{}_{}_all_except_hyp.txt", fmt::join(PHASES, ""), search_FA) );
 
   // for (auto i = 1; i < argc; ++i)
   // {
@@ -1744,14 +1744,14 @@ int main(int argc, char* argv[])  //
     // );
     // std::reverse(benchmarks1.begin(), benchmarks1.end());
 
-    // const std::vector<std::string> benchmarks1 = { "adder","c7552","c6288","sin","voter","square","multiplier","log2" };
-    std::vector<std::string> benchmarks1 = 
-    { 
-      "int2float", "priority", "voter", 
-      "c432", "c880", "c1908", "c3540", "c1355",
-      "s382.aig", "s5378.aig", "s13207.aig"
-    };
-    // const std::vector<std::string> benchmarks1 = { "hyp" };
+    const std::vector<std::string> benchmarks1 = { "adder","c7552","c6288","sin","voter","square","multiplier","log2" };
+    // std::vector<std::string> benchmarks1 = 
+    // { 
+    //   "int2float", "priority", "voter", 
+    //   "c432", "c880", "c1908", "c3540", "c1355",
+    //   "s382.aig", "s5378.aig", "s13207.aig"
+    // };
+    // std::vector<std::string> benchmarks1 = { "hyp" };
     // const std::vector<std::string> benchmarks1 = { "adder" };//,"c7552","c6288","sin","voter","square","multiplier","log2","hyp" };
 
     // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
@@ -1768,7 +1768,7 @@ int main(int argc, char* argv[])  //
     // const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
 
     // benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
-    std::reverse(benchmarks1.begin(), benchmarks1.end());
+    // std::reverse(benchmarks1.begin(), benchmarks1.end());
 
     // *** LIST ALL CONSIDERED BENCHMARKS ***
     fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
@@ -2287,3 +2287,8 @@ int main(int argc, char* argv[])  //
 [adder] Found 127	Committed: 127
 
 */
+
+// |   benchmark | N_PHASES |    #DFF |     area | delay | found_FA | committed_FA |  time |
+// | adder_no_T1 |     4.00 | 7963.00 | 64784.00 | 32.00 |        0 |            0 | 24.24 |
+// | c7552_no_T1 |     4.00 |  715.00 | 19620.00 |  4.00 |        0 |            0 | 53.85 |
+// | c6288_no_T1 |     4.00 | 1431.00 | 38840.00 |  8.00 |        0 |            0 | 85.16 |
