@@ -127,17 +127,7 @@ inline Node& get_gea(UI func)
 inline Node& get_gex(UI func)
 {
   ULL hash = GEX[func];
-  // Node & n = GNM[hash];
   return GNM[hash];
-
-  // fmt::print("\t\t GNM_size = {}\n", GNM.size());
-  // return GNM[hash];
-  // if (GNM.find(hash) == GNM.end()) 
-  // {
-  //   Node n; 
-  //   return n.hash;
-  // } 
-  // return GNM.at(hash);
 }
 
 inline void check_node(ULL hash)
@@ -185,10 +175,6 @@ inline void check_GNM()
       assert(n.cost != INF);
       assert(n.depth != INF);
     }
-    // if (violation_ct > 1)
-    // {
-    //     assert(false);
-    // }
   }
 }
 
@@ -219,7 +205,6 @@ std::tuple<ULL, bool> force_create_node(UI _func, US _last_func, UI _cost, UI _d
 }
 
 std::tuple<ULL, bool> create_node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
-//, std::unordered_map<ULL, Node>& hash_map = GNM)
 {
   auto it = GNM.find(_hash);
   bool node_is_new = (it == GNM.end());
@@ -279,58 +264,60 @@ std::tuple<ULL, bool> create_node(UI _func, US _last_func, UI _cost, UI _depth, 
   return create_node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
 }
 
-std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash, std::unordered_map<ULL, Node>& hash_map = GNM)
-{
-  auto it = hash_map.find(_hash);
-  bool node_is_new = (it == hash_map.end());
-  if (node_is_new) //the node is new
+#if false //unused code
+  std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash, std::unordered_map<ULL, Node>& hash_map = GNM)
   {
-    // fmt::print("\t\t\t\tChecking for creation {}\n", Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash).to_str());
-    UI lvl = _depth / 3;
-    Node& best_any = get_gea(_func); // GEA[_func];
-    // fmt::print("\t\t\t\tConsidering {}: {}, {}\n", _func,          lvl,         _cost);
-    // fmt::print("\t\t\t\tBest A      {}: {}, {}\n", _func, best_any.lvl, best_any.cost);
-
-    if (_xorable)
+    auto it = hash_map.find(_hash);
+    bool node_is_new = (it == hash_map.end());
+    if (node_is_new) //the node is new
     {
-      // fmt::print("\t\t\t\tFunction is xorable\n");
-      Node& best_xor = get_gex(_func); // GEX[_func];
-      if (std::tie(lvl, _cost ) <= std::tie(best_any.lvl, best_any.cost))
+      // fmt::print("\t\t\t\tChecking for creation {}\n", Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash).to_str());
+      UI lvl = _depth / 3;
+      Node& best_any = get_gea(_func); // GEA[_func];
+      // fmt::print("\t\t\t\tConsidering {}: {}, {}\n", _func,          lvl,         _cost);
+      // fmt::print("\t\t\t\tBest A      {}: {}, {}\n", _func, best_any.lvl, best_any.cost);
+
+      if (_xorable)
       {
-        hash_map[_hash] = Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
-        // fmt::print("\t\t\t\tNode is better than any existing function\n");
-        return std::make_tuple(_hash, true);
+        // fmt::print("\t\t\t\tFunction is xorable\n");
+        Node& best_xor = get_gex(_func); // GEX[_func];
+        if (std::tie(lvl, _cost ) <= std::tie(best_any.lvl, best_any.cost))
+        {
+          hash_map[_hash] = Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
+          // fmt::print("\t\t\t\tNode is better than any existing function\n");
+          return std::make_tuple(_hash, true);
+        }
+        else if (std::tie(lvl, _cost ) <= std::tie(best_xor.lvl, best_xor.cost))
+        {
+          hash_map[_hash] = Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
+          // fmt::print("\t\t\t\tNode is better than any existing xorable function\n");
+          return std::make_tuple(_hash, true);
+        }
       }
-      else if (std::tie(lvl, _cost ) <= std::tie(best_xor.lvl, best_xor.cost))
+      else 
       {
-        hash_map[_hash] = Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
-        // fmt::print("\t\t\t\tNode is better than any existing xorable function\n");
-        return std::make_tuple(_hash, true);
+        // fmt::print("\t\t\t\tFunction is NOT xorable\n");
+        if (std::tie(lvl, _cost ) <= std::tie(best_any.lvl, best_any.cost))
+        {
+          hash_map[_hash] = Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
+          // fmt::print("\t\t\t\tNode is better than any existing function\n");
+          return std::make_tuple(_hash, true);
+        }
       }
     }
-    else 
-    {
-      // fmt::print("\t\t\t\tFunction is NOT xorable\n");
-      if (std::tie(lvl, _cost ) <= std::tie(best_any.lvl, best_any.cost))
-      {
-        hash_map[_hash] = Node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
-        // fmt::print("\t\t\t\tNode is better than any existing function\n");
-        return std::make_tuple(_hash, true);
-      }
+    else{
+      // fmt::print("\t\t\t\tNode already exists\n");
     }
+    // fmt::print("\t\t\t\tNode is not created\n");
+    return std::make_tuple(_hash,  false); 
   }
-  else{
-    // fmt::print("\t\t\t\tNode already exists\n");
-  }
-  // fmt::print("\t\t\t\tNode is not created\n");
-  return std::make_tuple(_hash,  false); 
-}
 
-std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {}, std::unordered_map<ULL, Node>& hash_map = GNM)
-{
-  ULL _hash = calculate_hash(_func, _last_func, _cost, _depth, _xorable, _parent_hashes);
-  return create_node_no_upd(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash, hash_map);
-}
+  std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {}, std::unordered_map<ULL, Node>& hash_map = GNM)
+  {
+    ULL _hash = calculate_hash(_func, _last_func, _cost, _depth, _xorable, _parent_hashes);
+    return create_node_no_upd(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash, hash_map);
+  }
+#endif
 
 void register_nodes(std::unordered_map<ULL, Node>& hash_map)
 {
@@ -1483,81 +1470,6 @@ void threaded_and3_or3_maj3_wrapper(const std::vector<ULL>& nodes, const UI dept
   }
 }
 
-std::tuple<ULL, bool> check_cb(Node& ni, Node& nj, std::vector<ULL>& fresh_nodes)
-{
-  // fmt::print("\t\tA: {}\n", ni.to_str());
-  // fmt::print("\t\tB: {}\n", nj.to_str());
-  UI func = ni.func | nj.func;
-  if (func == ni.func || func == nj.func || func == 0 || func == ONES)
-  {
-    // Node& ref = GEX[func];
-    return std::make_tuple(GEX[func], false);
-  }
-  bool xorable = (func == (ni.func ^ nj.func));
-  US depth = ni.lvl * 3 + 1;
-  UI cost = node_cost(ni, nj, COSTS[fCB]);
-  auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
-  if (added)
-  {
-    // Node& n =  GNM[nhash];
-    fresh_nodes.push_back(nhash);
-    // fmt::print("\t\tC: {}\n", n .to_str());
-  }
-  return std::make_tuple(nhash, added);
-}
-
-std::tuple<ULL, bool> check_xor(Node& ni, Node& nj)
-{
-  // fmt::print("\t\tA: {}\n", ni.to_str());
-  // fmt::print("\t\tB: {}\n", nj.to_str());
-  UI func = ni.func ^ nj.func;
-  // if (func == 0 || func == ONES)
-  // {
-  //     Node& ref = GEX[func];
-  //     return std::make_tuple(ref.hash, false);
-  // }
-  US depth = ni.lvl * 3 + 2;
-  UI cost = node_cost(ni, nj, COSTS[fXOR]);
-  auto [nhash, added] = create_node(func, fXOR, cost, depth, true, {ni.hash, nj.hash}); // 
-  // if (added)
-  // {
-  //     Node& n =  GNM[nhash];
-  //     fmt::print("\t\tC: {}\n", n .to_str());
-  // }
-  return std::make_tuple(nhash, added);
-}
-
-std::tuple<ULL, bool, ULL, bool> check_and_or(Node& ni, Node& nj)
-{
-  // fmt::print("\t\tA: {}\n", ni.to_str());
-  // fmt::print("\t\tB: {}\n", nj.to_str());
-  US depth = ni.lvl * 3 + 3;
-  UI func_and = ni.func & nj.func;
-  UI func_or  = ni.func | nj.func;
-  // fmt::print("\t\t\t&: {}\n", func_and);
-  // fmt::print("\t\t\t&: {}\n", func_or );
-  // if (func == 0 || func == ONES)
-  // {
-  //     Node& ref = GEX[func];
-  //     return std::make_tuple(ref.hash, false);
-  // }
-  UI cost_and = node_cost(ni, nj, COSTS[fAND]);
-  UI cost_or  = cost_and - COSTS[fAND] + COSTS[fOR];
-  auto [hash_and, added_and] = create_node(func_and, fAND, cost_and, depth, true, {ni.hash, nj.hash});
-  auto [hash_or , added_or ] = create_node(func_or , fOR , cost_or , depth, true, {ni.hash, nj.hash});
-  // if (added_and)
-  // {
-  //     Node& n =  GNM[hash_and];
-  //     fmt::print("\t\t&: {}\n", n .to_str());
-  // }
-  // if (added_or )
-  // {
-  //     Node& n =  GNM[hash_or ];
-  //     fmt::print("\t\t|: {}\n", n .to_str());
-  // }
-  return std::make_tuple(hash_and, added_and, hash_or, added_or);
-}
-
 std::unordered_set<ULL> remove_dominated()
 {
   if (GNM.size() < 100) return std::unordered_set<ULL> {};
@@ -1569,7 +1481,6 @@ std::unordered_set<ULL> remove_dominated()
     Node& best = node.xorable? get_gex(node.func) : get_gea(node.func); //GEX[node.func] : GEA[node.func];
     if (node.lvl < best.lvl || (node.lvl == best.lvl && node.cost <= best.cost) )
     {
-      // fmt::print("\t\t\t\tProtecting node {} (best is {}) [{} {}]\n", node.to_str(), best.to_str(), node.hash, best.hash);
       stack.push_back(hash);
     }
   } 
@@ -1589,7 +1500,6 @@ std::unordered_set<ULL> remove_dominated()
     }
     protected_nodes.insert(hash);
   }
-  // fmt::print("\t\t\t\tProtecting {} nodes out of {}\n", protected_nodes.size(), GNM.size());
 
   std::unordered_set<ULL> to_be_removed;
 
@@ -1626,135 +1536,14 @@ void cb_generation(US lvl, std::string level_prefix)
   std::vector<ULL> fresh_nodes;
   UI iteration = 0;
   do {
-  #if (THREADING_MODE == 0)
     // first, combine new nodes with old nodes
     fmt::print("\tProcessing {:L} old nodes with {:L} new nodes\n", old_nodes.size(), new_nodes.size());
     thread_old_new_wrapper(old_nodes, new_nodes, depth, fresh_nodes);
-    
-    // fmt::print("\t{}: Checking old nodes after old-new...\n", iteration);
-    // check_nodes(old_nodes);
-    // fmt::print("\t{}: Checking fresh nodes after old-new...\n", iteration);
-    // check_nodes(fresh_nodes);
-    // fmt::print("\t{}: Checking new nodes after old-new...\n", iteration);
-    // check_nodes(new_nodes);
-    // fmt::print("\t{}: Checking GNM after old-new...\n", iteration);
-    // check_GNM();
-
-    // write_csv_gnm(GNM, fmt::format("{}_gnm_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
-    // write_csv_arr(GEA, fmt::format("{}_gea_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
-    // write_csv_arr(GEX, fmt::format("{}_gex_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
-
     // next, combine new nodes 
     fmt::print("\tProcessing pairs among {} new nodes\n", new_nodes.size());
     // check_GNM();
     // fmt::print("{}: GNM size before new-new : {}\n", iteration, GNM.size());   
     threaded_new_new_wrapper(new_nodes, depth, fresh_nodes);
-    // fmt::print("{}: GNM size after new-new : {}\n", iteration, GNM.size());   
-    // check_GNM();
-
-    // write_csv_gnm(GNM, fmt::format("{}_gnm_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
-    // write_csv_arr(GEA, fmt::format("{}_gea_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
-    // write_csv_arr(GEX, fmt::format("{}_gex_cb_{}_{}_{}.csv", level_prefix, lvl, iteration, get_current_time_formatted()));
-
-  #elif (THREADING_MODE == 1)
-      // first, combine new nodes with old nodes
-      fmt::print("\tProcessing old {} nodes with new {} nodes\n", old_nodes.size(), new_nodes.size());
-      #pragma omp parallel for num_threads(10)
-      for (ULL k = 0u; k < new_nodes.size() * old_nodes.size(); k++)
-      {
-        ULL i = k / old_nodes.size();
-        ULL j = k % old_nodes.size();
-        fmt::print("\tCB ({}, {}, {}):\n", i, j, k);
-        Node& ni =  GNM[new_nodes[i]];
-        Node& nj =  GNM[old_nodes[j]];
-        auto [nhash, added] = check_cb(ni, nj, fresh_nodes);
-        go_on |= added;
-      }
-      // next, combine new nodes 
-      fmt::print("\tProcessing new {} nodes\n", new_nodes.size());
-      #pragma omp parallel for num_threads(10)
-      for (ULL k = 0u, n = new_nodes.size(); k < n * (n - 1) / 2; k++)
-      {
-        COMPUTE_IJ(k, n, i, j);
-        fmt::print("\tCB ({}, {}, {}):\n", i, j, k);
-        Node& ni =  GNM[new_nodes[i]];
-        Node& nj =  GNM[new_nodes[j]];
-        auto [nhash, added] = check_cb(ni, nj, fresh_nodes);
-        go_on |= added;
-      }
-  #elif (THREADING_MODE == 2)
-    // first, combine new nodes with old nodes
-    fmt::print("\tProcessing {} old nodes with {} new nodes\n", old_nodes.size(), new_nodes.size());
-    auto i = 0u;
-    for (auto hi : old_nodes)
-    {
-      fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i++, old_nodes.size(), 100 * (float)i / (float)old_nodes.size());
-      Node& ni =  GNM[hi];
-      auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fCB], tgt_lvl*3);
-      for (auto hj : new_nodes)
-      {
-        Node& nj =  GNM[hj];
-        UI func = ni.func | nj.func;
-        continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
-        // continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
-        bool xorable = (func == (ni.func ^ nj.func));
-        //if inputs are already more expensive, skip
-        UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
-        // fmt::print("calculating cb cost for {} and {} up to limit {}\n", ni.to_str(), nj.to_str(), INF);
-        auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit, tgt_lvl*3);
-        // fmt::print("final cost is {} and status is {}\n", cost, status);
-        continue_if (!status);
-        auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
-        if (added)
-        {
-          Node& n =  GNM[nhash];
-          fresh_nodes.push_back(nhash);
-          // fmt::print("\t\tC: {}\n", n .to_str());
-          go_on = true;
-        }
-      }
-    }
-
-    // next, combine new nodes 
-    for (auto i = 0u; i < new_nodes.size(); i++)
-    {
-      fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i, new_nodes.size(), 100 * (float)i / (float)new_nodes.size());
-      ULL hi = new_nodes[i];
-      Node& ni =  GNM[hi];
-      auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fCB], tgt_lvl*3);
-      for (auto j = i+1; j < new_nodes.size(); j++)
-      {
-        ULL hj = new_nodes[j];
-        Node& nj =  GNM[hj];
-        UI func = ni.func | nj.func;
-        continue_if (func == ni.func || func == nj.func || func == 0 || func == ONES);
-        bool xorable = (func == (ni.func ^ nj.func));
-
-        UI limit = (xorable ? GNM[GEX[func]].cost : GNM[GEA[func]].cost);
-        // fmt::print("calculating cb cost for {} and {} up to limit {}\n", ni.to_str(), nj.to_str(), INF);
-        auto [cost, status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, limit, tgt_lvl*3);
-        // fmt::print("1 final cost is {} and status is {}\n", cost, status);
-        continue_if (!status) ;
-        // fmt::print("2 final cost is {} and status is {}\n", cost, status);
-        // UI cost = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes);
-        
-        auto [nhash, added] = create_node(func, fCB, cost, depth, xorable, {ni.hash, nj.hash});
-        if (added)
-        {
-          Node& n =  GNM[nhash];
-          fresh_nodes.push_back(nhash);
-          // fmt::print("\t\tC: {}\n", n .to_str());
-        }
-      }
-    }
-  #endif
-
-    // fmt::print("\t{}: Checking old nodes after new-new...\n", iteration);
-    // check_nodes(old_nodes);
-    // fmt::print("\t{}: Checking fresh nodes after new-new...\n", iteration);
-    // check_nodes(fresh_nodes);
-    // fmt::print("\t{}: Checking new nodes after new-new...\n", iteration);
-    // check_nodes(new_nodes);
     
     std::unordered_set<ULL> removed_nodes = remove_dominated();
     for (auto new_hash : new_nodes)
@@ -1772,15 +1561,9 @@ void cb_generation(US lvl, std::string level_prefix)
         new_nodes.push_back(fresh_hash);
       }
     }
-    // new_nodes.clear();
-    // old_nodes.insert(old_nodes.end(), new_nodes.begin(), new_nodes.end());
-    // new_nodes.clear();
-    // new_nodes.insert(new_nodes.end(), fresh_nodes.begin(), fresh_nodes.end());
     go_on = fresh_nodes.size() > 0;
     fresh_nodes.clear(); 
     iteration++;
-    // fmt::print("GOON VAR IS {}", go_on);
-    // break_if (iteration > 1 && lvl == 1);
   } while(go_on);
 }
 
@@ -1791,58 +1574,18 @@ void as_generation(US lvl)
 
   US tgt_depth = lvl * 3 + 2;
   fmt::print("\t{} : DFF/NOT {:L} nodes\n", lvl, nodes.size());
+
+  // DFF and NOT
   for (ULL hash : nodes)
   {
     Node& ni =  GNM[hash];
     force_create_node(ni.func, fDFF, ni.cost + COSTS[fDFF], tgt_depth, true, {hash});
     create_node(ni.func ^ ONES, fNOT, ni.cost + COSTS[fNOT], tgt_depth, true, {hash});
   }
-  // xor-combine the nodes
-  
+
+  // XOR
   fmt::print("\t{}: XOR {:L} nodes\n", lvl, nodes.size());
-  #if (THREADING_MODE == 0)   
-    threaded_xor_wrapper(nodes, tgt_depth);
-  #elif (THREADING_MODE == 2)
-    #pragma omp parallel for num_threads(10)
-    for (ULL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
-    {
-      COMPUTE_IJ(k, n, i, j);
-      fmt::print("\tXOR ({}, {}, {}):\n", i, j, k);
-      Node& ni =  GNM[nodes[i]];
-      Node& nj =  GNM[nodes[j]];
-      continue_if (!ni.xorable || !nj.xorable);
-      auto [nhash, added] = check_xor(ni, nj);
-    }
-  #elif (THREADING_MODE == 1)
-    for (auto i = 0u; i < nodes.size(); i++)
-    {
-      fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i, nodes.size(), 100 * (float)i / (float)nodes.size());
-      ULL hi = nodes[i];
-      Node& ni =  GNM[hi];
-      continue_if (!ni.xorable);
-      auto [gate_cost, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fXOR], tgt_lvl*3);
-      for (auto j = i+1; j < nodes.size(); j++)
-      {
-        ULL hj = nodes[j];
-        Node& nj =  GNM[hj];
-        continue_if (!nj.xorable);
-
-        // fmt::print("\t\tA: {}\n", ni.to_str());
-        // fmt::print("\t\tB: {}\n", nj.to_str());
-        UI func = ni.func ^ nj.func;
-        // UI limit = std::min(GNM[GEX[func]].cost);
-        auto [cost,status] = node_cost(hj, gate_cost, ct_spl, non_splittable_nodes, GNM[GEX[func]].cost, tgt_lvl*3);
-        continue_if (!status);
-        auto [nhash, added] = create_node(func, fXOR, cost, tgt_depth, true, {ni.hash, nj.hash});
-        if (added)
-        {
-          Node& n =  GNM[nhash];
-          // fmt::print("\t\tC: {}\n", n .to_str());
-        }
-      }
-    }
-
-  #endif
+  threaded_xor_wrapper(nodes, tgt_depth);
   remove_dominated();
 }
 void sa_generation(US lvl)
@@ -1850,60 +1593,9 @@ void sa_generation(US lvl)
   std::vector<ULL> nodes = select_depth(lvl * 3 + 2, lvl * 3 + 2);
   US tgt_depth = lvl * 3 + 3;
 
-  // US tgt_depth = lvl * 3 + 3;
-  // xor-combine the nodes
   fmt::print("\t{}: AND/OR {:L} nodes\n", lvl, nodes.size());
-  #if (THREADING_MODE == 0)
-    threaded_and_or_wrapper(nodes, tgt_depth);
-    threaded_and3_or3_maj3_wrapper(nodes, tgt_depth);
-  #elif (THREADING_MODE == 2)
-    #pragma omp parallel for num_threads(10)
-    for (ULL k = 0u, n = nodes.size(); k < n * (n - 1) / 2; k++)
-    {
-      COMPUTE_IJ(k, n, i, j);
-      fmt::print("\tAND/OR ({}, {}, {}):\n", i, j, k);
-      Node& ni =  GNM[nodes[i]];
-      Node& nj =  GNM[nodes[j]];
-      continue_if (!ni.xorable || !nj.xorable);
-      auto [hash_and, added_and, hash_or, added_or] = check_and_or(ni, nj);
-    }
-  #elif (THREADING_MODE == 1)
-    // ULL total_combs = nodes.size() * (nodes.size() - 1) / 2;
-    for (auto i = 0u; i < nodes.size(); i++)
-    {
-      fmt::print("\nCompleted {} out of {} ({:f}\%) \r", i, nodes.size(), 100 * (float)i / (float)nodes.size());
-      ULL hi = nodes[i];
-      Node& ni =  GNM[hi];
-      auto [gate_cost_and, ct_spl, non_splittable_nodes] = node_cost_single(hi, COSTS[fAND], tgt_lvl*3);
-      
-      for (auto j = i+1; j < nodes.size(); j++)
-      {
-        ULL hj = nodes[j];
-        Node& nj =  GNM[hj];
-
-        UI func_and = ni.func & nj.func;
-        UI func_or  = ni.func | nj.func;
-        UI limit = std::max(GNM[GEX[func_and]].cost, GNM[GEX[func_or]].cost);
-
-        auto [cost_and, status] = node_cost(hj, gate_cost_and, ct_spl, non_splittable_nodes, INF, tgt_lvl*3);
-        UI cost_or = cost_and - COSTS[fAND] + COSTS[fOR];
-        continue_if (!status) ;
-
-        auto [hash_and, added_and] = create_node(func_and, fAND, cost_and, tgt_depth, true, {ni.hash, nj.hash});
-        auto [hash_or , added_or ] = create_node(func_or , fOR , cost_or , tgt_depth, true, {ni.hash, nj.hash});
-        // if (added_and)
-        // {
-        //     Node& n =  GNM[hash_and];
-        //     fmt::print("\t\t&: {}\n", n .to_str());
-        // }
-        // if (added_or )
-        // {
-        //     Node& n =  GNM[hash_or ];
-        //     fmt::print("\t\t|: {}\n", n .to_str());
-        // }
-      }
-    }
-  #endif 
+  threaded_and_or_wrapper(nodes, tgt_depth);
+  threaded_and3_or3_maj3_wrapper(nodes, tgt_depth);
   remove_dominated();
 }
 
@@ -1912,8 +1604,6 @@ inline bool is_done(std::array<ULL, NUM_TT> & GEX)
   #pragma vector
   for (auto i = 0u; i < NUM_TT; i++)
   {
-    // if (GEX[i].cost == INF || GEX[i].depth == INF)
-    // if (get_gex(i).cost == INF || get_gex(i).depth == INF)
     if (GEX[i] == 0)
     {
       return false;
@@ -1929,20 +1619,8 @@ inline UI count_done()
   for (auto i = 0u; i < NUM_TT; i++)
   {
     ctr += (get_gex(i).cost < INF);
-    // if (GEX[i].cost == INF || GEX[i].depth == INF)
-    // if (get_gex(i).cost == INF || get_gex(i).depth == INF)
-    // {
-    //     return false;
-    // }
   }
   return ctr;
-}
-
-bool is_subset(const std::vector<ULL>& v1, const std::vector<ULL>& v2) {
-  // Check if all elements of v1 are in v2
-  return std::all_of(v1.begin(), v1.end(), [&v2](const int& val) {
-    return std::find(v2.begin(), v2.end(), val) != v2.end();
-  });
 }
 
 std::string get_computer_name() 
@@ -1957,27 +1635,39 @@ std::string get_computer_name()
 int main() 
 {
   std::locale::global(std::locale("en_US.UTF-8"));
-  // fmt::print("Start:\n");
-  // print_GNM();
-  // {0,0,0,0}, {0,0,0,1},  {0,0,1,1}, 
-  // {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, 
-  // std::vector<std::vector<UI>> sets_of_levels { { {0,1,1,2}, {0,1,1,3}, {0,1,1,4}, {0,1,2,2}, {0,1,2,3}, {0,1,2,4}, {0,1,3,3}, {0,1,3,4}, {0,1,4,4}, {0,2,2,2}, {0,2,2,3}, {0,2,2,4}, {0,2,3,3}, {0,2,3,4}, {0,2,4,4}, {0,3,3,3}, {0,3,3,4}, {0,3,4,4}, {0,4,4,4},
-  // {0,0,0,0}, {0,0,0,1}, {0,0,1,1}, {0,0,0,2}, {0,0,0,3}, {0,0,0,4}, {0,0,1,2}, {0,0,1,3}, {0,0,1,4}, {0,0,2,2}, {0,0,2,3}, {0,0,2,4}, {0,0,3,3}, {0,0,3,4}, {0,0,4,4}, {0,1,1,1}, 
-  // } };
-  // successfully done: {0,0,0,0}, 
-  // { { {0,0,0,0}, {0,0,0,1},  } } ; //  
-
   std::string comp_name = get_computer_name();
-  std::vector<std::vector<UI>> sets_of_levels
-  { 
-    {0,0,0,0}, {0,0,0,1}, 
-    {0,0,0,2}, {0,0,1,1}, 
-    {0,0,1,2}, {0,1,1,1}, 
-    {0,1,1,2}, {0,1,1,3}, 
-    {0,1,2,2}, {0,1,2,3} 
+
+  fmt::print("THE COMPUTER NAME IS : {}", comp_name);
+
+  std::unordered_map<std::string, std::vector<std::vector<UI>>> comp_name_to_sets = {
+    {"iccluster042", 
+      {
+        {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3} 
+      }
+    }, // Map hostnames to starting indices
+    {"iccluster044", 
+      {
+        {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3}, {0,0,0,0}, {0,0,0,1}
+      }
+    },
+    {"iccluster057", 
+      {
+        {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}
+      }
+    },
+    {"iccluster058", 
+      {
+        {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}
+      }
+    },
+    {"iccluster081", 
+      {
+        {0,1,2,2}, {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3} 
+      }
+    }
   };
 
-  for (std::vector<UI> levels : sets_of_levels) 
+  for (std::vector<UI> levels : comp_name_to_sets.at(comp_name)) 
   {
     GNM.clear();
     std::fill(GEA.begin(), GEA.end(), 0);
