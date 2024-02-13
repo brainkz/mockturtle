@@ -190,7 +190,7 @@ int main()
         // std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_{}_", fmt::join(levels, ""));
         const std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_20230427/x3_{}_", fmt::join(levels, ""));
 
-        std::unordered_map<ULL, Node> GNM = read_csv_gnm(fmt::format("{}gnm.csv", file_prefix));
+        phmap::flat_hash_map<ULL, Node> GNM = read_csv_gnm(fmt::format("{}gnm.csv", file_prefix));
         std::array<ULL, NUM_TT> GEX = read_csv_arr(fmt::format("{}gex.csv", file_prefix));
 
         // const std::vector<std::vector<UI>> perms = pi_perms(levels);
@@ -309,7 +309,7 @@ int main()
         std::string gnm_file = "/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_0123_gnm.csv";
         std::string gex_file = "/Users/brainkz/Documents/GitHub/mockturtle/build/20230320_vec/x3_0123_gex.csv";
 
-        std::unordered_map<ULL, Node> GNM = read_csv_gnm(gnm_file);
+        phmap::flat_hash_map<ULL, Node> GNM = read_csv_gnm(gnm_file);
         // std::array<ULL, NUM_TT> GEA = read_csv_arr(fmt::format("{}gea.csv", file_prefix));
         std::array<ULL, NUM_TT> GEX = read_csv_arr(gex_file);
         UI i = 0;

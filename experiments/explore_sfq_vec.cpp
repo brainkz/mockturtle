@@ -105,9 +105,9 @@ inline void check_threads(std::vector<std::thread>& threads) //, UL maxthreads =
   }
 }
 
-std::unordered_map<ULL, Node> GNM;
-// std::unordered_map<ULL, std::unordered_map<ULL,UI>> GN_CT;
-// std::unordered_map<ULL, std::unordered_set<ULL>> GN_CT;
+phmap::flat_hash_map<ULL, Node> GNM;
+// phmap::flat_hash_map<ULL, phmap::flat_hash_map<ULL,UI>> GN_CT;
+// phmap::flat_hash_map<ULL, std::unordered_set<ULL>> GN_CT;
 // std::array<Node, NUM_TT> GEA;
 // std::array<Node, NUM_TT> GEX;
 std::array<ULL, NUM_TT> GEA;
@@ -219,7 +219,7 @@ std::tuple<ULL, bool> force_create_node(UI _func, US _last_func, UI _cost, UI _d
 }
 
 std::tuple<ULL, bool> create_node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
-//, std::unordered_map<ULL, Node>& hash_map = GNM)
+//, phmap::flat_hash_map<ULL, Node>& hash_map = GNM)
 {
   auto it = GNM.find(_hash);
   bool node_is_new = (it == GNM.end());
@@ -279,7 +279,7 @@ std::tuple<ULL, bool> create_node(UI _func, US _last_func, UI _cost, UI _depth, 
   return create_node(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash);
 }
 
-std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash, std::unordered_map<ULL, Node>& hash_map = GNM)
+std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash, phmap::flat_hash_map<ULL, Node>& hash_map = GNM)
 {
   auto it = hash_map.find(_hash);
   bool node_is_new = (it == hash_map.end());
@@ -326,13 +326,13 @@ std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _
   return std::make_tuple(_hash,  false); 
 }
 
-std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {}, std::unordered_map<ULL, Node>& hash_map = GNM)
+std::tuple<ULL, bool> create_node_no_upd(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes = {}, phmap::flat_hash_map<ULL, Node>& hash_map = GNM)
 {
   ULL _hash = calculate_hash(_func, _last_func, _cost, _depth, _xorable, _parent_hashes);
   return create_node_no_upd(_func, _last_func, _cost, _depth, _xorable, _parent_hashes, _hash, hash_map);
 }
 
-void register_nodes(std::unordered_map<ULL, Node>& hash_map)
+void register_nodes(phmap::flat_hash_map<ULL, Node>& hash_map)
 {
   // for (auto & [hash, node] : hash_map)
   for (auto it_tmp = hash_map.begin(); it_tmp != hash_map.end(); it_tmp++)
@@ -423,7 +423,7 @@ UI node_cost(const Node& n1, const Node& n2, UI gate_cost)
   stack.push_back(n1.hash);
   stack.push_back(n2.hash);
 
-  std::unordered_map<ULL, UI> ct_spl;
+  phmap::flat_hash_map<ULL, UI> ct_spl;
   std::unordered_set<ULL> non_splittable_nodes;
 
   // fmt::print("\t\t\tInitial cost {}\n", gate_cost);
@@ -941,7 +941,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
   }
 }
 
-void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::vector<UI>& costs, const ULL start_k, const ULL end_k, const UI gate_cost, const ULL offset, const UI tgt_lvl, const std::unordered_map<ULL, Node> GNM_local = GNM) 
+void threaded_xor(const std::vector<ULL>& hashes, std::vector<UI>& funcs, std::vector<UI>& costs, const ULL start_k, const ULL end_k, const UI gate_cost, const ULL offset, const UI tgt_lvl, const phmap::flat_hash_map<ULL, Node> GNM_local = GNM) 
 {
   for (auto hash : hashes) assert(GNM_local.find(hash) != GNM_local.end());
   // fmt::print("\t\tFunction is called\n");
@@ -2045,7 +2045,7 @@ int main()
     write_csv_arr(GEA, fmt::format("{}_gea.csv", level_prefix));
     write_csv_arr(GEX, fmt::format("{}_gex.csv", level_prefix));
 
-    std::unordered_map<ULL, Node> GNM_new;
+    phmap::flat_hash_map<ULL, Node> GNM_new;
     std::array<ULL, NUM_TT> GEA_new;
     std::array<ULL, NUM_TT> GEX_new;
 

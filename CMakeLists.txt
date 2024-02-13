@@ -16,6 +16,9 @@ option(ENABLE_NAUTY "Enable the Nauty library for percy" OFF)
 
 add_compile_options(-I /opt/homebrew/Cellar/tbb/2021.8.0/include -L /opt/homebrew/Cellar/tbb/2021.8.0/lib -ltbb)
 
+# Find OpenMP package
+find_package(OpenMP REQUIRED)
+
 if(UNIX)
   # show quite some warnings (but remove some intentionally)
   include(CheckCXXCompilerFlag)
@@ -30,9 +33,11 @@ if(UNIX)
     add_compile_options(-O0 -g --coverage -fprofile-arcs -ftest-coverage)
   endif()
 endif()
+
 if(MSVC)
   add_compile_options(/EHsc /bigobj)
 endif()
+
 if (WIN32)
   set(ENABLE_NAUTY OFF)
 endif()
@@ -54,4 +59,9 @@ endif()
 
 if(MOCKTURTLE_EXPERIMENTS)
   add_subdirectory(experiments)
+endif()
+
+# Link OpenMP flags for CXX compiler
+if(OpenMP_CXX_FOUND)
+  add_compile_options(${OpenMP_CXX_FLAGS})
 endif()

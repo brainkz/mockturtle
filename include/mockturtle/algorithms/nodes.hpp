@@ -14,6 +14,10 @@
 #include <thread>
 #include <kitty/kitty.hpp>
 
+#include <parallel_hashmap/phmap.h>
+// typedef phmap::flat_hash_map phmap::flat_hash_map;
+// typedef phmap::flat_hash_map phmap::flat_hash_map;
+
 typedef unsigned short US;
 typedef unsigned int   UI;
 typedef unsigned long  UL;
@@ -63,7 +67,7 @@ constexpr float GENLIB_FALL_FANOUT_DELAY  = 0.025;
 #define VECTOR_CONTAINS(vec, value) (std::find(vec.begin(), vec.end(), value) != vec.end())
 
 constexpr std::array<UI,12> COSTS = {7, 9, 8, 8, 8, 7, 11, 11, 11, 8, 7, 0};
-std::unordered_map<US, std::string> F2STR { 
+phmap::flat_hash_map<US, std::string> F2STR { 
     {fDFF   , "DFF"},
     {fNOT   , "NOT"},
     {fMERGE , "MRG"},
@@ -81,9 +85,9 @@ std::unordered_map<US, std::string> F2STR {
 
 std::array<TT4, NUM_VARS> PI_WORDS = {{0x5555, 0x3333, 0x0F0F, 0x00FF}};
 
-std::unordered_map<uint16_t, uint8_t> PIFUNC2IDX = {{0x5555, 0}, {0x3333, 1}, {0x0F0F, 2}, {0x00FF, 3}};
+phmap::flat_hash_map<uint16_t, uint8_t> PIFUNC2IDX = {{0x5555, 0}, {0x3333, 1}, {0x0F0F, 2}, {0x00FF, 3}};
 
-std::unordered_map<uint16_t, std::string> PI2LETTER { 
+phmap::flat_hash_map<uint16_t, std::string> PI2LETTER { 
     {0x00FF, "d"},
     {0x0F0F, "c"},
     {0x3333, "b"},
@@ -91,21 +95,21 @@ std::unordered_map<uint16_t, std::string> PI2LETTER {
     {0x0000, "0"},
     {0xFFFF, "1"},
     }; 
-std::unordered_map<uint16_t, std::string> IDX2LETTER { 
+phmap::flat_hash_map<uint16_t, std::string> IDX2LETTER { 
     {3, "d"},
     {2, "c"},
     {1, "b"},
     {0, "a"},
     }; 
 
-std::unordered_map<uint16_t, uint16_t> dummy_map {
+phmap::flat_hash_map<uint16_t, uint16_t> dummy_map {
     {0x00FF, 0x00FF},
     {0x0F0F, 0x0F0F},
     {0x3333, 0x3333},
     {0x5555, 0x5555}
     };
 
-std::unordered_map<uint16_t, std::string> FN2LETTER { 
+phmap::flat_hash_map<uint16_t, std::string> FN2LETTER { 
     {0x00FF, "d"},
     {0x0F0F, "c"},
     {0x3333, "b"},
@@ -121,8 +125,8 @@ std::unordered_map<uint16_t, std::string> FN2LETTER {
     }; 
 
 constexpr UL NUM_TT = (1 << (1 << NUM_VARS));
-constexpr UI ONES = NUM_TT - 1;
-constexpr UL INF = 0xFFFFFF;
+constexpr uint16_t ONES = NUM_TT - 1;
+constexpr UI INF = 0xFFFFFF;
 
 // Hash combiner
 template <typename T>
@@ -130,7 +134,7 @@ static void hash_combine(std::size_t& seed, const T& val) {
     seed ^= std::hash<T>{}(val) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
-ULL calculate_hash(UI func, US last_func, UI cost, UI depth, bool xorable, std::vector<ULL> parent_hashes = {})
+ULL calculate_hash(uint16_t func, US last_func, UI cost, UI depth, bool xorable, std::vector<ULL> parent_hashes = {})
 {
     std::size_t seed = 0;
     hash_combine(seed, func);
@@ -187,7 +191,7 @@ bool _tt_gt (const std::pair<TT, uint8_t>& a, const std::pair<TT, uint8_t>& b) {
 
 class Node {
 public:
-    UI func = 0;
+    uint16_t func = 0;
     US last_func = fNOFUNC;
     UI cost = INF;
     UI depth = INF;
@@ -197,7 +201,7 @@ public:
     ULL hash = 0;
 
     #if accel_cost
-    std::unordered_map<ULL, UI> predecessor_count;
+    phmap::flat_hash_map<ULL, UI> predecessor_count;
     std::unordered_set<ULL> non_splittable_pred;
     #endif
     Node() = default;
@@ -217,7 +221,7 @@ public:
         return *this;
     }
 
-    Node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes)
+    Node(uint16_t _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes)
         : func(_func), last_func(_last_func), cost(_cost), depth(_depth), xorable(_xorable), parent_hashes(_parent_hashes), lvl(depth / 3)
     {
         // Calculate hash based on the hashes of parent_hashes and specified fields
@@ -225,7 +229,7 @@ public:
         // hash = calculate_hash();
     }
 
-    Node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable)
+    Node(uint16_t _func, US _last_func, UI _cost, UI _depth, bool _xorable)
         : func(_func), last_func(_last_func), cost(_cost), depth(_depth), xorable(_xorable), parent_hashes{}, lvl(depth / 3)
     {
         // Calculate hash based on the hashes of parent_hashes and specified fields
@@ -233,7 +237,7 @@ public:
         hash = calculate_hash(func, last_func, cost, depth, xorable);
     }
 
-    Node(UI _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
+    Node(uint16_t _func, US _last_func, UI _cost, UI _depth, bool _xorable, std::vector<ULL> _parent_hashes, ULL _hash)
         : func(_func), last_func(_last_func), cost(_cost), depth(_depth), xorable(_xorable), parent_hashes(_parent_hashes), lvl(depth / 3), hash(_hash)
     {
         // Hash is precalculated based on the hashes of parent_hashes and specified fields
@@ -263,7 +267,7 @@ public:
         // return "Func: " + std::to_string(func) + "|Last: " + std::to_string(last_func) + "|Cost: " + std::to_string(cost) + "|Depth: " + std::to_string(depth) + "|X: " + std::to_string(xorable);
     }
 
-    std::string genlib_eqn(std::unordered_map<ULL, Node> & nodemap, std::vector<UI> & pis) const
+    std::string genlib_eqn(phmap::flat_hash_map<ULL, Node> & nodemap, std::vector<UI> & pis) const
     {
         // if (DEBUG) {fmt::print("\t\tAccessing genlib_eqn: {}\n", to_str());}
         if (last_func == fPI)
@@ -312,7 +316,7 @@ public:
         }
     }
 
-    std::string to_genlib(std::unordered_map<ULL, Node> & nodemap, const std::vector<UI> & levels, const std::vector<UI> PI_funcs) const
+    std::string to_genlib(phmap::flat_hash_map<ULL, Node> & nodemap, const std::vector<UI> & levels, const std::vector<UI> PI_funcs) const
     {
         std::vector<UI> pis;
         std::string str = fmt::format("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(levels, ""), cost,  genlib_eqn(nodemap, pis));
@@ -330,7 +334,7 @@ public:
         return str;
     }
 
-    // std::string to_genlib(std::unordered_map<ULL, Node> & nodemap, const std::vector<UI> & levels, std::unordered_map<UI, std::string> pi2symbol) const
+    // std::string to_genlib(phmap::flat_hash_map<ULL, Node> & nodemap, const std::vector<UI> & levels, phmap::flat_hash_map<UI, std::string> pi2symbol) const
     // {
     //     std::vector<UI> pis;
     //     std::string str = fmt::format("GATE 0x{:04x}_{} {} O={};\n", func, fmt::join(levels, ""), cost,  genlib_eqn(nodemap, pis));
@@ -348,7 +352,7 @@ public:
     //     return str;
     // }
 
-    int recalculate_cost(std::unordered_map<ULL, Node> & nodemap, const std::array<UI,12> cost_map) const
+    int recalculate_cost(phmap::flat_hash_map<ULL, Node> & nodemap, const std::array<UI,12> cost_map) const
     {
         if (last_func == fPI)
         {
@@ -368,7 +372,7 @@ public:
         }
     }
 
-    std::string to_stack(std::unordered_map<ULL, Node> & nodemap, const std::unordered_map<uint16_t, uint16_t> & pi_map = dummy_map) const
+    std::string to_stack(phmap::flat_hash_map<ULL, Node> & nodemap, const phmap::flat_hash_map<uint16_t, uint16_t> & pi_map = dummy_map) const
     {
         if (last_func == fPI)
         {
@@ -413,7 +417,7 @@ public:
         }
     }
 
-    auto process_nodes(std::unordered_map<ULL, Node> & GNM)
+    auto process_nodes(phmap::flat_hash_map<ULL, Node> & GNM)
     {
         std::vector<std::pair<ULL,US>> stack { std::make_pair(hash, 0) };
         std::vector<ULL> seen;
@@ -461,7 +465,7 @@ public:
 
     }
 
-    std::tuple<bool, UI> redundancy_check(std::unordered_map<ULL, Node> & GNM)
+    std::tuple<bool, UI> redundancy_check(phmap::flat_hash_map<ULL, Node> & GNM)
     {
         // std::vector<UI>   pi_funcs     {0x00FF, 0x0F0F, 0x3333, 0x5555};
         std::array<UI,  4> pi_funcs     {0x5555, 0x3333, 0x0F0F, 0x00FF};
@@ -599,7 +603,7 @@ void apply_permutation(const std::vector<int>& perm, std::array<int, N>& delay)
 }
 
 /* Returns the functions of PIs and their correponding delays*/
-std::tuple<std::array<uint8_t, 4>, std::vector<uint8_t>, bool> get_delays(uint64_t hash, std::unordered_map<ULL, Node> & hashmap)
+std::tuple<std::array<uint8_t, 4>, std::vector<uint8_t>, bool> get_delays(uint64_t hash, phmap::flat_hash_map<ULL, Node> & hashmap)
 {
     std::vector<std::pair<uint64_t, uint8_t>> stack { std::make_pair(hash , 0) };
     std::vector<uint64_t> seen;
@@ -651,7 +655,7 @@ std::tuple<std::array<uint8_t, 4>, std::vector<uint8_t>, bool> get_delays(uint64
     return std::make_tuple( delays, support, true );
 }
 
-std::tuple<TT4, std::array<uint8_t, 4u>, uint8_t> process_node(const uint64_t hash, std::unordered_map<ULL, Node> & hashmap) // , const std::vector<UI> & levels
+std::tuple<TT4, std::array<uint8_t, 4u>, uint8_t> process_node(const uint64_t hash, phmap::flat_hash_map<ULL, Node> & hashmap) // , const std::vector<UI> & levels
 {
     auto [pi_delays, support, status] = get_delays(hash, hashmap);
     if (!status) return std::make_tuple( TT4{}, pi_delays, 0 );
@@ -724,7 +728,7 @@ std::tuple<TT4, std::array<uint8_t, 4u>, uint8_t> process_node(const uint64_t ha
 
 #pragma region write_output
 
-void write_csv_gnm(const std::unordered_map<ULL, Node>& gnm, const std::string& filename) {
+void write_csv_gnm(const phmap::flat_hash_map<ULL, Node>& gnm, const std::string& filename) {
     // Open output file
     std::ofstream outfile(filename);
 
@@ -758,12 +762,12 @@ void write_csv_arr(const std::array<ULL, NUM_TT>& arr_hashes, const std::string&
     outfile.close();
 }
 
-std::unordered_map<ULL, Node> read_csv_gnm(const std::string& filename) 
+phmap::flat_hash_map<ULL, Node> read_csv_gnm(const std::string& filename) 
 {
     // Open input file
     std::ifstream infile(filename);
     
-    std::unordered_map<ULL, Node> gnm;
+    phmap::flat_hash_map<ULL, Node> gnm;
 
     // Parse CSV file and populate GNM variable
     std::string line;
@@ -825,7 +829,7 @@ std::array<ULL, NUM_TT> read_csv_arr(const std::string& filename) {
 }
 
 
-bool is_good(ULL hash, Node & node, std::unordered_map<ULL, bool> & status, std::unordered_map<ULL, Node>& all_hashes)
+bool is_good(ULL hash, Node & node, phmap::flat_hash_map<ULL, bool> & status, phmap::flat_hash_map<ULL, Node>& all_hashes)
 {
     bool good = true;
     for (auto & p_hash : node.parent_hashes)
@@ -840,9 +844,9 @@ bool is_good(ULL hash, Node & node, std::unordered_map<ULL, bool> & status, std:
     return good;
 }
 
-std::unordered_map<ULL, bool> subset_of_pi(std::vector<ULL>& pi, std::unordered_map<ULL, Node>& all_hashes)
+phmap::flat_hash_map<ULL, bool> subset_of_pi(std::vector<ULL>& pi, phmap::flat_hash_map<ULL, Node>& all_hashes)
 {
-    std::unordered_map<ULL, bool> status;
+    phmap::flat_hash_map<ULL, bool> status;
     for (ULL hash : pi)
     {
         status[hash] = true;
