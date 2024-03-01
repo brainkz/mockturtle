@@ -224,8 +224,8 @@ namespace std {
 
 template <unsigned N>
 void update_registry( Delay<N> D, uint32_t func, uint64_t hash,
-        std::unordered_map <uint32_t, std::unordered_map <Delay<N>, uint64_t>> & functions,
-        std::unordered_map<uint64_t, Node> & nodemap)
+        phmap::flat_hash_map <uint32_t, phmap::flat_hash_map <Delay<N>, uint64_t>> & functions,
+        phmap::flat_hash_map<uint64_t, Node> & nodemap)
 {
     bool add = true;
     std::vector<Delay<N>> to_delete;
@@ -233,7 +233,7 @@ void update_registry( Delay<N> D, uint32_t func, uint64_t hash,
     auto it = functions.find(func);
     if (it != functions.end()) 
     {
-        std::unordered_map<Delay<N>, uint64_t>& inner_map = it->second;
+        phmap::flat_hash_map<Delay<N>, uint64_t>& inner_map = it->second;
         // Iterate over the entries in the inner map
         for (const auto& [other_D, other_hash] : inner_map) 
         {
@@ -266,7 +266,7 @@ void update_registry( Delay<N> D, uint32_t func, uint64_t hash,
 }
 
 template <unsigned N>
-void force_update_registry( Delay<N> D, uint16_t func, uint64_t hash, std::unordered_map <uint16_t, std::unordered_map <Delay<N>, uint64_t>> & functions, std::unordered_map<uint64_t, Node> & nodemap)
+void force_update_registry( Delay<N> D, uint16_t func, uint64_t hash, phmap::flat_hash_map <uint16_t, phmap::flat_hash_map <Delay<N>, uint64_t>> & functions, phmap::flat_hash_map<uint64_t, Node> & nodemap)
 {
     bool add = true;
     // Iterate over the entries in the inner map
@@ -299,7 +299,7 @@ void force_update_registry( Delay<N> D, uint16_t func, uint64_t hash, std::unord
 
 
 template <unsigned N>
-void filter_registry( std::unordered_map <uint16_t, std::unordered_map <Delay<N>, uint64_t>> & functions, std::unordered_map<uint64_t, Node> & nodemap)
+void filter_registry( phmap::flat_hash_map <uint16_t, phmap::flat_hash_map <Delay<N>, uint64_t>> & functions, phmap::flat_hash_map<uint64_t, Node> & nodemap)
 {
     for (auto & [func, inner_map] : functions)
     {
@@ -339,7 +339,7 @@ void filter_registry( std::unordered_map <uint16_t, std::unordered_map <Delay<N>
 
 int main()
 {
-    std::ofstream outfile("LIBRARY_2023_05_07_CONNECT.genlib");
+    std::ofstream outfile("LIBRARY_2024_02_14_CONNECT_3IN.genlib");
 
     std::vector<std::vector<UI>> sets_of_levels { { 
         {0,0,0,0},
@@ -356,23 +356,24 @@ int main()
     std::reverse(sets_of_levels.begin(), sets_of_levels.end());
 
 
-    std::unordered_map<ULL, Node> GNM_global;
-    std::unordered_map <uint16_t, std::unordered_map <Delay<4>, uint64_t>> functions_4;
-    std::unordered_map <uint16_t, std::unordered_map <Delay<3>, uint64_t>> functions_3;
-    std::unordered_map <uint16_t, std::unordered_map <Delay<2>, uint64_t>> functions_2;
-    std::unordered_map <uint16_t, std::unordered_map <Delay<1>, uint64_t>> functions_1;
+    phmap::flat_hash_map<ULL, Node> GNM_global;
+    phmap::flat_hash_map <uint16_t, phmap::flat_hash_map <Delay<4>, uint64_t>> functions_4;
+    phmap::flat_hash_map <uint16_t, phmap::flat_hash_map <Delay<3>, uint64_t>> functions_3;
+    phmap::flat_hash_map <uint16_t, phmap::flat_hash_map <Delay<2>, uint64_t>> functions_2;
+    phmap::flat_hash_map <uint16_t, phmap::flat_hash_map <Delay<1>, uint64_t>> functions_1;
     
-    auto ctr = 0u;
+    // auto ctr = 0u;
     std::vector<func_lvl> seen_signatures;
     for (const std::vector<UI> & levels : sets_of_levels)
     {
         if (LOG_LVL > 0) {fmt::print("Processing patterns {}\n", fmt::join(levels, " "));}
         const std::vector<UI> PI_funcs {0x5555, 0x3333, 0x0F0F, 0x00FF};
 
-        const std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_20230427/x3_{}_", fmt::join(levels, ""));
+        // const std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/mockturtle/build/Golden_20230427/x3_{}_", fmt::join(levels, ""));
+        const std::string file_prefix = fmt::format("/Users/brainkz/Documents/GitHub/clusters/Golden/x3_{}_", fmt::join(levels, ""));
 
-        std::unordered_map<ULL, Node> GNM = read_csv_gnm(fmt::format("{}gnm.csv", file_prefix));
-        std::array<ULL, NUM_TT> GEX = read_csv_arr(fmt::format("{}gex.csv", file_prefix));
+        phmap::flat_hash_map<ULL, Node> GNM = read_csv_gnm(fmt::format("{}gnm.csv", file_prefix));
+        // std::array<ULL, NUM_TT> GEX = read_csv_arr(fmt::format("{}gex.csv", file_prefix));
 
         GNM_global.insert(GNM.begin(), GNM.end());
         // for (auto [hash, node] : GNM)
@@ -401,7 +402,7 @@ int main()
             auto [tt, pi_delays, support_size] = process_node(hash, GNM);
             if (support_size == 4)
             {
-                uint16_t func = tt._bits;
+                // uint16_t func = tt._bits;
                 force_update_registry<4>( Delay<4>(pi_delays), tt._bits, hash, functions_4, GNM_global);
             }
             else if (support_size == 3)//only first N delays are taken

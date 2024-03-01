@@ -679,13 +679,14 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
           ULL hi = old_nodes[i];
           ULL hj = new_nodes[j];
           UI cost = costs[i][j];
-          if (cost >= INF) continue; // Skip iteration if cost is too high
-          
-          auto [nhash, added] = create_node(funcs[i][j], fCB, cost, depth, xorables[i][j], {hi, hj});
-          if (added) 
+          if (cost < INF)
           {
-            // Accumulate nhash values into the thread-local vector
-            local_fresh_nodes.push_back(nhash);
+            auto [nhash, added] = create_node(funcs[i][j], fCB, cost, depth, xorables[i][j], {hi, hj});
+            if (added) 
+            {
+              // Accumulate nhash values into the thread-local vector
+              local_fresh_nodes.push_back(nhash);
+            }
           }
         }
       }
@@ -757,13 +758,14 @@ void thread_old_new_wrapper(const std::vector<ULL>& old_nodes, const std::vector
               ULL hi = old_nodes[row];
               ULL hj = new_nodes[j];
               UI cost = costs[i][j];
-              if (cost >= INF) continue; // Skip iteration if cost is too high
-              
-              auto [nhash, added] = create_node(funcs[i][j], fCB, cost, depth, xorables[i][j], {hi, hj});
-              if (added) 
+              if (cost < INF)
               {
-                // Accumulate nhash values into the thread-local vector
-                local_fresh_nodes.push_back(nhash);
+                auto [nhash, added] = create_node(funcs[i][j], fCB, cost, depth, xorables[i][j], {hi, hj});
+                if (added) 
+                {
+                  // Accumulate nhash values into the thread-local vector
+                  local_fresh_nodes.push_back(nhash);
+                }
               }
             }
           }
@@ -807,9 +809,13 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<uint16_t>& fun
   std::vector<std::pair<ULL, UI>> ct_spl;
   std::vector<ULL> non_splittable_nodes;
   // fmt::print("\t\tProcessing new - new combinations between #{} and #{}\n", start_k, end_k);
-  for (ULL k = start_k; k < end_k; k++)
+
+  // ULL start_i = N - 2 - static_cast<unsigned long long>(std::sqrt(4*N*(N - 1) - 8*start_k - 7) / 2.0 - 0.5);
+  // ULL start_j = start_k + start_i + 1 - N * (N - 1) / 2 + (N - start_i) * ((N - start_i) - 1) / 2;
+  COMPUTE_IJ(start_k, N, i, j);
+  for (ULL k = start_k; k < end_k; ++k)
   {   
-    COMPUTE_IJ(k, N, i, j);
+  //   COMPUTE_IJ(k, N, i, j);
     ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
     Node & ni = GNM[hi]; // .at(hi); //[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
     if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
@@ -845,6 +851,12 @@ void threaded_new_new(const std::vector<ULL>& hashes, std::vector<uint16_t>& fun
       }
     }
     old_i = i;
+    ++j;
+    if (j == N)
+    {
+      ++i;
+      j = i + 1;
+    }
   }
 }
 
@@ -894,18 +906,26 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
       std::vector<ULL> local_fresh_nodes; // Each thread gets its own vector
 
       #pragma omp for schedule(dynamic)
-      for (ULL k = 0u; k < Ncombs; k++) 
+      ULL i = 0;
+      ULL j = 1;
+      for (ULL k = 0u; k < Ncombs; ++k) 
       {
-        COMPUTE_IJ(k, N, i, j); // Assumes i, j are computed from k
+        // COMPUTE_IJ(k, N, i, j);
         UI cost = costs[k];
-        if (cost >= INF) continue;
-        
-        // No need for critical section around create_node itself
-        auto [nhash, added] = create_node(funcs[k], fCB, cost, depth, xorables[k], {new_nodes[i], new_nodes[j]});
-        if (added) 
+        if (cost < INF)
         {
-          #pragma omp critical(fresh_nodes_update)
-          local_fresh_nodes.push_back(nhash);
+          auto [nhash, added] = create_node(funcs[k], fCB, cost, depth, xorables[k], {new_nodes[i], new_nodes[j]});
+          if (added) 
+          {
+            #pragma omp critical(fresh_nodes_update)
+            local_fresh_nodes.push_back(nhash);
+          }
+        }
+        ++j;
+        if (j == N)
+        {
+          ++i;
+          j = i + 1;
         }
       }
 
@@ -914,7 +934,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
       fresh_nodes.insert(fresh_nodes.end(), local_fresh_nodes.begin(), local_fresh_nodes.end());
     }   
 
-    // for (ULL k = 0u; k < Ncombs; k++)
+    // for (ULL k = 0u; k < Ncombs; ++k)
     // {
     //   COMPUTE_IJ(k, N, i, j);
     //   UI cost = costs[k];
@@ -961,19 +981,28 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
         // Thread-local vector for accumulating nhash values
         std::vector<ULL> local_fresh_nodes;
 
+        COMPUTE_IJ(START, N, i, j);  
         #pragma omp for schedule(dynamic) nowait
-        for (ULL k = START; k < END; k++)
+        for (ULL k = START; k < END; ++k)
         {
-          COMPUTE_IJ(k, N, i, j); // Computes i, j based on k
+          // COMPUTE_IJ(k, N, i, j); // Computes i, j based on k
           UI cost = costs[k - START];
           
-          if (cost >= INF) continue; // Skip if cost is above threshold
-          
-          auto [nhash, added] = create_node(funcs[k - START], fCB, cost, depth, xorables[k - START], {new_nodes[i], new_nodes[j]});
-          if (added)
+          // if (cost >= INF) continue; // Skip if cost is above threshold
+          if (cost < INF)
           {
-            // Accumulate nhash values into the thread-local vector
-            local_fresh_nodes.push_back(nhash);
+            auto [nhash, added] = create_node(funcs[k - START], fCB, cost, depth, xorables[k - START], {new_nodes[i], new_nodes[j]});
+            if (added)
+            {
+              // Accumulate nhash values into the thread-local vector
+              local_fresh_nodes.push_back(nhash);
+            }
+          }
+          ++j;
+          if (j == N)
+          {
+            ++i;
+            j = i + 1;
           }
         }
 
@@ -981,7 +1010,7 @@ void threaded_new_new_wrapper(const std::vector<ULL>& new_nodes, const UI depth,
         #pragma omp critical
         fresh_nodes.insert(fresh_nodes.end(), local_fresh_nodes.begin(), local_fresh_nodes.end());
       }
-    //   for (ULL k = START; k < END; k++)
+    //   for (ULL k = START; k < END; ++k)
     //   {
     //     COMPUTE_IJ(k, N, i, j);
     //     UI cost = costs[k - START];
@@ -1006,9 +1035,11 @@ void threaded_xor(const std::vector<ULL>& hashes, std::vector<uint16_t>& funcs, 
   UI init_cost;
   std::vector<std::pair<ULL, UI>> ct_spl;
   std::vector<ULL> non_splittable_nodes;
-  for (ULL k = start_k; k < end_k; k++)
+
+  COMPUTE_IJ(start_k, N, i, j);
+  for (ULL k = start_k; k < end_k; ++k)
   {   
-    COMPUTE_IJ(k, N, i, j);
+    // COMPUTE_IJ(k, N, i, j);
     ULL hi = hashes[i];     // fmt::print("\t\t hash_i={}\n", hi);
     const Node & ni = GNM_local.at(hi); // [hi];    // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
 
@@ -1053,6 +1084,12 @@ void threaded_xor(const std::vector<ULL>& hashes, std::vector<uint16_t>& funcs, 
       }
     }
     old_i = i;
+    ++j;
+    if (j == N)
+    {
+      ++i;
+      j = i + 1;
+    }
   }
 }
 
@@ -1105,16 +1142,28 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
     }
     join_threads(threads);
     check_threads(threads);
-
+    ULL i = 0u;
+    ULL j = 1u;
     #pragma omp parallel for schedule(dynamic)
-    for (ULL k = 0u; k < Ncombs; k++)
+    for (ULL k = 0u; k < Ncombs; ++k)
     {
-      COMPUTE_IJ(k, N, i, j); 
-      if (costs[k] >= INF) continue; 
-      create_node(funcs[k], fXOR, costs[k], depth, true, {valid_nodes[i], valid_nodes[j]});
+      // COMPUTE_IJ(k, N, i, j); 
+      auto best_cost = get_gex(funcs[k]).cost;
+      UI cost = costs[k];
+      // if (cost >= INF) continue;
+      if (costs[k] < (best_cost << 1))
+      {
+        create_node(funcs[k], fXOR, costs[k], depth, true, {valid_nodes[i], valid_nodes [j]});
+      }
+      ++j;
+      if (j == N)
+      {
+        ++i;
+        j = i + 1;
+      }
     }
 
-    // for (ULL k = 0u; k < Ncombs; k++)
+    // for (ULL k = 0u; k < Ncombs; ++k)
     // {
     //   COMPUTE_IJ(k, N, i, j);
     //   continue_if (costs[k] >= INF);
@@ -1144,15 +1193,28 @@ void threaded_xor_wrapper(const std::vector<ULL>& nodes, const UI depth, UI num_
       join_threads(threads);
       check_threads(threads);
       fmt::print("\t\tCombining XOR results\n");
+
+      COMPUTE_IJ(START, N, i, j);
       #pragma omp parallel for schedule(dynamic)
-      for (ULL k = START; k < END; k++)
+      for (ULL k = START; k < END; ++k)
       {
-        COMPUTE_IJ(k, N, i, j);
+        // COMPUTE_IJ(k, N, i, j);
+        auto best_cost = get_gex(funcs[k-START]).cost;
+
         UI cost = costs[k - START];
-        if (cost >= INF) continue;
-        create_node(funcs[k-START], fXOR, cost, depth, true, {valid_nodes[i], valid_nodes[j]});
+        // if (cost >= INF) continue;
+        if (costs[k - START] < (best_cost << 1))
+        {
+          create_node(funcs[k-START], fXOR, cost, depth, true, {valid_nodes[i],   valid_nodes[j]});
+        }
+        ++j;
+        if (j == N)
+        {
+          ++i;
+          j = i + 1;
+        }
       }
-      // for (ULL k = START; k < END; k++)
+      // for (ULL k = START; k < END; ++k)
       // {
       //   COMPUTE_IJ(k, N, i, j);
       //   UI cost = costs[k - START];
@@ -1173,9 +1235,10 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<uint16_t>& func
   std::vector<std::pair<ULL, UI>> ct_spl;
   std::vector<ULL> non_splittable_nodes;
 
-  for (ULL k = start_k; k < end_k; k++)
+  COMPUTE_IJ(start_k, N, i, j);
+  for (ULL k = start_k; k < end_k; ++k)
   {   
-    COMPUTE_IJ(k, N, i, j);
+    // COMPUTE_IJ(k, N, i, j);
     ULL hi = hashes[i]; // fmt::print("\t\t hash_i={}\n", hi);
     Node & ni = GNM[hi]; // fmt::print("\t\t Retrieved ni={}\n", ni.to_str());
     if (i != old_i || k == start_k) // update [init_cost, ct_spl, non_splittable_nodes] if the row has changed
@@ -1274,6 +1337,12 @@ void threaded_and_or(const std::vector<ULL>& hashes, std::vector<uint16_t>& func
       }
     }
     old_i = i;
+    ++j;
+    if (j == N)
+    {
+      ++i;
+      j = i + 1;
+    }
   }
 }
 
@@ -1401,30 +1470,45 @@ void threaded_and_or_wrapper(const std::vector<ULL>& nodes, const UI depth, UI n
     }
     join_threads(threads);
     check_threads(threads);
-
+    ULL i = 0;
+    ULL j = 1;
     #pragma omp parallel for schedule(dynamic)
-    for (ULL k = 0u; k < Ncombs; k++)
+    for (ULL k = 0u; k < Ncombs; ++k)
     {
-      COMPUTE_IJ(k, N, i, j);
+      // COMPUTE_IJ(k, N, i, j);
       auto best_and_cost = get_gex(funcs_and[k]).cost;
       if (costs_and[k] < (best_and_cost << 1))
       {
         create_node(funcs_and[k], fAND, costs_and[k], depth, true, {nodes[i], nodes[j]});
       }
+      ++j;
+      if (j == N)
+      {
+        ++i;
+        j = i + 1;
+      }
     }
 
+    i = 0;
+    j = 1;
     #pragma omp parallel for schedule(dynamic)
-    for (ULL k = 0u; k < Ncombs; k++)
+    for (ULL k = 0u; k < Ncombs; ++k)
     {
-      COMPUTE_IJ(k, N, i, j);
+      // COMPUTE_IJ(k, N, i, j);
       auto best_or_cost = get_gex(funcs_or[k]).cost;
       if (costs_or[k] < (best_or_cost << 1))
       {
         create_node(funcs_or[k], fOR, costs_or[k], depth, true, {nodes[i], nodes[j]});
       }
+      ++j;
+      if (j == N)
+      {
+        ++i;
+        j = i + 1;
+      }
     }
 
-    // for (ULL k = 0u; k < Ncombs; k++)
+    // for (ULL k = 0u; k < Ncombs; ++k)
     // {
     //   COMPUTE_IJ(k, N, i, j);
     //   // if (costs_and[k] < INF)
@@ -1466,28 +1550,46 @@ void threaded_and_or_wrapper(const std::vector<ULL>& nodes, const UI depth, UI n
       join_threads(threads);
       check_threads(threads);
 
+      COMPUTE_IJ(START, N, start_i, start_j);
+      ULL i = start_i;
+      ULL j = start_j;
       fmt::print("\t\tCombining AND/OR results\n");
       #pragma omp parallel for schedule(dynamic)
-      for (ULL k = START; k < END; k++)
+      for (ULL k = START; k < END; ++k)
       {
-        COMPUTE_IJ(k, N, i, j);
+        // COMPUTE_IJ(k, N, i, j);
         auto best_and_cost = get_gex(funcs_and[k-START]).cost;
         if (costs_and[k-START] < (best_and_cost << 1))
         {
           create_node(funcs_and[k-START], fAND, costs_and[k-START], depth, true, {nodes[i], nodes[j]});
         }
+        ++j;
+        if (j == N)
+        {
+          ++i;
+          j = i + 1;
+        }
       }
+
+      i = start_i;
+      j = start_j;
       #pragma omp parallel for schedule(dynamic)
-      for (ULL k = START; k < END; k++)
+      for (ULL k = START; k < END; ++k)
       {
-        COMPUTE_IJ(k, N, i, j);
+        // COMPUTE_IJ(k, N, i, j);
         auto best_or_cost = get_gex(funcs_or[k-START]).cost;
         if (costs_or[k-START] < (best_or_cost << 1))
         {
           create_node(funcs_or[k-START], fOR, costs_or[k-START], depth, true, {nodes[i], nodes[j]});
         }
+        ++j;
+        if (j == N)
+        {
+          ++i;
+          j = i + 1;
+        }
       }
-      // for (ULL k = START; k < END; k++)
+      // for (ULL k = START; k < END; ++k)
       // {
       //   COMPUTE_IJ(k, N, i, j);
       //   // fmt::print("{} {} {} {} {} {}\n", i, j, k ,N, START, END);
@@ -1547,35 +1649,77 @@ void threaded_and3_or3_maj3_wrapper(const std::vector<ULL>& nodes, const UI dept
 
     fmt::print("\t\tCombining AND3/MAJ3/OR3 results\n");
     #pragma omp parallel for schedule(dynamic)
+    auto [start_i, start_j, start_k] = idx2ijk(N, START);
+
+    auto i = start_i;
+    auto j = start_j;
+    auto k = start_k;
     for (ULL idx = START; idx < END; ++idx)
     {
-      auto [i, j, k] = idx2ijk(N, idx);
       auto best_and3_cost = get_gex(funcs_and3[k]).cost;
       if (costs_and3[idx-START] < (best_and3_cost << 1))
       {
         create_node(funcs_and3[idx-START], fAND3, costs_and3[idx-START], depth, true, {nodes[i], nodes[j], nodes[k]});
       }
+      ++k;
+      if (k == N) // need to increment j
+      {
+        ++j;
+        if (j == N - 1) // need to increment i
+        {
+          ++i;
+          j = i + 1;
+        }
+        k = j + 1;
+      }
     }
-    
+
+    i = start_i;
+    j = start_j;
+    k = start_k;
     #pragma omp parallel for schedule(dynamic)
     for (ULL idx = START; idx < END; ++idx)
     {
-      auto [i, j, k] = idx2ijk(N, idx);
       auto best_maj3_cost = get_gex(funcs_maj3[k]).cost;
       if (costs_maj3[idx-START] < (best_maj3_cost << 1))
       {
         create_node(funcs_maj3[idx-START], fMAJ3, costs_maj3[idx-START], depth, true, {nodes[i], nodes[j], nodes[k]});
       }
+      ++k;
+      if (k == N) // need to increment j
+      {
+        ++j;
+        if (j == N - 1) // need to increment i
+        {
+          ++i;
+          j = i + 1;
+        }
+        k = j + 1;
+      }
     }
-    
+
+    i = start_i;
+    j = start_j;
+    k = start_k;
     #pragma omp parallel for schedule(dynamic)
     for (ULL idx = START; idx < END; ++idx)
     {
-      auto [i, j, k] = idx2ijk(N, idx);
+      // auto [i, j, k] = idx2ijk(N, idx);
       auto best_or3_cost = get_gex(funcs_or3[k]).cost;
       if (costs_or3[idx-START] < (best_or3_cost << 1))
       {
         create_node(funcs_or3[idx-START], fOR3, costs_or3[idx-START], depth, true, {nodes[i], nodes[j], nodes[k]});
+      }
+      ++k;
+      if (k == N) // need to increment j
+      {
+        ++j;
+        if (j == N - 1) // need to increment i
+        {
+          ++i;
+          j = i + 1;
+        }
+        k = j + 1;
       }
     }
     // for (ULL idx = START; idx < END; ++idx)
@@ -1726,6 +1870,14 @@ void sa_generation(US lvl)
 
   fmt::print("\t{}: AND/OR {:L} nodes\n", lvl, nodes.size());
   threaded_and_or_wrapper(nodes, tgt_depth);
+  remove_dominated();
+}
+void sa3_generation(US lvl)
+{
+  std::vector<ULL> nodes = select_depth(lvl * 3 + 2, lvl * 3 + 2);
+  US tgt_depth = lvl * 3 + 3;
+
+  fmt::print("\t{}: AND3/MAJ3/OR3 {:L} nodes\n", lvl, nodes.size());
   if (nodes.size() >= 3) 
   {
     threaded_and3_or3_maj3_wrapper(nodes, tgt_depth);
@@ -1773,30 +1925,52 @@ int main()
 
   fmt::print("THE COMPUTER NAME IS : {}", comp_name);
 
+  // std::vector<std::vector<UI>>> completed = {
+  //   {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,2}, {0,1,2,2}, {0,1,2,3}
+  // };
+
+  // {0,0,0,0} -> 042
+  // {0,1,1,1} -> 044 - not making it
+
+  // {0,1,1,3} -> 057 - almost done 65535
+  // {0,1,1,2} -> 058 should be good 
+  // {0,1,1,1} -> 081 fixed
+  // {0,1,1,3}, {} -> 082 done
+
   phmap::flat_hash_map<std::string, std::vector<std::vector<UI>>> comp_name_to_sets = {
     {"iccluster042", 
       {
-        {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3} 
+        // {0,0,0,1}, {0,1,1,1}, {0,1,1,2}, 
+        {0,0,0,0}, {0,1,1,3}
       }
     }, // Map hostnames to starting indices
     {"iccluster044", 
       {
-        {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3}, {0,0,0,0}, {0,0,0,1}
+        // {0,1,1,1}, {0,0,0,1}, {0,1,1,2}, 
+        {0,1,1,3}, {0,0,0,0}
       }
     },
     {"iccluster057", 
       {
-        {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}
+        // , {0,0,0,1}, {0,1,1,1} , {0,1,1,2}
+        {0,1,1,3}, {0,0,0,0}
       }
     },
     {"iccluster058", 
       {
-        {0,1,1,2}, {0,1,1,3}, {0,1,2,2}, {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}
+        // , {0,0,0,1}, {0,1,1,1}, {0,1,1,2}, 
+        {0,1,1,3}, {0,0,0,0}
       }
     },
     {"iccluster081", 
       {
-        {0,1,2,2}, {0,1,2,3}, {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,1,3} 
+        {0,1,1,1}, {0,1,1,2}, {0,1,1,3}, {0,0,0,0}, {0,0,0,1}
+      }
+    },
+    {"iccluster082", 
+      {
+        // {0,1,1,1}, 
+        {0,0,0,1}, {0,1,1,2}, {0,1,1,3}, {0,0,0,0}
       }
     }
   };
@@ -1861,6 +2035,18 @@ int main()
       break_if (is_done(GEX) && lvl >= levels.back()) ;
 
       UL end_n_TT = count_done();
+      break_if (start_n_TT == end_n_TT && lvl >= levels.back());
+
+      sa3_generation(lvl);
+      // fmt::print("Checking integrity of GNM after SA\n");
+      // check_GNM();
+      fmt::print("\n\n\t\nCompleted {}\n\n\n", count_done());
+      write_csv_gnm(GNM, fmt::format("{}_gnm_sa3_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
+      write_csv_arr(GEA, fmt::format("{}_gea_sa3_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
+      write_csv_arr(GEX, fmt::format("{}_gex_sa3_{}_{}.csv", level_prefix, lvl, get_current_time_formatted()));
+      break_if (is_done(GEX) && lvl >= levels.back()) ;
+
+      end_n_TT = count_done();
       break_if (start_n_TT == end_n_TT && lvl >= levels.back());
     }
 

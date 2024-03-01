@@ -48,7 +48,8 @@ constexpr US fSPL   = 10;
 constexpr US fPI    = 11;
 constexpr US fNOFUNC= 99;
 
-constexpr std::array<UI,12> COSTS_CONNECT = {6, 10, 7, 7, 7, 11, 999, 999, 999, 7, 3, 0};
+constexpr std::array<UI,12> COSTS_CONNECT = {6, 10, 7, 7, 7, 11, 11, 11, 11, 7, 3, 0};
+// constexpr std::array<UI,12> COSTS_CONNECT = {6, 10, 7, 7, 7, 11, 999, 999, 999, 7, 3, 0};
 
 constexpr UI kNumThreads = 100;
 
@@ -309,6 +310,33 @@ public:
             // return fmt::format("(!({0})*({1})+({0})*!({1}))", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
             return fmt::format("({0}^{1})", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
         }
+        else if (last_func == fAND3)
+        {
+            assert(parent_hashes.size() == 3);
+            // return fmt::format("(!({0})*({1})+({0})*!({1}))", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("({0}&{1}&{2})", 
+            nodemap[parent_hashes[0]].genlib_eqn(nodemap, pis), 
+            nodemap[parent_hashes[1]].genlib_eqn(nodemap, pis), 
+            nodemap[parent_hashes[2]].genlib_eqn(nodemap, pis));
+        }
+        else if (last_func == fOR3)
+        {
+            assert(parent_hashes.size() == 3);
+            // return fmt::format("(!({0})*({1})+({0})*!({1}))", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("({0}|{1}|{2})", 
+            nodemap[parent_hashes[0]].genlib_eqn(nodemap, pis), 
+            nodemap[parent_hashes[1]].genlib_eqn(nodemap, pis), 
+            nodemap[parent_hashes[2]].genlib_eqn(nodemap, pis));
+        }
+        else if (last_func == fMAJ3)
+        {
+            assert(parent_hashes.size() == 3);
+            // return fmt::format("(!({0})*({1})+({0})*!({1}))", nodemap[parent_hashes.front()].genlib_eqn(nodemap, pis), nodemap[parent_hashes.back()].genlib_eqn(nodemap, pis));
+            return fmt::format("(({0}&{1})|({0}&{2})|({1}&{2}))", 
+            nodemap[parent_hashes[0]].genlib_eqn(nodemap, pis), 
+            nodemap[parent_hashes[1]].genlib_eqn(nodemap, pis), 
+            nodemap[parent_hashes[2]].genlib_eqn(nodemap, pis));
+        }
         else
         {
             if (DEBUG) {fmt::print("Unsupported function {}", to_str());}
@@ -366,6 +394,10 @@ public:
         {
             return cost_map[last_func] + nodemap[parent_hashes.front()].recalculate_cost(nodemap, cost_map) + nodemap[parent_hashes.back()].recalculate_cost(nodemap, cost_map);
         }
+        else if (last_func == fOR3 || last_func == fAND3 || last_func == fMAJ3)
+        {
+            return cost_map[last_func] + nodemap[parent_hashes[0]].recalculate_cost(nodemap, cost_map) + nodemap[parent_hashes[1]].recalculate_cost(nodemap, cost_map) + nodemap[parent_hashes[2]].recalculate_cost(nodemap, cost_map);
+        }
         else
         {
             return 9999;
@@ -409,6 +441,21 @@ public:
         {
             assert(parent_hashes.size() == 2);
             return fmt::format("XOR({0}, {1})", nodemap[parent_hashes.front()].to_stack(nodemap, pi_map), nodemap[parent_hashes.back()].to_stack(nodemap, pi_map));
+        }
+        else if ( last_func == fOR3 )
+        {
+            assert(parent_hashes.size() == 3);
+            return fmt::format("OR3({0}, {1}, {2})", nodemap[parent_hashes[0]].to_stack(nodemap, pi_map), nodemap[parent_hashes[1]].to_stack(nodemap, pi_map), nodemap[parent_hashes[2]].to_stack(nodemap, pi_map));
+        }
+        else if ( last_func == fAND3 )
+        {
+            assert(parent_hashes.size() == 3);
+            return fmt::format("AND3({0}, {1}, {2})", nodemap[parent_hashes[0]].to_stack(nodemap, pi_map), nodemap[parent_hashes[1]].to_stack(nodemap, pi_map), nodemap[parent_hashes[2]].to_stack(nodemap, pi_map));
+        }
+        else if ( last_func == fMAJ3 )
+        {
+            assert(parent_hashes.size() == 3);
+            return fmt::format("MAJ3({0}, {1}, {2})", nodemap[parent_hashes[0]].to_stack(nodemap, pi_map), nodemap[parent_hashes[1]].to_stack(nodemap, pi_map), nodemap[parent_hashes[2]].to_stack(nodemap, pi_map));
         }
         else
         {
