@@ -76,8 +76,6 @@
 
 #include <chrono>
 
-
-
 template <size_t N, typename T>
 using array_map = phmap::flat_hash_map<std::array<klut::node, N>, T, ArrayHash<N>>;
 

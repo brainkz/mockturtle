@@ -59,6 +59,7 @@
 #include <mockturtle/views/binding_view.hpp>
 #include <mockturtle/views/depth_view.hpp>
 #include <mockturtle/views/rsfq_view.hpp>
+#include <mockturtle/views/mph_view.hpp>
 #include <mockturtle/algorithms/functional_reduction.hpp>
 #include <mockturtle/algorithms/klut_to_graph.hpp>
 
@@ -72,11 +73,9 @@
 
 #include <experiments.hpp>
 
-typedef mockturtle::klut_network klut;
-typedef mockturtle::xag_network   xag;
-typedef mockturtle::xmg_network   xmg;
-typedef mockturtle::mig_network   mig;
-typedef mockturtle::aig_network   aig;
+constexpr uint8_t NUM_PHASES { 4u };
+
+typedef mockturtle::mph_view<mockturtle::klut_network, NUM_PHASES> mph_klut;
 typedef uint64_t node_t;
 
 constexpr std::array<int, 12> COSTS_MAP = COSTS_SUNMAGNETICS;
@@ -179,6 +178,7 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
   return std::make_tuple( res, st, total_ndff, total_area, cec );
 }
 
+template <uint8_t n_phases>
 struct Snake
 {
   std::deque<std::vector<uint64_t>> sections;
@@ -188,14 +188,14 @@ struct Snake
   Snake( const std::deque<std::vector<uint64_t>> _sections ): sections(_sections) {}
   Snake( const Snake & _other ): sections(_other.sections) {}
 
-  bool append(const uint64_t dff_hash, DFF_registry &DFF_REG, const uint8_t n_phases)
+  bool append(const uint64_t dff_hash, DFF_registry &DFF_REG)
   {
     DFF_var & dff = DFF_REG.at( dff_hash );
 
     std::vector<uint64_t> & head_section = sections.back();
     uint64_t & head_hash = head_section.back();
     DFF_var & head_dff = DFF_REG.at( head_hash );
-    if (dff.sigma == head_dff.sigma) // add to the same section
+    if (dff.stage == head_dff.stage) // add to the same section
     {
       head_section.push_back( dff_hash );
       return false;
@@ -211,14 +211,14 @@ struct Snake
       return true;
     }
   }
-
 };
 
-void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, uint8_t n_phases, bool verbose = false)
+template <uint8_t n_phases>
+void write_snakes(const std::vector<Snake<n_phases>> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, bool verbose = false)
 {
   std::ofstream spec_file (cfg_name);
 
-  for (const Snake & snake : snakes)
+  for (const auto & snake : snakes)
   {
     std::vector<std::string> vars_bucket;
     for (const std::vector<uint64_t> & section : snake.sections)
@@ -257,19 +257,20 @@ void write_snakes(const std::vector<Snake> & snakes, DFF_registry & DFF_REG, con
 /// @param n_phases 
 /// @param verbose 
 /// @return 
-std::vector<Snake> sectional_snake(const Path & path, const klut & ntk,  DFF_registry & DFF_REG, const uint8_t n_phases, const bool verbose = false)
+template <uint8_t n_phases>
+std::vector<Snake<n_phases>> sectional_snake(const Path<n_phases> & path, const mph_klut & ntk,  DFF_registry & DFF_REG, const bool verbose = false)
 {
-  std::vector<Snake> out_snakes; 
-  std::vector<Snake> stack;
+  std::vector<Snake<n_phases>> out_snakes; 
+  std::vector<Snake<n_phases>> stack;
   
   DEBUG_PRINT("[i]: Starting extraction of worms \n");
   // get all DFFs 
   for (const auto & [hash, dff]: DFF_REG.variables)
   {
-    NodeData fo_data { ntk.value( dff.fanout ) };
-    auto fanout_sigma = fo_data.sigma - ( fo_data.type == AS_GATE );
+    const auto [fo_stage, fo_type] = ntk.get_stage_type(dff.fanout);
+    auto fanout_stage = fo_stage - ( fo_type == AS_GATE );
     auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
-    if (it != path.targets.end() && ( ( fanout_sigma < 0 ) || ( ( fanout_sigma >= 0 ) && ( dff.sigma >= static_cast<uint32_t>( fanout_sigma ) ) ) ))
+    if (it != path.targets.end() && ( ( fanout_stage < 0 ) || ( ( fanout_stage >= 0 ) && ( dff.stage >= static_cast<uint32_t>( fanout_stage ) ) ) ))
     {
       stack.emplace_back( hash );
     }
@@ -278,7 +279,7 @@ std::vector<Snake> sectional_snake(const Path & path, const klut & ntk,  DFF_reg
   while (!stack.empty())
   {
     DEBUG_PRINT("[i] Stack size is {} \n", stack.size());
-    Snake snake = stack.back();
+    auto snake = stack.back();
     stack.pop_back();
 
     DEBUG_PRINT("\t[i] The snake has {} sections\n", snake.sections.size());
@@ -293,9 +294,9 @@ std::vector<Snake> sectional_snake(const Path & path, const klut & ntk,  DFF_reg
     bool returned_current_snake = false;
     for (const uint64_t parent_hash : dff.parent_hashes)
     {
-      Snake snake_copy = snake; 
+      auto snake_copy = snake; 
       DEBUG_PRINT("\t\t[i] Advancing towards fanin {}\n", DFF_REG.at( parent_hash ).str() );
-      bool status = snake_copy.append(parent_hash, DFF_REG, n_phases);
+      bool status = snake_copy.append(parent_hash, DFF_REG);
       DEBUG_PRINT((status) ? "\t\t\tAdded new section!\n" :"\t\t\tExtended existing section!\n"  );
       DEBUG_PRINT("\t\t\tThe new length is {}\n", snake_copy.sections.size() );
       
@@ -310,7 +311,6 @@ std::vector<Snake> sectional_snake(const Path & path, const klut & ntk,  DFF_reg
   }
   return out_snakes;
 }
-
 
 std::tuple<int, phmap::flat_hash_map<unsigned int, unsigned int>, std::string>  cpsat_macro_opt(const std::string & cfg_name, uint8_t n_phases) 
 {
@@ -411,24 +411,24 @@ std::tuple<int, phmap::flat_hash_map<unsigned int, unsigned int>, std::string>  
 // Function to read unordered_map from CSV file
 phmap::flat_hash_map<std::string, int> readCSV(const std::string& filename) 
 {
-    std::ifstream infile(filename);             // Open the input file stream
-    phmap::flat_hash_map<std::string, int> map;   // Create the unordered_map
-    
-    std::string line;
-    std::getline(infile, line);                 // Ignore the header row
+  std::ifstream infile(filename);             // Open the input file stream
+  phmap::flat_hash_map<std::string, int> map;   // Create the unordered_map
+  
+  std::string line;
+  std::getline(infile, line);                 // Ignore the header row
 
-    // Read each subsequent row and add the key-value pair to the unordered_map
-    while (std::getline(infile, line)) 
-    {
-        std::stringstream ss(line);
-        std::string key;
-        int value;
-        std::getline(ss, key, ',');
-        ss >> value;
-        map[key] = value;
-    }
-    infile.close(); // Close the input file stream
-    return map;
+  // Read each subsequent row and add the key-value pair to the unordered_map
+  while (std::getline(infile, line)) 
+  {
+    std::stringstream ss(line);
+    std::string key;
+    int value;
+    std::getline(ss, key, ',');
+    ss >> value;
+    map[key] = value;
+  }
+  infile.close(); // Close the input file stream
+  return map;
 }
 
 int cpsat_ortools(const std::string & cfg_name) 
@@ -474,30 +474,26 @@ int cpsat_ortools(const std::string & cfg_name)
   }
 }
 
-void process_path(std::vector<int> & local_num_dff, const int idx, const Path& path, const klut& network, const size_t n_phases, const std::string benchmark)
+template <uint8_t NUM_PHASES>
+void process_path(std::vector<int> & local_num_dff, const int idx, const Path<NUM_PHASES>& path, const mph_klut& network, const std::string benchmark)
 {
   bool verbose = true;
   DEBUG_PRINT("\tAnalyzing the path\n");
 
   // *** Create binary variables
-  auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, n_phases);
+  auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, NUM_PHASES);
   local_num_dff[idx] += precalc_ndff;
   DEBUG_PRINT("\t\t\t\t[i]: Precalculated {} DFFs\n", precalc_ndff);
 
-  // if (!DFF_REG.variables.empty())
-  // {
-  //   return;
-  // }
-
   // *** Generate constraints
-  std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, verbose);
+  std::vector<Snake<NUM_PHASES>> snakes = sectional_snake<NUM_PHASES>(path, network, DFF_REG, verbose);
   DEBUG_PRINT("\tCreated {} snakes\n", snakes.size());
 
   // *** If there's anything that needs optimization
   if (!snakes.empty())
   {
     std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_mt_{}.csv", benchmark, idx);
-    write_snakes(snakes, DFF_REG, required_SA_DFFs, cfg_file, n_phases, verbose);
+    write_snakes<NUM_PHASES>(snakes, DFF_REG, required_SA_DFFs, cfg_file, verbose);
     auto num_dff = cpsat_ortools(cfg_file);
     // DEBUG_PRINT("OR Tools optimized to {} DFF\n", num_dff);
     local_num_dff[idx] += num_dff;
@@ -506,7 +502,7 @@ void process_path(std::vector<int> & local_num_dff, const int idx, const Path& p
 }
 
 
-int main(int argc, char* argv[])  //
+int main()
 {
   using namespace experiments;
   using namespace mockturtle;
@@ -516,12 +512,12 @@ int main(int argc, char* argv[])  //
   // uint8_t MIN_N_PHASES = std::stoi(argv[1]);
   // uint8_t MAX_N_PHASES = std::stoi(argv[2]);
 
-  std::vector<uint8_t> PHASES;
-  for (auto i = 1; i < argc; ++i)
-  {
-    PHASES.push_back(std::stoi(argv[i]));
-  }
-  fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
+  // std::vector<uint8_t> PHASES;
+  // for (auto i = 1; i < argc; ++i)
+  // {
+  //   PHASES.push_back(std::stoi(argv[i]));
+  // }
+  // fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
 
   fmt::print( "[i] processing technology library\n" );
 
@@ -651,7 +647,7 @@ int main(int argc, char* argv[])  //
     fmt::print("Finished mapping {}\n", benchmark);
 
     // *** DECOMPOSE COMPOUND GATES INTO PRIMITIVES, REMOVE DFFS, REPLACE OR GATES WITH CB WHERE POSSIBLE ***
-    auto _result = decompose_to_klut(res_w_pb, GNM_global, entries, COSTS_MAP);
+    auto _result = decompose_to_klut<NUM_PHASES>(res_w_pb, GNM_global, entries, COSTS_MAP);
     auto klut_decomposed = std::get<0>(_result);
     auto raw_area = std::get<1>(_result);
     fmt::print("Decomposition complete\n");
@@ -662,182 +658,129 @@ int main(int argc, char* argv[])  //
     // Calculate elapsed time
     std::chrono::duration<double> mapping_seconds = mapping_end - mapping_start;
   
-    for (const auto n_phases : PHASES)
+    fmt::print("[i] Mapping with {} phases\n", NUM_PHASES);
+    // *** IF i = 0, we assign phases with the CP-SAT
+    // *** IF i = 1, we assign phases greedily
+    // for (auto i = 0; i < 2; ++i)
+    for (auto i = 0; i < 1; ++i)
     {
-      fmt::print("[i] Mapping with {} phases\n", n_phases);
-      // *** IF i = 0, we assign phases with the CP-SAT
-      // *** IF i = 1, we assign phases greedily
-      // for (auto i = 0; i < 2; ++i)
-      for (auto i = 0; i < 1; ++i)
+      mph_klut network { klut_decomposed.clone() };
+      phmap::flat_hash_map<unsigned int, unsigned int> assignment;
+
+      std::chrono::high_resolution_clock::time_point pa_start = std::chrono::high_resolution_clock::now();
+
+      if (i == 0)
       {
-        klut network { klut_decomposed.clone() };
-        phmap::flat_hash_map<unsigned int, unsigned int> assignment;
+        const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
+        fmt::print("\tWriting config {}\n", ilp_cfg_filename);
+        write_klut_specs(network, ilp_cfg_filename);
 
-        std::chrono::high_resolution_clock::time_point pa_start = std::chrono::high_resolution_clock::now();
+        fmt::print("\tCalling OR-Tools\n");
+        auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_cfg_filename, NUM_PHASES);
 
-        if (i == 0)
+        if (status == "SUCCESS") // (true) // 
         {
-          const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
-          fmt::print("\tWriting config {}\n", ilp_cfg_filename);
-          write_klut_specs_new(network, ilp_cfg_filename);
-
-          fmt::print("\tCalling OR-Tools\n");
-          auto [obj_val, assignment_local, status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
-
-          if (status == "SUCCESS") // (true) // 
-          {
-            assignment.insert(std::make_move_iterator(assignment_local.begin()), std::make_move_iterator(assignment_local.end()));
-            fmt::print("[i] CP-SAT PHASE ASSIGNMENT: SUCCESS\n");
-          }
-          else
-          {
-            fmt::print("[i] CP-SAT PHASE ASSIGNMENT: FAIL\n");
-            continue;
-          }
+          assignment.insert(std::make_move_iterator(assignment_local.begin()), std::make_move_iterator(assignment_local.end()));
+          fmt::print("[i] CP-SAT PHASE ASSIGNMENT: SUCCESS\n");
         }
-        
-        // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
-        // *** IF i = 1, "assignment" is empty
-        greedy_ntk_assign(network, n_phases, assignment, false );
-
-        // Stop the timer
-        std::chrono::high_resolution_clock::time_point pa_end = std::chrono::high_resolution_clock::now();
-
-        // Calculate elapsed time
-        std::chrono::duration<double> pa_seconds = pa_end - pa_start;
-
-
-
-        // Start the timer
-        std::chrono::high_resolution_clock::time_point spl_start = std::chrono::high_resolution_clock::now();
-
-        // *** Greedily insert splitters
-        splitter_ntk_insertion( network, false );
-
-        // Stop the timer
-        std::chrono::high_resolution_clock::time_point spl_end = std::chrono::high_resolution_clock::now();
-
-        // Calculate elapsed time
-        std::chrono::duration<double> spl_seconds = spl_end - spl_start;
-
-        // network.foreach_node([&] ( const klut::signal & node ) 
-        // {
-        //   if ( network.fanout_size( node ) > 1 )
-        //   {
-        //     assert( network.node_function( node ) == 0x2 );
-        //   };
-        // });
-
-        fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
-
-
-        // Start the timer
-        std::chrono::high_resolution_clock::time_point dff_start = std::chrono::high_resolution_clock::now();
-
-
-        fmt::print("[i] EXTRACTING PATHS\n");
-        std::vector<Path> paths = extract_paths( network, false );
-        // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
-
-
-        std::vector<int> local_num_dff( paths.size() );
-        std::vector<std::thread> threads;
-        threads.reserve(paths.size());
-
-        int idx = 0;
-        for (const Path & path : paths)
+        else
         {
-          threads.emplace_back(process_path, std::ref(local_num_dff), idx, std::ref(path), std::ref(network), n_phases, benchmark);
-          idx++;
+          fmt::print("[i] CP-SAT PHASE ASSIGNMENT: FAIL\n");
+          continue;
         }
-        // Wait for all threads to finish
-        for (auto& thread : threads) {
-            thread.join();
-        }
-
-        fmt::print("{}\n", fmt::join(local_num_dff, ","));
-        auto total_num_dff = std::accumulate(local_num_dff.begin(), local_num_dff.end(), 0);
-
-        // std::vector<int> local_num_dff_seq( paths.size() );
-        // int total_num_dff = 0u;
-        // int file_ctr = 0u;
-        // int path_ctr = 0u;
-        // int seq_idx = 0;
-        // for (const Path & path : paths)
-        // {
-        //   fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
-        //   // *** Create binary variables
-        //   auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, n_phases);
-        //   total_num_dff += precalc_ndff;
-        //   local_num_dff_seq[seq_idx] += precalc_ndff;
-        //   fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
-          
-        //   // *** Generate constraints
-        //   std::vector<Snake> snakes = sectional_snake(path, network, DFF_REG, n_phases, true);
-
-        //   fmt::print("\tCreated {} snakes\n", snakes.size());
-        //   // *** If there's anything that needs optimization
-        //   if (!snakes.empty())
-        //   {
-        //     std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-        //     write_snakes(snakes, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true);
-        //     auto num_dff = cpsat_ortools(cfg_file);
-        //     // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
-        //     total_num_dff += num_dff;
-        //     local_num_dff_seq[seq_idx] += num_dff;
-        //     fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
-        //   }
-        //   seq_idx++;
-        // }
-
-        // for (auto i = 0; i < paths.size(); ++i)
-        // {
-        //   fmt::print("[{}]\tMT: {}\tSEQ: {}\n", i, local_num_dff[i], local_num_dff_seq[i]);
-        // }
-
-        // Stop the timer
-        std::chrono::high_resolution_clock::time_point dff_end = std::chrono::high_resolution_clock::now();
-
-        // Calculate elapsed time
-        std::chrono::duration<double> dff_seconds = dff_end - dff_start;
-
-        // *** Record maximum phase
-        uint64_t max_stage = 0u;
-        // *** Record number of splitters and total number of DFFs (not only path balancing DFFs)
-        uint64_t total_num_spl = 0;
-        network.foreach_gate([&](const klut::signal & node)
-        {
-          NodeData node_data { network.value(node) };
-          // fmt::print("[Node {}] old max_stage = {}\tnode_data = {}\t", node, max_stage, static_cast<int>(node_data.sigma));
-          max_stage = generic_max(max_stage, node_data.sigma);
-          // fmt::print("new max_stage = {}\n", max_stage);
-
-          auto fo_size = network.fanout_size(node);
-          if (fo_size > 1)
-          {
-            total_num_spl += fo_size - 1;
-          }
-        });
-
-        network.foreach_po([&](const klut::signal & node)
-        {
-          NodeData node_data { network.value(node) };
-          // fmt::print("[PO {}] max_stage = {}, sigma = {}, node #DFF = {}\n", node, max_stage, static_cast<int>(node_data.sigma), ( (max_stage - node_data.sigma) / n_phases ) );
-          total_num_dff += (max_stage - node_data.sigma) / n_phases;
-          // fmt::print("\t\t\t\t[i] total #DFF = {}\n", total_num_dff);
-        });
-
-        // fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
-        int total_area = raw_area + total_num_dff * COSTS_MAP[fDFF] + total_num_spl * COSTS_MAP[fSPL];
-        // fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
-        // fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_stage);
-
-        exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), n_phases, total_num_dff, total_area, ( (max_stage - 1) / n_phases + 1 ),
-        mapping_seconds.count(), pa_seconds.count(), spl_seconds.count(), dff_seconds.count(),
-        mapping_seconds.count() + pa_seconds.count() + spl_seconds.count() + dff_seconds.count());
-        exp.save();
-        exp.table();
       }
+      
+      assign_stages(network, NUM_PHASES, assignment, false );
+
+      // Stop the timer
+      std::chrono::high_resolution_clock::time_point pa_end = std::chrono::high_resolution_clock::now();
+
+      // Calculate elapsed time
+      std::chrono::duration<double> pa_seconds = pa_end - pa_start;
+
+
+      // Start the timer
+      std::chrono::high_resolution_clock::time_point spl_start = std::chrono::high_resolution_clock::now();
+
+      // *** Greedily insert splitters
+      splitter_ntk_insertion( network, false );
+
+      // Stop the timer
+      std::chrono::high_resolution_clock::time_point spl_end = std::chrono::high_resolution_clock::now();
+
+      // Calculate elapsed time
+      std::chrono::duration<double> spl_seconds = spl_end - spl_start;
+
+      fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
+
+      // Start the timer
+      std::chrono::high_resolution_clock::time_point dff_start = std::chrono::high_resolution_clock::now();
+
+
+      fmt::print("[i] EXTRACTING PATHS\n");
+      std::vector<Path<NUM_PHASES>> paths = extract_paths( network, false );
+      // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
+
+
+      std::vector<int> local_num_dff( paths.size() );
+      std::vector<std::thread> threads;
+      threads.reserve(paths.size());
+
+      int idx = 0;
+      for (const Path<NUM_PHASES> & path : paths)
+      {
+        threads.emplace_back(process_path<NUM_PHASES>, std::ref(local_num_dff), idx, std::ref(path), std::ref(network), benchmark);
+        idx++;
+      }
+      // Wait for all threads to finish
+      for (auto& thread : threads) {
+          thread.join();
+      }
+
+      fmt::print("{}\n", fmt::join(local_num_dff, ","));
+      auto total_num_dff = std::accumulate(local_num_dff.begin(), local_num_dff.end(), 0);
+
+
+      // Stop the timer
+      std::chrono::high_resolution_clock::time_point dff_end = std::chrono::high_resolution_clock::now();
+
+      // Calculate elapsed time
+      std::chrono::duration<double> dff_seconds = dff_end - dff_start;
+
+      // *** Record maximum phase
+      uint64_t max_stage = 0u;
+      // *** Record number of splitters and total number of DFFs (not only path balancing DFFs)
+      uint64_t total_num_spl = 0;
+      network.foreach_gate([&](const klut::signal & node)
+      {
+        // fmt::print("[Node {}] old max_stage = {}\tnode_data = {}\t", node, max_stage, static_cast<int>(node_data.stage));
+        max_stage = generic_max(max_stage, network.get_stage(node));
+        // fmt::print("new max_stage = {}\n", max_stage);
+
+        auto fo_size = network.fanout_size(node);
+        if (fo_size > 1)
+        {
+          total_num_spl += fo_size - 1;
+        }
+      });
+
+      network.foreach_po([&](const klut::signal & node)
+      {
+        // fmt::print("[PO {}] max_stage = {}, sigma = {}, node #DFF = {}\n", node, max_stage, static_cast<int>(node_data.stage), ( (max_stage - node_data.stage) / n_phases ) );
+        total_num_dff += (max_stage - network.get_stage(node)) / NUM_PHASES;
+        // fmt::print("\t\t\t\t[i] total #DFF = {}\n", total_num_dff);
+      });
+
+      // fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
+      int total_area = raw_area + total_num_dff * COSTS_MAP[fDFF] + total_num_spl * COSTS_MAP[fSPL];
+      // fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
+      // fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_stage);
+
+      exp(fmt::format("{}_{}", benchmark, (i==0)?"CPSAT":"GREEDY"), NUM_PHASES, total_num_dff, total_area, ( (max_stage - 1) / NUM_PHASES + 1 ),
+      mapping_seconds.count(), pa_seconds.count(), spl_seconds.count(), dff_seconds.count(),
+      mapping_seconds.count() + pa_seconds.count() + spl_seconds.count() + dff_seconds.count());
+      exp.save();
+      exp.table();
     }
   }
   // TODO : now, count #DFFs in extracted paths. Perhaps, the function can be written within the Path object.
