@@ -136,7 +136,7 @@ if __name__ == "__main__":
   
   fanin_diff = {}
   Delta = {}
-  # IMPORTANT: PIs are assumed to be at clock stage 0 but with an arbitrary phase
+  # IMPORTANT: PIs are assumed to be at epoch 0 but with an arbitrary phase
   expr = []
   already_processed = []
   for g in all_signals.values():
@@ -300,7 +300,7 @@ if __name__ == "__main__":
   # Solves and prints out the solution.
   solver = cp_model.CpSolver()
   print(f'Starting Macro ILP')
-  solver.parameters.max_time_in_seconds = 600.0
+  solver.parameters.max_time_in_seconds = float(sys.argv[3])
   status = solver.Solve(model)
   print(f'Solve status: {solver.StatusName(status)}')
   if (solver.StatusName(status) in ("OPTIMAL", "FEASIBLE")):

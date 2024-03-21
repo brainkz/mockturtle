@@ -927,5 +927,142 @@
       }
     ],
     "version": "e5405c2e"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 4782.0,
+        "DFF_insertion": 21.503488834,
+        "N_PHASES": 4.0,
+        "area": 62997.0,
+        "benchmark": "s13207.aig_CPSAT",
+        "delay": 5.0,
+        "mapping": 4.099020417,
+        "phase_assgn": 1.401350625,
+        "spl_insertion": 20.218591167,
+        "total": 47.222451043
+      },
+      {
+        "#DFF": 1522.0,
+        "DFF_insertion": 6.967669125,
+        "N_PHASES": 4.0,
+        "area": 26759.0,
+        "benchmark": "s5378.aig_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.796451959,
+        "phase_assgn": 0.62782425,
+        "spl_insertion": 1.990956458,
+        "total": 13.382901792
+      },
+      {
+        "#DFF": 196.0,
+        "DFF_insertion": 1.530684042,
+        "N_PHASES": 4.0,
+        "area": 3160.0,
+        "benchmark": "s382.aig_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.410718083,
+        "phase_assgn": 0.194642,
+        "spl_insertion": 0.008224584,
+        "total": 5.144268709
+      },
+      {
+        "#DFF": 854.0,
+        "DFF_insertion": 5.815387291,
+        "N_PHASES": 4.0,
+        "area": 18871.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 6.0,
+        "mapping": 3.9488085,
+        "phase_assgn": 0.722135125,
+        "spl_insertion": 0.583861458,
+        "total": 11.070192374000001
+      },
+      {
+        "#DFF": 235.0,
+        "DFF_insertion": 2.315937458,
+        "N_PHASES": 4.0,
+        "area": 4299.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.658717125,
+        "phase_assgn": 0.253204459,
+        "spl_insertion": 0.036108958,
+        "total": 6.263968
+      },
+      {
+        "#DFF": 128.0,
+        "DFF_insertion": 2.043479209,
+        "N_PHASES": 4.0,
+        "area": 5089.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.926673541,
+        "phase_assgn": 0.269734042,
+        "spl_insertion": 0.072787458,
+        "total": 6.31267425
+      },
+      {
+        "#DFF": 459.0,
+        "DFF_insertion": 3.08679625,
+        "N_PHASES": 4.0,
+        "area": 7625.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 4.0,
+        "mapping": 3.574223334,
+        "phase_assgn": 0.284141666,
+        "spl_insertion": 0.076601458,
+        "total": 7.021762708
+      },
+      {
+        "#DFF": 444.0,
+        "DFF_insertion": 2.87938925,
+        "N_PHASES": 4.0,
+        "area": 5830.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 5.0,
+        "mapping": 3.474143917,
+        "phase_assgn": 0.246368125,
+        "spl_insertion": 0.030354375,
+        "total": 6.630255667
+      },
+      {
+        "#DFF": 4708.0,
+        "DFF_insertion": 46.91473775,
+        "N_PHASES": 4.0,
+        "area": 180500.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 10.0,
+        "mapping": 13.217035417,
+        "phase_assgn": 7.006299083,
+        "spl_insertion": 1008.720205625,
+        "total": 1075.858277875
+      },
+      {
+        "#DFF": 6235.0,
+        "DFF_insertion": 12.922349459,
+        "N_PHASES": 4.0,
+        "area": 65744.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 21.0,
+        "mapping": 3.793865375,
+        "phase_assgn": 7.296732916,
+        "spl_insertion": 3.783086584,
+        "total": 27.796034333999998
+      },
+      {
+        "#DFF": 278.0,
+        "DFF_insertion": 1.872244042,
+        "N_PHASES": 4.0,
+        "area": 5563.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.557310292,
+        "phase_assgn": 0.280583708,
+        "spl_insertion": 0.02085425,
+        "total": 5.730992292
+      }
+    ],
+    "version": "0520711"
   }
 ]
