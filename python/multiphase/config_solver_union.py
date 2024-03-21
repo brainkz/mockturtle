@@ -219,6 +219,7 @@ if __name__ == "__main__":
 
     # Solves and prints out the solution.
     solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(sys.argv[3])
     status = solver.Solve(model)
     print(f'Solve status: {solver.StatusName(status)}')
     # if status == cp_model.OPTIMAL:

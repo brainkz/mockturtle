@@ -24,16 +24,16 @@
  */
 
 /*!
-  \file fanout_limit_view.hpp
-  \brief View that replicates nodes whose fanout size exceed a limit
+  \file mph_view.hpp
+  \brief View that (1) adds stage and gate type information to a klut network and (2) allows explicit buffers to be inserted
 
-  \author Heinz Riener
-  \author Siang-Yun (Sonia) Lee
+  \author Rassul Bairamkulov
 */
 
 #pragma once
 
 #include <iostream>
+#include <mockturtle/views/binding_view.hpp>
 
 enum GateType : uint8_t 
 {
@@ -51,6 +51,8 @@ constexpr uint32_t _stage_mask = 0x1FFFFFFF;
 constexpr uint32_t  _type_mask = 0xE0000000;
 
 template<typename Ntk, uint8_t NUM_PHASES>
+// template<uint8_t NUM_PHASES>
+// class mph_view : public mockturtle::binding_view<typename Ntk>
 class mph_view : public Ntk
 {
 public:
@@ -62,15 +64,41 @@ public:
   using Ntk::_storage;
   using Ntk::_events;
 
-
-#pragma region Primary I / O and constants
-public:
-  signal get_constant( bool value = false ) const
+  /// @brief Generic constructor – each gate is considered clocked
+  /// @param ntk 
+  explicit mph_view( Ntk ntk ) 
+      : Ntk(ntk)
   {
-    return value ? 1 : 0;
+    ntk.foreach_pi([&] (node pi)
+    {
+      set_type(pi, PI_GATE);
+    });
+
+    ntk.foreach_gate([&](node n)
+    {
+      set_type(n, AS_GATE);  
+    });
   }
 
-#pragma endregion
+  /// @brief Constructor based on binding view. The type is inferred from the type_map
+  /// @tparam type_map - map from 
+  /// @param ntk 
+  /// @param map 
+  template<typename type_map>
+  mph_view( mockturtle::binding_view<Ntk> ntk, type_map map ) 
+      : Ntk(ntk)
+  {
+    ntk.foreach_pi([&] (node pi)
+    {
+      set_type(pi, PI_GATE);
+    });
+
+    ntk.foreach_gate([&](node n)
+    {
+      const auto & g = ntk.get_binding( n ); //determine the gate type
+      set_type(n, map.at( g.name ));  //set the appropriate gate type 
+    });
+  }
 
   uint32_t get_stage( uint32_t index ) const
   {
@@ -141,26 +169,25 @@ public:
 
 #pragma region Create arbitrary functions
   // signal _create_buffer( std::vector<signal> const& children, const uint32_t ID = 0) // , bool force = false, uint32_t h2 = 0u 
-  signal explicit_buffer( signal const& a ) // , bool force = false, uint32_t h2 = 0u 
+
+  signal explicit_buffer( signal const& a, uint8_t type ) // , bool force = false, uint32_t h2 = 0u 
   {
     typename storage::element_type::node_type node;
+
+
     node.children.push_back(a);
     node.data[1].h1 = 2;
-    node.data[1].h2 = a; // override the usage of "visited_flag" to change the hash
-    
-    const auto it = _storage->hash.find( node );
-    if ( it != _storage->hash.end() )
-    {
-      return it->second;
-    }
     
     const auto index = _storage->nodes.size();
     _storage->nodes.push_back( node );
+    _storage->hash[node] = index;
 
     /* increase ref-count to children */
     _storage->nodes[a].data[0].h1++;
 
     set_value( index, 0 );
+
+    set_type( index, type );
 
     for ( auto const& fn : _events->on_add )
     {
@@ -169,6 +196,11 @@ public:
 
     return index;
   }
+
+    // kitty::dynamic_truth_table tt(1); 
+    // kitty::create_nth_var( tt, 0 );
+    // return this->_create_node( { a }, this->_storage->data.cache.insert( tt ) );
+  
 #pragma endregion Create arbitrary functions
 
 

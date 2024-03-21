@@ -27,7 +27,6 @@
   \file klut.hpp
   \brief k-LUT logic network implementation
 
-  \author Alessandro Tempia Calvino
   \author Andrea Costamagna
   \author Heinz Riener
   \author Marcel Walter
@@ -66,11 +65,11 @@ struct klut_storage_data
  * `data[1].h1`: Function literal in truth table cache
  * `data[1].h2`: Visited flags
  */
-struct klut_storage_node : mixed_fanin_node<2>
+struct klut_storage_node : mixed_fanin_node<3>
 {
   bool operator==( klut_storage_node const& other ) const
   {
-    return data[1].h1 == other.data[1].h1 && children == other.children;
+    return data[2].h1 == other.data[2].h1 && data[1].h1 == other.data[1].h1 && children == other.children;
   }
 };
 
@@ -115,7 +114,7 @@ protected:
   inline void _init()
   {
     /* already initialized */
-    if ( _storage->nodes.size() > 1 )
+    if ( _storage->nodes.size() > 1 ) 
       return;
 
     /* reserve the second node for constant 1 */
@@ -169,6 +168,11 @@ protected:
     kitty::dynamic_truth_table tt_xor3( 3 );
     kitty::create_from_words( tt_xor3, &_xor3, &_xor3 + 1 );
     _storage->data.cache.insert( tt_xor3 );
+
+    static uint64_t _or3 = 0xfe;
+    kitty::dynamic_truth_table tt_or3( 3 );
+    kitty::create_from_words( tt_or3, &_or3, &_or3 + 1 );
+    _storage->data.cache.insert( tt_or3 );
 
     /* truth tables for constants */
     _storage->nodes[0].data[1].h1 = 0;
@@ -239,6 +243,16 @@ public:
     } );
     return i;
   }
+
+  bool is_po( node const& n ) const
+  {
+    return std::find( _storage->outputs.begin(), _storage->outputs.end(), n ) != _storage->outputs.end();
+  }
+
+  bool is_dangling( node const& n ) const
+  {
+    return ( fanout_size( n ) == 0 ) && !is_po( n );
+  }
 #pragma endregion
 
 #pragma region Create unary functions
@@ -247,58 +261,63 @@ public:
     return a;
   }
 
-  signal create_not( signal const& a )
+  signal create_not( signal const& a)
   {
     return _create_node( { a }, 3 );
   }
 #pragma endregion
 
 #pragma region Create binary functions
-  signal create_and( signal a, signal b )
+  signal create_and( signal a, signal b)
   {
     return _create_node( { a, b }, 4 );
   }
 
-  signal create_nand( signal a, signal b )
+  signal create_nand( signal a, signal b)
   {
     return _create_node( { a, b }, 5 );
   }
 
-  signal create_or( signal a, signal b )
+  signal create_or( signal a, signal b)
   {
     return _create_node( { a, b }, 6 );
   }
 
-  signal create_lt( signal a, signal b )
+  signal create_lt( signal a, signal b)
   {
     return _create_node( { a, b }, 8 );
   }
 
-  signal create_le( signal a, signal b )
+  signal create_le( signal a, signal b)
   {
     return _create_node( { a, b }, 11 );
   }
 
-  signal create_xor( signal a, signal b )
+  signal create_xor( signal a, signal b)
   {
     return _create_node( { a, b }, 12 );
   }
 #pragma endregion
 
 #pragma region Create ternary functions
-  signal create_maj( signal a, signal b, signal c )
+  signal create_maj( signal a, signal b, signal c)
   {
     return _create_node( { a, b, c }, 14 );
   }
 
-  signal create_ite( signal a, signal b, signal c )
+  signal create_ite( signal a, signal b, signal c)
   {
     return _create_node( { a, b, c }, 16 );
   }
 
-  signal create_xor3( signal a, signal b, signal c )
+  signal create_xor3( signal a, signal b, signal c)
   {
     return _create_node( { a, b, c }, 18 );
+  }
+
+  signal create_or3( signal a, signal b, signal c)
+  {
+    return _create_node( { a, b, c }, 20 );
   }
 #pragma endregion
 
@@ -320,21 +339,22 @@ public:
 #pragma endregion
 
 #pragma region Create arbitrary functions
-  signal _create_node( std::vector<signal> const& children, uint32_t literal )
+  signal _create_node( std::vector<signal> const& children, uint32_t literal, const uint32_t ID = 0) // , bool force = false, uint32_t h2 = 0u 
   {
     storage::element_type::node_type node;
     std::copy( children.begin(), children.end(), std::back_inserter( node.children ) );
     node.data[1].h1 = literal;
-
+    // node.data[2].h2 = ID;
+    // node.data[0].h2 = h2;
     const auto it = _storage->hash.find( node );
     if ( it != _storage->hash.end() )
     {
       return it->second;
     }
-
+    
     const auto index = _storage->nodes.size();
     _storage->nodes.push_back( node );
-    _storage->hash[node] = index;
+    // _storage->hash[node] = (node.data[0].h2 << 32) + index;
 
     /* increase ref-count to children */
     for ( auto c : children )
@@ -352,7 +372,7 @@ public:
     return index;
   }
 
-  signal create_node( std::vector<signal> const& children, kitty::dynamic_truth_table const& function )
+  signal create_node( std::vector<signal> const& children, kitty::dynamic_truth_table const& function)
   {
     if ( children.size() == 0u )
     {
@@ -461,12 +481,12 @@ public:
 
   uint32_t incr_fanout_size( node const& n ) const
   {
-    return _storage->nodes[n].data[0].h1++;
+    return _storage->nodes[n].data[0].h1++ & UINT32_C( 0x7FFFFFFF );
   }
 
   uint32_t decr_fanout_size( node const& n ) const
   {
-    return --_storage->nodes[n].data[0].h1;
+    return --_storage->nodes[n].data[0].h1 & UINT32_C( 0x7FFFFFFF );
   }
 
   bool is_function( node const& n ) const
@@ -586,6 +606,23 @@ public:
     if ( n == 0 || is_ci( n ) )
       return;
 
+    // if ( is_dangling( n ) )
+    //   return;
+
+    using IteratorType = decltype( _storage->outputs.begin() );
+    detail::foreach_element_transform<IteratorType, uint32_t>(
+        _storage->nodes[n].children.begin(), _storage->nodes[n].children.end(), []( auto f ) { return f.index; }, fn );
+  }
+
+  template<typename Fn>
+  void foreach_valid_fanin( node const& n, Fn&& fn ) const
+  {
+    if ( n == 0 || is_ci( n ) )
+      return;
+
+    if ( is_dangling( n ) )
+      return;
+
     using IteratorType = decltype( _storage->outputs.begin() );
     detail::foreach_element_transform<IteratorType, uint32_t>(
         _storage->nodes[n].children.begin(), _storage->nodes[n].children.end(), []( auto f ) { return f.index; }, fn );
@@ -612,7 +649,7 @@ public:
   {
     const auto nfanin = _storage->nodes[n].children.size();
 
-    std::vector<typename std::iterator_traits<Iterator>::value_type> tts( begin, end );
+    std::vector<typename Iterator::value_type> tts( begin, end );
 
     assert( nfanin != 0 );
     assert( tts.size() == nfanin );
@@ -689,6 +726,13 @@ public:
   void incr_trav_id() const
   {
     ++_storage->trav_id;
+  }
+#pragma endregion
+
+#pragma region Functional literals
+  uint32_t func_lit( node const& n ) const
+  {
+    return _storage->nodes[n].data[1].h1;
   }
 #pragma endregion
 

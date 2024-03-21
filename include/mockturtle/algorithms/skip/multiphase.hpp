@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <mockturtle/io/auxiliary_genlib.hpp>
+#include <mockturtle/io/genlib_utils.hpp>
 #include <mockturtle/algorithms/nodes.hpp>
 #include <mockturtle/utils/misc.hpp>
 #include <mockturtle/views/binding_view.hpp>
@@ -9,7 +9,6 @@
 #include <mockturtle/views/rsfq_view.hpp>
 #include <mockturtle/views/fanout_view.hpp>
 #include <mockturtle/views/mph_view.hpp>
-
 
 typedef uint32_t stage_t;
 
@@ -266,196 +265,153 @@ struct DFF_registry
 
 
 template <uint8_t NUM_PHASES>
+struct Snake
+{
+  std::deque<std::vector<uint64_t>> sections;
+
+  Snake(): sections({}) {}
+  Snake( const uint64_t head ): sections({ { head } }) {}
+  Snake( const std::deque<std::vector<uint64_t>> _sections ): sections(_sections) {}
+  Snake( const Snake & _other ): sections(_other.sections) {}
+
+  bool append(const uint64_t dff_hash, DFF_registry &DFF_REG)
+  {
+    DFF_var & dff = DFF_REG.at( dff_hash );
+
+    std::vector<uint64_t> & head_section = sections.back();
+    uint64_t & head_hash = head_section.back();
+    DFF_var & head_dff = DFF_REG.at( head_hash );
+    if (dff.stage == head_dff.stage) // add to the same section
+    {
+      head_section.push_back( dff_hash );
+      return false;
+    }
+    else
+    {
+      // assert( head_dff.phase - dff.phase == 1 );
+      sections.push_back( { dff_hash } );
+      if (sections.size() > NUM_PHASES)
+      {
+        sections.pop_front();
+      }
+      return true;
+    }
+  }
+};
+
+template <uint8_t NUM_PHASES>
+void write_snakes(const std::vector<Snake<NUM_PHASES>> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, bool verbose = false)
+{
+  std::ofstream spec_file (cfg_name);
+
+  for (const auto & snake : snakes)
+  {
+    std::vector<std::string> vars_bucket;
+    for (const std::vector<uint64_t> & section : snake.sections)
+    {
+      std::vector<std::string> vars;
+      for (uint64_t hash : section)
+      {
+        vars.push_back(DFF_REG.str( hash ));
+      }
+      DEBUG_PRINT("New single phase conflict : {}≤1\n", fmt::join(vars, "+"));
+      vars_bucket.push_back(fmt::format(vars.size()>1?"({})":"{}", fmt::join(vars, "+")));
+      if (vars.size() > 1)
+      {
+        spec_file << fmt::format("PHASE,{}\n", fmt::join(vars, ","));
+      }
+    }
+    std::reverse(vars_bucket.begin(), vars_bucket.end());
+    DEBUG_PRINT("New buffer requirement : ({})\n", fmt::join(vars_bucket, "|"));
+    if (vars_bucket.size() == NUM_PHASES)
+    {
+      spec_file << fmt::format("BUFFER,{}\n", fmt::join(vars_bucket, ","));
+    }
+  }
+
+  for (const uint64_t & hash : required_SA_DFFs)
+  {
+    DEBUG_PRINT("New SA_REQUIRED : {}\n", DFF_REG.str( hash ));
+    spec_file << fmt::format("SA_REQUIRED,{}\n", DFF_REG.str( hash ));
+  }
+}
+
+/// @brief 
+/// @param path 
+/// @param NR 
+/// @param DFF_REG 
+/// @param NUM_PHASES 
+/// @param verbose 
+/// @return 
+template <uint8_t NUM_PHASES>
+std::vector<Snake<NUM_PHASES>> sectional_snake(const Path<NUM_PHASES> & path, const mph_klut & ntk,  DFF_registry & DFF_REG, const bool verbose = false)
+{
+  std::vector<Snake<NUM_PHASES>> out_snakes; 
+  std::vector<Snake<NUM_PHASES>> stack;
+  
+  DEBUG_PRINT("[i]: Starting extraction of worms \n");
+  // get all DFFs 
+  for (const auto & [hash, dff]: DFF_REG.variables)
+  {
+    const auto [fo_stage, fo_type] = ntk.get_stage_type(dff.fanout);
+    auto fanout_stage = fo_stage - ( fo_type == AS_GATE );
+    auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
+    if (it != path.targets.end() && ( ( fanout_stage < 0 ) || ( ( fanout_stage >= 0 ) && ( dff.stage >= static_cast<uint32_t>( fanout_stage ) ) ) ))
+    {
+      stack.emplace_back( hash );
+    }
+  }
+  
+  while (!stack.empty())
+  {
+    DEBUG_PRINT("[i] Stack size is {} \n", stack.size());
+    auto snake = stack.back();
+    stack.pop_back();
+
+    DEBUG_PRINT("\t[i] The snake has {} sections\n", snake.sections.size());
+    uint64_t hash = snake.sections.back().back();
+    DFF_var & dff = DFF_REG.at( hash );
+
+    // fmt::print("\tCurrent worm size {}, between phases {} and {} \n", worm.size(), DFF_REG.str(worm.front()), DFF_REG.str(worm.back()));
+
+
+    DEBUG_PRINT("\t\t[i] The DFF {} has {} parents\n", DFF_REG.at( hash ).str(),  dff.parent_hashes.size() );
+
+    bool returned_current_snake = false;
+    for (const uint64_t parent_hash : dff.parent_hashes)
+    {
+      auto snake_copy = snake; 
+      DEBUG_PRINT("\t\t[i] Advancing towards fanin {}\n", DFF_REG.at( parent_hash ).str() );
+      bool status = snake_copy.append(parent_hash, DFF_REG);
+      DEBUG_PRINT((status) ? "\t\t\tAdded new section!\n" :"\t\t\tExtended existing section!\n"  );
+      DEBUG_PRINT("\t\t\tThe new length is {}\n", snake_copy.sections.size() );
+      
+      stack.push_back( snake_copy );
+      if (status && !returned_current_snake && snake_copy.sections.size() == NUM_PHASES)
+      {
+        DEBUG_PRINT("\t\tAdding the snake to the output\n");
+        out_snakes.push_back(snake);
+        returned_current_snake = true;
+      }
+    }
+  }
+  return out_snakes;
+}
+
+
+template <uint8_t NUM_PHASES>
 class multiphase_balancing_impl
 {
 public:
-  /// @brief Creates a klut network of two-input SFQ gates. Takes the network of supergates as an input. Discards any path balancing buffers
-  /// @param src - mapped network. Should be the binding view
-  /// @param nodemap - a map describing the 
-  /// @param entries - mapping the 
-  /// @param COSTS_MAP - cost of each primitive element
-  /// @return klut network and area of the decomposed network
-  std::tuple<klut, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, phmap::flat_hash_map<ULL, Node> nodemap, phmap::flat_hash_map<std::string, LibEntry> entries, const std::array<int, 12> COSTS_MAP)
-  {
-    phmap::flat_hash_map<klut::signal, klut::signal> src2tgt;
-    int64_t area = 0;
-    
-    mockturtle::mph_view<mockturtle::klut_network, NUM_PHASES> tgt;
-    src.foreach_pi( [&]( const klut::signal & src_pi ) 
-    {
-      klut::signal tgt_pi = tgt.create_pi();
-      tgt.set_type(tgt_pi, PI_GATE);
-      src2tgt.emplace(src_pi, tgt_pi);
-    } );
+  multiphase_balancing_impl( 
+    mockturtle::binding_view<mockturtle::klut_network> src, 
+    phmap::flat_hash_map<ULL, Node> nodemap,
+    phmap::flat_hash_map<std::string, LibEntry> entries,
+    const std::array<int, 12> COSTS_MAP 
+  )
 
-    // The bindings are replaced in forward topological order.
-    std::vector<klut::signal> src_po;
-    src_po.reserve(src.num_pos());
-    src.foreach_po( [&] (auto src_n)
-    {
-      src_po.push_back(src_n);
-    } );
 
-    std::unordered_set<klut::signal> OR_replacement_candidates;
-    std::vector<klut::signal> XOR_gates;
-
-    auto num_node_src = src.size();
-    auto ctr = 0u;
-    mockturtle::topo_view<klut>( src ).foreach_node( [&]( auto src_node ) 
-    {
-      DEBUG_PRINT("Processing node {0} ({1} out of {2})\r", src_node, ++ctr, num_node_src);
-      if (ctr == num_node_src)
-      {
-        DEBUG_PRINT("\n");
-      }
-      if ( !src.has_binding( src_node ) )
-      {
-        return;
-      }
-
-      auto const& g = src.get_binding( src_node );
-
-      // handing constants
-      if (g.name == "one" && g.expression == "CONST1")
-      {
-        klut::signal tgt_sig = tgt.get_constant( true );
-        src2tgt.emplace(src_node, tgt_sig);
-        return;
-      }
-      else if (g.name == "zero" && g.expression == "CONST0")
-      {
-        klut::signal tgt_sig = tgt.get_constant( false );
-        src2tgt.emplace(src_node, tgt_sig);
-        return;
-      }
-      
-      LibEntry entry = entries.at(g.name);
-      Node & root = nodemap[entry.hash];
-
-      // Get the topological order of internal nodes (i.e., nodes inside the cell)
-      std::vector<ULL> topo_order;
-      root.topo_sort(nodemap, topo_order, true);
-
-      std::vector<klut::signal> tgt_fanins;
-      src.foreach_fanin(src_node, [&](const auto & src_fanin)
-      {
-        tgt_fanins.push_back(src2tgt.at(src_fanin));
-      } );
-
-      phmap::flat_hash_map<ULL, klut::signal> node2tgt;
-
-      for (ULL hash : topo_order)
-      {
-        Node & node = nodemap.at(hash);
-        if (node.last_func == fPI)
-        {
-          // determine which index of the PI is needed 
-          char letter = node.pi_letter();
-
-          auto pi_idx = std::find(entry.chars.begin(), entry.chars.end(), letter) - entry.chars.begin();
-          node2tgt.emplace(hash, tgt_fanins[pi_idx]);
-        }
-        else if (node.last_func == fDFF)
-        {
-          klut::signal parent_tgt = node2tgt.at(node.parent_hashes.front());
-          node2tgt.emplace(hash, parent_tgt);
-          //  nothing else to do, no new constraints, no contribution to area
-        }
-        else if (node.last_func == fNOT)
-        {
-          klut::signal parent_tgt = node2tgt.at(node.parent_hashes.front());
-          klut::signal tgt_sig = tgt.create_not( parent_tgt );
-          tgt.set_type(tgt_sig, AS_GATE);
-          node2tgt.emplace(hash, tgt_sig);
-          area += COSTS_MAP[fNOT];
-          DEBUG_PRINT("ADDED NOT = {}\n", area);
-        }
-        else if (node.last_func == fAND)
-        {
-          klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
-          klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-          klut::signal tgt_sig = tgt.create_and(parent_tgt_1, parent_tgt_2);
-          tgt.set_type(tgt_sig, SA_GATE);
-          // fmt::print("Created node n{0} = AND({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
-          node2tgt.emplace(hash, tgt_sig);
-          area += COSTS_MAP[fAND];
-          DEBUG_PRINT("ADDED AND = {}\n", area);
-        }
-        else if (node.last_func == fOR) 
-        {
-          klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
-          klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-          klut::signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2);
-          tgt.set_type(tgt_sig, SA_GATE);
-          // fmt::print("Created node n{0} = OR({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
-          node2tgt.emplace(hash, tgt_sig);
-          OR_replacement_candidates.emplace(tgt_sig);
-          area += COSTS_MAP[fOR];
-          DEBUG_PRINT("ADDED OR  = {}\n", area);
-        }
-        else if (node.last_func == fCB)
-        {
-          klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
-          klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-          klut::signal tgt_sig = tgt.create_or(parent_tgt_1, parent_tgt_2);
-          tgt.set_type(tgt_sig, AA_GATE);
-          // fmt::print("Created node n{0} = CB({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
-          node2tgt.emplace(hash, tgt_sig);
-          area += COSTS_MAP[fCB];
-          DEBUG_PRINT("ADDED CB  = {}\n", area);
-        }
-        else if (node.last_func == fXOR)
-        {
-          klut::signal parent_tgt_1 = node2tgt.at(node.parent_hashes.front());
-          klut::signal parent_tgt_2 = node2tgt.at(node.parent_hashes.back());
-          klut::signal tgt_sig = tgt.create_xor(parent_tgt_1, parent_tgt_2);
-          tgt.set_type(tgt_sig, AS_GATE);
-          // fmt::print("Created node n{0} = XOR({1}, {2})\n", tgt_sig, parent_tgt_1, parent_tgt_2);
-          node2tgt.emplace(hash, tgt_sig);
-          XOR_gates.push_back(tgt_sig);
-          area += COSTS_MAP[fXOR];
-          DEBUG_PRINT("ADDED XOR = {}\n", area);
-        }
-        // else if 
-        else
-        {
-          throw "Unsupported function";
-        }
-      }
-      ULL root_hash = topo_order.back();
-      klut::signal tgt_sig = node2tgt.at(root_hash);
-      src2tgt.emplace(src_node, tgt_sig);
-    } );
-
-    for (klut::signal const & xor_sig : XOR_gates)
-    {
-      tgt.foreach_fanin(xor_sig, [&] (const klut::signal & fanin)
-      {
-        // if the OR gate is before XOR, do not replace it with the CB
-        auto it = std::find(OR_replacement_candidates.begin(), OR_replacement_candidates.end(), fanin);
-        if (it != OR_replacement_candidates.end())
-        {
-          OR_replacement_candidates.erase(it);
-        }
-      });
-    }
-
-    for (klut::signal const & sig : OR_replacement_candidates)
-    {
-      tgt.set_type(sig, AA_GATE);
-      area += COSTS_MAP[fCB];
-      area -= COSTS_MAP[fOR];
-      DEBUG_PRINT("REPLACED OR WITH CB = {}\n", area);
-    }
-
-    src.foreach_po([&](auto const & src_po)
-    {
-      tgt.create_po(src2tgt.at(src_po));
-    } );
-    
-    return std::make_tuple(tgt, area);
-  }
-
+public:
   /// @brief Assigns stages to nodes based on stage assignment. If the assignment is not found, assigns a stage greedily
   /// @param ntk - multiphase view of the network
   /// @param phase_assignment - mapping from node index to assigned stage
@@ -947,10 +903,9 @@ public:
   /// @brief Create binary variables for DFF placement in a given path
   /// @param path - a path object to insert DFFs into
   /// @param NR - unordered_map of NtkNode objects 
-  /// @param n_phases - # of phases
   /// @param verbose - prints debug messages if set to *true*
   /// @return 
-  std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(const Path<NUM_PHASES> & path, const mockturtle::mph_view<mockturtle::klut_network, NUM_PHASES> & ntk, const uint8_t n_phases, bool verbose = false)
+  std::tuple<DFF_registry, uint64_t, std::vector<uint64_t>> dff_vars_single_paths(const Path<NUM_PHASES> & path, const mockturtle::mph_view<mockturtle::klut_network, NUM_PHASES> & ntk, bool verbose = false)
   {
     DFF_registry DFF_REG;
     std::vector<uint64_t> required_SA_DFFs;
@@ -999,7 +954,7 @@ public:
           {
             DEBUG_PRINT("\t[DFF] Straight chain: {}[{}] -> {}[{}]\n", GATE_TYPE.at(fi_type), (int)fi_stage, GATE_TYPE.at(fo_type), (int)fo_stage);
             // straight chain, just floor the difference!
-            precalc_ndff += (fo_stage - fi_stage - 1)/n_phases + (fo_type == SA_GATE); //extra DFF before SA gate
+            precalc_ndff += (fo_stage - fi_stage - 1)/NUM_PHASES + (fo_type == SA_GATE); //extra DFF before SA gate
           }
           return;
         }
@@ -1048,5 +1003,48 @@ public:
     }
     return std::make_tuple(DFF_REG, precalc_ndff, required_SA_DFFs);
   }
-}
 
+  void process_path(std::vector<int> & local_num_dff, const int idx, const Path<NUM_PHASES>& path, const mockturtle::mph_view<mockturtle::klut_network, NUM_PHASES> & network, const std::string benchmark)
+  {
+    bool verbose = true;
+    DEBUG_PRINT("\tAnalyzing the path\n");
+
+    // *** Create binary variables
+    auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, NUM_PHASES);
+    local_num_dff[idx] += precalc_ndff;
+    DEBUG_PRINT("\t\t\t\t[i]: Precalculated {} DFFs\n", precalc_ndff);
+
+    // *** Generate constraints
+    std::vector<Snake<NUM_PHASES>> snakes = sectional_snake<NUM_PHASES>(path, network, DFF_REG, verbose);
+    DEBUG_PRINT("\tCreated {} snakes\n", snakes.size());
+
+    // *** If there's anything that needs optimization
+    if (!snakes.empty())
+    {
+      std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_mt_{}.csv", benchmark, idx);
+      write_snakes<NUM_PHASES>(snakes, DFF_REG, required_SA_DFFs, cfg_file, verbose);
+      auto num_dff = cpsat_ortools(cfg_file);
+      // DEBUG_PRINT("OR Tools optimized to {} DFF\n", num_dff);
+      local_num_dff[idx] += num_dff;
+      DEBUG_PRINT("\t\t\t\t[i] total CPSAT #DFF = {}\n", local_num_dff[idx]);
+    }
+  }
+private:
+  mockturtle::binding_view<mockturtle::klut_network> src, 
+  phmap::flat_hash_map<uint64_t, Node> nodemap,
+  phmap::flat_hash_map<std::string, LibEntry> entries,
+  const std::array<int, 12> COSTS_MAP 
+};
+
+
+template<uint8_t NUM_PHASES>
+mockturtle::mph_view<mockturtle::klut_network, NUM_PHASES> multiphase_mapping( 
+  mockturtle::binding_view<mockturtle::klut_network> src, 
+  phmap::flat_hash_map<ULL, Node> nodemap,
+  phmap::flat_hash_map<std::string, LibEntry> entries,
+  const std::array<int, 12> COSTS_MAP, 
+  const bool verbose = false
+  )
+{
+
+}

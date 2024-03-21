@@ -65,7 +65,7 @@
 
 // mockturtle/algorithms/mig_algebraic_rewriting.hpp
 
-#include <mockturtle/io/auxiliary_genlib.hpp>
+#include <mockturtle/io/genlib_utils.hpp>
 
 // #include <mockturtle/utils/GNM_global.hpp> // GNM global is stored here
 
@@ -93,7 +93,6 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats> map_wo_pb
   ps.verbose = verbose;
   ps.cut_enumeration_ps.minimize_truth_table = true;
   ps.cut_enumeration_ps.cut_limit = 24;
-  // ps.cut_enumeration_ps.very_verbose = true;
   ps.cut_enumeration_ps.verbose = true;
   ps.buffer_pis = false;
   if (area_oriented)
@@ -104,212 +103,6 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats> map_wo_pb
   mockturtle::map_stats st;
   mockturtle::binding_view<klut> res = map( input_ntk, tech_lib, ps, &st );
   return std::make_tuple( res, st );
-}
-
-template <typename Ntk>
-std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double, bool> map_with_pb 
-( 
-  const std::string & benchmark, 
-  const Ntk & input_ntk, 
-  const mockturtle::tech_library<4u, mockturtle::classification_type::p_configurations> & tech_lib, 
-  phmap::flat_hash_map<std::string, int> & nDFF_global, 
-  bool area_oriented = false
-)
-{
-  fmt::print("Started mapping of {}\n", benchmark);
-  auto [res, st] = map_wo_pb(input_ntk, tech_lib, area_oriented);
-  fmt::print("Finished mapping of {}\n", benchmark);
-
-  std::map<klut::node, int> dff_count;
-  std::map<klut::node, int> fanout_count;
-
-  /* RSFQ path balancing */
-  fmt::print("Started RSFQ path balancing of {}\n", benchmark);
-  auto balanced_res = mockturtle::rsfq_path_balancing( res );
-  fmt::print("Finished RSFQ path balancing of {}\n", benchmark);
-
-  mockturtle::retime_params rps;
-  mockturtle::retime_stats rst;
-  fmt::print("Started rsfq_generic_network_create_from_mapped of {}->net\n", benchmark);
-  auto net = mockturtle::rsfq_generic_network_create_from_mapped( balanced_res );
-  fmt::print("Finished rsfq_generic_network_create_from_mapped of {}->net\n", benchmark);
-  fmt::print("Started retime of {}\n", benchmark);
-  mockturtle::retime( net, rps, &rst );
-  fmt::print("Finished retime of {}\n", benchmark);
-  fmt::print("Started rsfq_generic_network_create_from_mapped of net->{}\n", benchmark);
-  auto retime_res = mockturtle::rsfq_mapped_create_from_generic_network( net );
-  fmt::print("Finished rsfq_generic_network_create_from_mapped of net->{}\n", benchmark);
-
-  uint32_t num_ext_dffs = retime_res.num_dffs();
-  
-  uint32_t num_int_dffs = 0;
-
-  retime_res.foreach_node( 
-    [&]( auto const& n ) 
-    {
-      if ( !retime_res.has_binding( n ) )
-        return;
-      auto const& g = retime_res.get_binding( n );
-      num_int_dffs += nDFF_global[g.name];
-      // fmt::print("Node {}\tGate {}\tnDFF {}\n", n, g.name, nDFF_global.at(g.name));
-    } 
-  );
-
-  /* RSFQ splitter insertion */
-  uint32_t num_splitters = 0;
-  retime_res.foreach_node( [&]( auto const& n ) {
-    if ( !retime_res.is_constant( n ) )
-      num_splitters += retime_res.fanout_size( n ) - 1;
-  } );
-
-  fmt::print("Started rsfq_check_buffering of {}\n", benchmark);
-  bool cec = rsfq_check_buffering( retime_res );
-  fmt::print("Finished rsfq_check_buffering of {}\n", benchmark);
-  fmt::print("Started abc_cec of {}\n", benchmark);
-  cec &= benchmark == "hyp" ? true : experiments::abc_cec( retime_res, benchmark );
-  fmt::print("Finished abc_cec of {}\n", benchmark);
-
-  // Internal DFF area is already counted in the library
-  // External DFF area is already counted after retiming
-  double total_ndff = num_int_dffs + num_ext_dffs;
-  double total_area = st.area + COSTS_MAP[fSPL] * num_splitters;
-  //  +  COSTS_MAP[fDFF] * num_ext_dffs;
-  fmt::print("\t{} : Int: {}, Ext: {}, ratio: {}\n", benchmark, num_int_dffs, num_ext_dffs, (float)num_int_dffs / (num_int_dffs + num_ext_dffs) );
-  return std::make_tuple( res, st, total_ndff, total_area, cec );
-}
-
-template <uint8_t n_phases>
-struct Snake
-{
-  std::deque<std::vector<uint64_t>> sections;
-
-  Snake(): sections({}) {}
-  Snake( const uint64_t head ): sections({ { head } }) {}
-  Snake( const std::deque<std::vector<uint64_t>> _sections ): sections(_sections) {}
-  Snake( const Snake & _other ): sections(_other.sections) {}
-
-  bool append(const uint64_t dff_hash, DFF_registry &DFF_REG)
-  {
-    DFF_var & dff = DFF_REG.at( dff_hash );
-
-    std::vector<uint64_t> & head_section = sections.back();
-    uint64_t & head_hash = head_section.back();
-    DFF_var & head_dff = DFF_REG.at( head_hash );
-    if (dff.stage == head_dff.stage) // add to the same section
-    {
-      head_section.push_back( dff_hash );
-      return false;
-    }
-    else
-    {
-      // assert( head_dff.phase - dff.phase == 1 );
-      sections.push_back( { dff_hash } );
-      if (sections.size() > n_phases)
-      {
-        sections.pop_front();
-      }
-      return true;
-    }
-  }
-};
-
-template <uint8_t n_phases>
-void write_snakes(const std::vector<Snake<n_phases>> & snakes, DFF_registry & DFF_REG, const std::vector<uint64_t> & required_SA_DFFs, const std::string cfg_name, bool verbose = false)
-{
-  std::ofstream spec_file (cfg_name);
-
-  for (const auto & snake : snakes)
-  {
-    std::vector<std::string> vars_bucket;
-    for (const std::vector<uint64_t> & section : snake.sections)
-    {
-      std::vector<std::string> vars;
-      for (uint64_t hash : section)
-      {
-        vars.push_back(DFF_REG.str( hash ));
-      }
-      DEBUG_PRINT("New single phase conflict : {}≤1\n", fmt::join(vars, "+"));
-      vars_bucket.push_back(fmt::format(vars.size()>1?"({})":"{}", fmt::join(vars, "+")));
-      if (vars.size() > 1)
-      {
-        spec_file << fmt::format("PHASE,{}\n", fmt::join(vars, ","));
-      }
-    }
-    std::reverse(vars_bucket.begin(), vars_bucket.end());
-    DEBUG_PRINT("New buffer requirement : ({})\n", fmt::join(vars_bucket, "|"));
-    if (vars_bucket.size() == n_phases)
-    {
-      spec_file << fmt::format("BUFFER,{}\n", fmt::join(vars_bucket, ","));
-    }
-  }
-
-  for (const uint64_t & hash : required_SA_DFFs)
-  {
-    DEBUG_PRINT("New SA_REQUIRED : {}\n", DFF_REG.str( hash ));
-    spec_file << fmt::format("SA_REQUIRED,{}\n", DFF_REG.str( hash ));
-  }
-}
-
-/// @brief 
-/// @param path 
-/// @param NR 
-/// @param DFF_REG 
-/// @param n_phases 
-/// @param verbose 
-/// @return 
-template <uint8_t n_phases>
-std::vector<Snake<n_phases>> sectional_snake(const Path<n_phases> & path, const mph_klut & ntk,  DFF_registry & DFF_REG, const bool verbose = false)
-{
-  std::vector<Snake<n_phases>> out_snakes; 
-  std::vector<Snake<n_phases>> stack;
-  
-  DEBUG_PRINT("[i]: Starting extraction of worms \n");
-  // get all DFFs 
-  for (const auto & [hash, dff]: DFF_REG.variables)
-  {
-    const auto [fo_stage, fo_type] = ntk.get_stage_type(dff.fanout);
-    auto fanout_stage = fo_stage - ( fo_type == AS_GATE );
-    auto it = std::find(path.targets.begin(), path.targets.end(), dff.fanout);
-    if (it != path.targets.end() && ( ( fanout_stage < 0 ) || ( ( fanout_stage >= 0 ) && ( dff.stage >= static_cast<uint32_t>( fanout_stage ) ) ) ))
-    {
-      stack.emplace_back( hash );
-    }
-  }
-  
-  while (!stack.empty())
-  {
-    DEBUG_PRINT("[i] Stack size is {} \n", stack.size());
-    auto snake = stack.back();
-    stack.pop_back();
-
-    DEBUG_PRINT("\t[i] The snake has {} sections\n", snake.sections.size());
-    uint64_t hash = snake.sections.back().back();
-    DFF_var & dff = DFF_REG.at( hash );
-
-    // fmt::print("\tCurrent worm size {}, between phases {} and {} \n", worm.size(), DFF_REG.str(worm.front()), DFF_REG.str(worm.back()));
-
-
-    DEBUG_PRINT("\t\t[i] The DFF {} has {} parents\n", DFF_REG.at( hash ).str(),  dff.parent_hashes.size() );
-
-    bool returned_current_snake = false;
-    for (const uint64_t parent_hash : dff.parent_hashes)
-    {
-      auto snake_copy = snake; 
-      DEBUG_PRINT("\t\t[i] Advancing towards fanin {}\n", DFF_REG.at( parent_hash ).str() );
-      bool status = snake_copy.append(parent_hash, DFF_REG);
-      DEBUG_PRINT((status) ? "\t\t\tAdded new section!\n" :"\t\t\tExtended existing section!\n"  );
-      DEBUG_PRINT("\t\t\tThe new length is {}\n", snake_copy.sections.size() );
-      
-      stack.push_back( snake_copy );
-      if (status && !returned_current_snake && snake_copy.sections.size() == n_phases)
-      {
-        DEBUG_PRINT("\t\tAdding the snake to the output\n");
-        out_snakes.push_back(snake);
-        returned_current_snake = true;
-      }
-    }
-  }
-  return out_snakes;
 }
 
 std::tuple<int, phmap::flat_hash_map<unsigned int, unsigned int>, std::string>  cpsat_macro_opt(const std::string & cfg_name, uint8_t n_phases) 
@@ -400,14 +193,6 @@ std::tuple<int, phmap::flat_hash_map<unsigned int, unsigned int>, std::string>  
   return {objective_value, key_value_pairs, solve_status};
 }
 
-  // TODO : record the timing constraints for the ILP
-  // TODO : record the mapping from src to tgt network
-  // TODO : record the data pertaining to each node :
-  //        - whether the element is AA, AS, or SA
-  //          - AA elements are placed at the phase of the latest input
-  //          - SA elements tie the preceding AS elements to itself to ensure simultaneous arrival of pulses  
-  //        - anything else???
-
 // Function to read unordered_map from CSV file
 phmap::flat_hash_map<std::string, int> readCSV(const std::string& filename) 
 {
@@ -474,50 +259,12 @@ int cpsat_ortools(const std::string & cfg_name)
   }
 }
 
-template <uint8_t NUM_PHASES>
-void process_path(std::vector<int> & local_num_dff, const int idx, const Path<NUM_PHASES>& path, const mph_klut& network, const std::string benchmark)
-{
-  bool verbose = true;
-  DEBUG_PRINT("\tAnalyzing the path\n");
-
-  // *** Create binary variables
-  auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths(path, network, NUM_PHASES);
-  local_num_dff[idx] += precalc_ndff;
-  DEBUG_PRINT("\t\t\t\t[i]: Precalculated {} DFFs\n", precalc_ndff);
-
-  // *** Generate constraints
-  std::vector<Snake<NUM_PHASES>> snakes = sectional_snake<NUM_PHASES>(path, network, DFF_REG, verbose);
-  DEBUG_PRINT("\tCreated {} snakes\n", snakes.size());
-
-  // *** If there's anything that needs optimization
-  if (!snakes.empty())
-  {
-    std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_mt_{}.csv", benchmark, idx);
-    write_snakes<NUM_PHASES>(snakes, DFF_REG, required_SA_DFFs, cfg_file, verbose);
-    auto num_dff = cpsat_ortools(cfg_file);
-    // DEBUG_PRINT("OR Tools optimized to {} DFF\n", num_dff);
-    local_num_dff[idx] += num_dff;
-    DEBUG_PRINT("\t\t\t\t[i] total CPSAT #DFF = {}\n", local_num_dff[idx]);
-  }
-}
-
-
 int main()
 {
   using namespace experiments;
   using namespace mockturtle;
 
   experiment<std::string, double, double, double, double, double, double, double, double, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay", "mapping", "phase_assgn", "spl_insertion", "DFF_insertion", "total");
-
-  // uint8_t MIN_N_PHASES = std::stoi(argv[1]);
-  // uint8_t MAX_N_PHASES = std::stoi(argv[2]);
-
-  // std::vector<uint8_t> PHASES;
-  // for (auto i = 1; i < argc; ++i)
-  // {
-  //   PHASES.push_back(std::stoi(argv[i]));
-  // }
-  // fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
 
   fmt::print( "[i] processing technology library\n" );
 
@@ -528,9 +275,6 @@ int main()
   {
     return 1;
   }
-
-  // phmap::flat_hash_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
-  phmap::flat_hash_map<std::string, int> nDFF_global;
 
   mockturtle::tech_library_params tps; // tps.verbose = true;
   tech_library<NUM_VARS, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
@@ -553,38 +297,14 @@ int main()
     );
     // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
 
-    // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::vector<std::string> BEEREL_BENCHMARKS 
-    {
-      "simple_spi-gates",
-      "des_area-gates",
-      "pci_bridge32-gates",
-      "spi-gates",
-      "mem_ctrl-gates"
-    };
-
-    // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
-    benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
-    std::reverse(benchmarks1.begin(), benchmarks1.end());
-
-    // *** LIST ALL CONSIDERED BENCHMARKS ***
-    fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
-    
-    // const std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,2,2}, {0,1,2,3} } }; //  {0,1,1,3},
-    // const std::vector<std::vector<UI>> sets_of_levels { { {0,1,2,3} } };
-
-    // phmap::flat_hash_map<ULL, Node> GNM_global = read_global_gnm( sets_of_levels, NODEMAP_PREFIX );
-
     // *** READ COMPOUND GATE LIBRARY ***
     phmap::flat_hash_map<ULL, Node> GNM_global;
     bool status = LoadFromFile(GNM_global, NODEMAP_BINARY_PREFIX);
     assert(status);
     
-
     phmap::flat_hash_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
 
-  #pragma endregion benchmark_parsing
+  #pragma endregion
 
   // *** START PROCESSING BECNHMARKS ***
   for ( auto const& benchmark : benchmarks1 )
@@ -592,7 +312,7 @@ int main()
     fmt::print( "[i] processing {}\n", benchmark );
 
     // *** LOAD NETWORK INTO MIG ***
-    mig ntk_original;
+    mockturtle::mig_network ntk_original;
     if (benchmark.find("-gates") != std::string::npos) 
     {
       fmt::print("USING THE BLIF READER\n");
@@ -614,18 +334,16 @@ int main()
       std::string path = fmt::format("{}/{}", ISCAS89_FOLDER, benchmark);
       fmt::print("READING {}\n", path);
 
-      std::filesystem::path currentDir = std::filesystem::current_path();
-      // Convert the path to a string and print it
-      std::string currentDirStr = currentDir.string();
-      std::cout << "Current Working Directory: " << currentDirStr << std::endl;
-
+      // std::filesystem::path currentDir = std::filesystem::current_path();
+      // // Convert the path to a string and print it
+      // std::string currentDirStr = currentDir.string();
+      // std::cout << "Current Working Directory: " << currentDirStr << std::endl;
 
       if ( lorina::read_aiger( path, aiger_reader( ntk_original ) ) != lorina::return_code::success )
       {
         fmt::print("Failed to read {}\n", benchmark);
         continue;
       }
-      // convert_klut_to_graph<mig>(ntk_original, temp_klut);
     }
     else // regular benchmark
     {
@@ -638,16 +356,15 @@ int main()
       // convert_klut_to_graph<mig>(ntk_original, temp_klut);
     }
 
-
     std::chrono::high_resolution_clock::time_point mapping_start = std::chrono::high_resolution_clock::now();
 
-    // *** MAP, NO NEED FOR RETIMING/PATH BALANCING ***
+    // *** MAP, NO NEED FOR RETIMING/PATH BALANCING AT THIS TIME ***
     fmt::print("Started mapping {}\n", benchmark);
-    auto [res_w_pb, st_w_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
+    auto [mapped_ntk, mapper_stats] = map_wo_pb(ntk_original, tech_lib, false); 
     fmt::print("Finished mapping {}\n", benchmark);
 
     // *** DECOMPOSE COMPOUND GATES INTO PRIMITIVES, REMOVE DFFS, REPLACE OR GATES WITH CB WHERE POSSIBLE ***
-    auto _result = decompose_to_klut<NUM_PHASES>(res_w_pb, GNM_global, entries, COSTS_MAP);
+    auto _result = decompose_to_klut<NUM_PHASES>(mapped_ntk, GNM_global, entries, COSTS_MAP);
     auto klut_decomposed = std::get<0>(_result);
     auto raw_area = std::get<1>(_result);
     fmt::print("Decomposition complete\n");
@@ -720,7 +437,6 @@ int main()
       fmt::print("[i] EXTRACTING PATHS\n");
       std::vector<Path<NUM_PHASES>> paths = extract_paths( network, false );
       // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
-
 
       std::vector<int> local_num_dff( paths.size() );
       std::vector<std::thread> threads;
