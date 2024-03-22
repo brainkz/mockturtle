@@ -8,12 +8,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Options
 option(MOCKTURTLE_EXAMPLES "Build examples" ON)
 option(MOCKTURTLE_TEST "Build tests" OFF)
-option(MOCKTURTLE_EXPERIMENTS "Build experiments" OFF)
+option(MOCKTURTLE_EXPERIMENTS "Build experiments" ON)
 option(BILL_Z3 "Enable Z3 interface for bill library" OFF)
 option(ENABLE_COVERAGE "Enable coverage reporting for gcc/clang" OFF)
 option(ENABLE_MATPLOTLIB "Enable matplotlib library in experiments" OFF)
 option(ENABLE_NAUTY "Enable the Nauty library for percy" OFF)
 option(ENABLE_ABC "Enable linking ABC as a static library" OFF)
+
+add_compile_options(-I /opt/homebrew/Cellar/tbb/2021.8.0/include -L /opt/homebrew/Cellar/tbb/2021.8.0/lib -ltbb)
 
 if(UNIX)
   # show quite some warnings (but remove some intentionally)

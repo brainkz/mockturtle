@@ -2068,9 +2068,7 @@ private:
     /* variables not in the support are the most significative */
     if ( support_size != res.size() )
     {
-      std::vector<uint32_t> leaves( res.begin(), res.begin() + support_size );
-      res.set_leaves( leaves.begin(), leaves.end() );
-      tt = kitty::shrink_to( tt, support_size );
+      return false;
     }
 
     return true;

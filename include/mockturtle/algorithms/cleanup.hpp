@@ -322,7 +322,7 @@ void cleanup_luts_impl( Ntk const& ntk, Ntk& dest, LeavesIterator begin, LeavesI
   /* iterate through nodes */
   topo_view topo{ ntk };
   topo.foreach_node( [&]( auto const& n ) {
-    if ( ntk.is_constant( n ) || ntk.is_ci( n ) )
+    if ( ntk.is_constant( n ) || ntk.is_ci( n ) || ntk.fanout_size(n) == 0)
       return; /* continue */
 
     auto func = ntk.node_function( n );

@@ -93,6 +93,9 @@ void write_bench( Ntk const& ntk, std::ostream& os )
   ntk.foreach_node( [&]( auto const& n ) {
     if ( ntk.is_constant( n ) || ntk.is_pi( n ) )
       return; /* continue */
+    
+    // if (ntk.fanout_size(n) == 0)
+    //   return;
 
     auto func = ntk.node_function( n );
     std::string children;

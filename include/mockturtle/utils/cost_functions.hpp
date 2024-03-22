@@ -39,6 +39,7 @@
 #include <kitty/dynamic_truth_table.hpp>
 
 #include "../traits.hpp"
+// #include "./arrays.hpp"
 
 namespace mockturtle
 {
