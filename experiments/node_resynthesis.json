@@ -1,0 +1,14 @@
+[
+  {
+    "entries": [
+      {
+        "benchmark": "adder",
+        "equivalent": true,
+        "gates_after": 1529,
+        "gates_before": 1020,
+        "runtime": 0.056140709000000004
+      }
+    ],
+    "version": "05207111"
+  }
+]
