@@ -559,6 +559,42 @@ inline bool abc_cec_impl( Ntk const& ntk, std::string const& benchmark_fullpath 
   return false;
 }
 
+
+template<class Ntk1, class Ntk2>
+inline bool abc_cec_cmp( Ntk1 const& ntk1, Ntk2 const& ntk2 )
+{
+  mockturtle::write_bench( ntk1, "/tmp/test1.bench" );
+  mockturtle::write_bench( ntk2, "/tmp/test2.bench" );
+  std::string command = fmt::format( "abc -q \"cec -n /tmp/test1.bench /tmp/test2.bench\"");
+
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype( &pclose )> pipe( popen( command.c_str(), "r" ), pclose );
+  if ( !pipe )
+  {
+    throw std::runtime_error( "popen() failed" );
+  }
+  while ( fgets( buffer.data(), buffer.size(), pipe.get() ) != nullptr )
+  {
+    result += buffer.data();
+  }
+
+  fmt::print(result);
+
+  /* search for one line which says "Networks are equivalent" and ignore all other debug output from ABC */
+  std::stringstream ss( result );
+  std::string line;
+  while ( std::getline( ss, line, '\n' ) )
+  {
+    if ( line.size() >= 23u && line.substr( 0u, 23u ) == "Networks are equivalent" )
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 template<class Ntk>
 inline bool abc_cec( Ntk const& ntk, std::string const& benchmark )
 {

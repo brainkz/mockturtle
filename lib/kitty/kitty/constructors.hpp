@@ -1445,6 +1445,7 @@ bool create_from_formula( TT& tt, const std::string& expression, const std::vect
 
       if ( !match )
       {
+        std::cerr << expression << "\n";
         std::cerr << "[e] cannot find variable " << expression.substr( i, j ) << " in variables list.\n";
         flag = F_ERROR;
         break;

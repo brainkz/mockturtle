@@ -1,0 +1,1068 @@
+[
+  {
+    "entries": [
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 24384.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 156369.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "adder delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 128.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 47.48849868774414
+      }
+    ],
+    "version": "181092d2"
+  },
+  {
+    "entries": [
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 48768.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 156369.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "adder delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 128.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 45.33000183105469
+      },
+      {
+        "#DFF (base)": 13666.0,
+        "#DFF (our)": 17612.0,
+        "#DFF (ratio)": 1.2887457924776817,
+        "area (base)": 215318.0,
+        "area (our)": 136606.0,
+        "area (ratio)": 0.6344383655802116,
+        "benchmark": "sin delay",
+        "delay (base)": 182.0,
+        "delay (our)": 92.0,
+        "delay (ratio)": 0.5054945054945055,
+        "time": 581.4113159179688
+      },
+      {
+        "#DFF (base)": 522.0,
+        "#DFF (our)": 985.0,
+        "#DFF (ratio)": 1.8869731800766283,
+        "area (base)": 16339.0,
+        "area (our)": 15624.0,
+        "area (ratio)": 0.9562396719505478,
+        "benchmark": "cavlc delay",
+        "delay (base)": 17.0,
+        "delay (our)": 15.0,
+        "delay (ratio)": 0.8823529411764706,
+        "time": 21.670124053955078
+      },
+      {
+        "#DFF (base)": 8.0,
+        "#DFF (our)": 16.0,
+        "#DFF (ratio)": 2.0,
+        "area (base)": 5469.0,
+        "area (our)": 6324.0,
+        "area (ratio)": 1.156335710367526,
+        "benchmark": "dec delay",
+        "delay (base)": 4.0,
+        "delay (our)": 4.0,
+        "delay (ratio)": 1.0,
+        "time": 10.805292129516602
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 4826.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 38335.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "i2c delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 16.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 32.05521011352539
+      },
+      {
+        "#DFF (base)": 270.0,
+        "#DFF (our)": 440.0,
+        "#DFF (ratio)": 1.6296296296296295,
+        "area (base)": 6432.0,
+        "area (our)": 5973.0,
+        "area (ratio)": 0.9286380597014925,
+        "benchmark": "int2float delay",
+        "delay (base)": 16.0,
+        "delay (our)": 15.0,
+        "delay (ratio)": 0.9375,
+        "time": 9.6604585647583
+      },
+      {
+        "#DFF (base)": 9064.0,
+        "#DFF (our)": 14754.0,
+        "#DFF (ratio)": 1.627758164165931,
+        "area (base)": 102085.0,
+        "area (our)": 68177.0,
+        "area (ratio)": 0.6678454229318705,
+        "benchmark": "priority delay",
+        "delay (base)": 127.0,
+        "delay (our)": 84.0,
+        "delay (ratio)": 0.6614173228346457,
+        "time": 34.27108383178711
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 8357.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 189622.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "voter delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 41.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 1029.3670654296875
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 1180.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 6905.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "c432 delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 21.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 9.658082962036133
+      },
+      {
+        "#DFF (base)": 476.0,
+        "#DFF (our)": 510.0,
+        "#DFF (ratio)": 1.0714285714285714,
+        "area (base)": 7758.0,
+        "area (our)": 5607.0,
+        "area (ratio)": 0.722737819025522,
+        "benchmark": "c499 delay",
+        "delay (base)": 13.0,
+        "delay (our)": 8.0,
+        "delay (ratio)": 0.6153846153846154,
+        "time": 40.07074737548828
+      },
+      {
+        "#DFF (base)": 774.0,
+        "#DFF (our)": 1176.0,
+        "#DFF (ratio)": 1.5193798449612403,
+        "area (base)": 12909.0,
+        "area (our)": 8650.0,
+        "area (ratio)": 0.6700751413742351,
+        "benchmark": "c880 delay",
+        "delay (base)": 22.0,
+        "delay (our)": 15.0,
+        "delay (ratio)": 0.6818181818181818,
+        "time": 16.334917068481445
+      },
+      {
+        "#DFF (base)": 696.0,
+        "#DFF (our)": 799.0,
+        "#DFF (ratio)": 1.1479885057471264,
+        "area (base)": 12013.0,
+        "area (our)": 5497.0,
+        "area (ratio)": 0.4575876134187963,
+        "benchmark": "c1908 delay",
+        "delay (base)": 20.0,
+        "delay (our)": 13.0,
+        "delay (ratio)": 0.65,
+        "time": 28.431291580200195
+      },
+      {
+        "#DFF (base)": 1159.0,
+        "#DFF (our)": 1554.0,
+        "#DFF (ratio)": 1.3408110440034513,
+        "area (base)": 28300.0,
+        "area (our)": 20820.0,
+        "area (ratio)": 0.7356890459363957,
+        "benchmark": "c3540 delay",
+        "delay (base)": 31.0,
+        "delay (our)": 23.0,
+        "delay (ratio)": 0.7419354838709677,
+        "time": 58.0740852355957
+      },
+      {
+        "#DFF (base)": 2908.0,
+        "#DFF (our)": 3725.0,
+        "#DFF (ratio)": 1.280949105914718,
+        "area (base)": 52033.0,
+        "area (our)": 33263.0,
+        "area (ratio)": 0.6392673880037668,
+        "benchmark": "c5315 delay",
+        "delay (base)": 23.0,
+        "delay (our)": 15.0,
+        "delay (ratio)": 0.6521739130434783,
+        "time": 126.21558380126953
+      },
+      {
+        "#DFF (base)": 2429.0,
+        "#DFF (our)": 4741.0,
+        "#DFF (ratio)": 1.951832029641828,
+        "area (base)": 48482.0,
+        "area (our)": 31792.0,
+        "area (ratio)": 0.655748525225857,
+        "benchmark": "c7552 delay",
+        "delay (base)": 19.0,
+        "delay (our)": 19.0,
+        "delay (ratio)": 1.0,
+        "time": 147.4826202392578
+      }
+    ],
+    "version": "e5e1e615"
+  },
+  {
+    "entries": [
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 49151.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 156369.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "adder delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 128.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 44.48762512207031
+      },
+      {
+        "#DFF (base)": 13666.0,
+        "#DFF (our)": 23174.0,
+        "#DFF (ratio)": 1.6957412556710083,
+        "area (base)": 215318.0,
+        "area (our)": 136606.0,
+        "area (ratio)": 0.6344383655802116,
+        "benchmark": "sin delay",
+        "delay (base)": 182.0,
+        "delay (our)": 92.0,
+        "delay (ratio)": 0.5054945054945055,
+        "time": 581.8788452148438
+      },
+      {
+        "#DFF (base)": 522.0,
+        "#DFF (our)": 2133.0,
+        "#DFF (ratio)": 4.086206896551724,
+        "area (base)": 16339.0,
+        "area (our)": 15624.0,
+        "area (ratio)": 0.9562396719505478,
+        "benchmark": "cavlc delay",
+        "delay (base)": 17.0,
+        "delay (our)": 15.0,
+        "delay (ratio)": 0.8823529411764706,
+        "time": 20.309249877929688
+      },
+      {
+        "#DFF (base)": 8.0,
+        "#DFF (our)": 616.0,
+        "#DFF (ratio)": 77.0,
+        "area (base)": 5469.0,
+        "area (our)": 6324.0,
+        "area (ratio)": 1.156335710367526,
+        "benchmark": "dec delay",
+        "delay (base)": 4.0,
+        "delay (our)": 4.0,
+        "delay (ratio)": 1.0,
+        "time": 10.320667266845703
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 6806.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 38335.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "i2c delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 16.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 31.856874465942383
+      },
+      {
+        "#DFF (base)": 270.0,
+        "#DFF (our)": 849.0,
+        "#DFF (ratio)": 3.1444444444444444,
+        "area (base)": 6432.0,
+        "area (our)": 5973.0,
+        "area (ratio)": 0.9286380597014925,
+        "benchmark": "int2float delay",
+        "delay (base)": 16.0,
+        "delay (our)": 15.0,
+        "delay (ratio)": 0.9375,
+        "time": 9.211583137512207
+      },
+      {
+        "#DFF (base)": 9064.0,
+        "#DFF (our)": 16037.0,
+        "#DFF (ratio)": 1.769307149161518,
+        "area (base)": 102085.0,
+        "area (our)": 68177.0,
+        "area (ratio)": 0.6678454229318705,
+        "benchmark": "priority delay",
+        "delay (base)": 127.0,
+        "delay (our)": 84.0,
+        "delay (ratio)": 0.6614173228346457,
+        "time": 33.381622314453125
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 16032.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 189622.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "voter delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 41.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 1049.734375
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 1483.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 6905.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "c432 delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 21.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 8.735833168029785
+      },
+      {
+        "#DFF (base)": 476.0,
+        "#DFF (our)": 638.0,
+        "#DFF (ratio)": 1.3403361344537814,
+        "area (base)": 7758.0,
+        "area (our)": 5607.0,
+        "area (ratio)": 0.722737819025522,
+        "benchmark": "c499 delay",
+        "delay (base)": 13.0,
+        "delay (our)": 8.0,
+        "delay (ratio)": 0.6153846153846154,
+        "time": 39.55229187011719
+      },
+      {
+        "#DFF (base)": 774.0,
+        "#DFF (our)": 1562.0,
+        "#DFF (ratio)": 2.0180878552971575,
+        "area (base)": 12909.0,
+        "area (our)": 8650.0,
+        "area (ratio)": 0.6700751413742351,
+        "benchmark": "c880 delay",
+        "delay (base)": 22.0,
+        "delay (our)": 15.0,
+        "delay (ratio)": 0.6818181818181818,
+        "time": 16.34375
+      },
+      {
+        "#DFF (base)": 696.0,
+        "#DFF (our)": 951.0,
+        "#DFF (ratio)": 1.3663793103448276,
+        "area (base)": 12013.0,
+        "area (our)": 5497.0,
+        "area (ratio)": 0.4575876134187963,
+        "benchmark": "c1908 delay",
+        "delay (base)": 20.0,
+        "delay (our)": 13.0,
+        "delay (ratio)": 0.65,
+        "time": 27.8387508392334
+      },
+      {
+        "#DFF (base)": 1159.0,
+        "#DFF (our)": 2872.0,
+        "#DFF (ratio)": 2.477998274374461,
+        "area (base)": 28300.0,
+        "area (our)": 20820.0,
+        "area (ratio)": 0.7356890459363957,
+        "benchmark": "c3540 delay",
+        "delay (base)": 31.0,
+        "delay (our)": 23.0,
+        "delay (ratio)": 0.7419354838709677,
+        "time": 55.17962646484375
+      },
+      {
+        "#DFF (base)": 2908.0,
+        "#DFF (our)": 4748.0,
+        "#DFF (ratio)": 1.6327372764786796,
+        "area (base)": 52033.0,
+        "area (our)": 33263.0,
+        "area (ratio)": 0.6392673880037668,
+        "benchmark": "c5315 delay",
+        "delay (base)": 23.0,
+        "delay (our)": 15.0,
+        "delay (ratio)": 0.6521739130434783,
+        "time": 120.65983581542969
+      },
+      {
+        "#DFF (base)": 2429.0,
+        "#DFF (our)": 5597.0,
+        "#DFF (ratio)": 2.3042404281597366,
+        "area (base)": 48482.0,
+        "area (our)": 31792.0,
+        "area (ratio)": 0.655748525225857,
+        "benchmark": "c7552 delay",
+        "delay (base)": 19.0,
+        "delay (our)": 19.0,
+        "delay (ratio)": 1.0,
+        "time": 139.95767211914063
+      }
+    ],
+    "version": "8e7e0ab2"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 217.0,
+        "N_PHASES": 7.0,
+        "area": 5136.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 3231.0,
+        "N_PHASES": 7.0,
+        "area": 44719.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 12.0
+      },
+      {
+        "#DFF": 1833.0,
+        "N_PHASES": 7.0,
+        "area": 160375.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 6.0
+      }
+    ],
+    "version": "7cf9dc06"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 217.0,
+        "N_PHASES": 7.0,
+        "area": 5136.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 2.0
+      }
+    ],
+    "version": "b64ad983"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 586.0,
+        "N_PHASES": 7.0,
+        "area": 16995.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 111.0,
+        "N_PHASES": 7.0,
+        "area": 3431.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 44.0,
+        "N_PHASES": 7.0,
+        "area": 4501.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 253.0,
+        "N_PHASES": 7.0,
+        "area": 6183.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 348.0,
+        "N_PHASES": 7.0,
+        "area": 5158.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 1833.0,
+        "N_PHASES": 7.0,
+        "area": 160375.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 6.0
+      },
+      {
+        "#DFF": 3081.0,
+        "N_PHASES": 7.0,
+        "area": 43666.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 12.0
+      },
+      {
+        "#DFF": 217.0,
+        "N_PHASES": 7.0,
+        "area": 5136.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 2.0
+      }
+    ],
+    "version": "a0b53d9e"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 580.0,
+        "N_PHASES": 7.0,
+        "area": 16953.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 111.0,
+        "N_PHASES": 7.0,
+        "area": 3431.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 44.0,
+        "N_PHASES": 7.0,
+        "area": 4501.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 253.0,
+        "N_PHASES": 7.0,
+        "area": 6183.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 342.0,
+        "N_PHASES": 7.0,
+        "area": 5116.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 3.0
+      }
+    ],
+    "version": "298c48d5"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 7601.0,
+        "N_PHASES": 7.0,
+        "area": 62250.0,
+        "benchmark": "adder_CPSAT",
+        "delay": 19.0
+      },
+      {
+        "#DFF": 338.0,
+        "N_PHASES": 7.0,
+        "area": 5088.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 3.0
+      },
+      {
+        "#DFF": 253.0,
+        "N_PHASES": 7.0,
+        "area": 6183.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 44.0,
+        "N_PHASES": 7.0,
+        "area": 4501.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 111.0,
+        "N_PHASES": 7.0,
+        "area": 3431.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 2.0
+      },
+      {
+        "#DFF": 580.0,
+        "N_PHASES": 7.0,
+        "area": 16953.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 3.0
+      }
+    ],
+    "version": "401452ab"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 1515.0,
+        "N_PHASES": 7.0,
+        "area": 57120.0,
+        "benchmark": "bar_CPSAT",
+        "delay": 1.0
+      },
+      {
+        "#DFF": 3283.0,
+        "N_PHASES": 7.0,
+        "area": 31262.0,
+        "benchmark": "adder_CPSAT",
+        "delay": 19.0
+      }
+    ],
+    "version": "0b78c5ad"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 10727.0,
+        "N_PHASES": 3.0,
+        "area": 84132.0,
+        "benchmark": "adder_no_T1",
+        "committed_FA": 0,
+        "delay": 43.0,
+        "found_FA": 0,
+        "time": 20.156562625
+      },
+      {
+        "#DFF": 969.0,
+        "N_PHASES": 3.0,
+        "area": 21398.0,
+        "benchmark": "c7552_no_T1",
+        "committed_FA": 0,
+        "delay": 6.0,
+        "found_FA": 0,
+        "time": 635.260749208
+      },
+      {
+        "#DFF": 1512.0,
+        "N_PHASES": 3.0,
+        "area": 39407.0,
+        "benchmark": "c6288_no_T1",
+        "committed_FA": 0,
+        "delay": 10.0,
+        "found_FA": 0,
+        "time": 70.754527167
+      },
+      {
+        "#DFF": 5640.0,
+        "N_PHASES": 3.0,
+        "area": 110506.0,
+        "benchmark": "sin_no_T1",
+        "committed_FA": 0,
+        "delay": 30.0,
+        "found_FA": 0,
+        "time": 722.741484042
+      }
+    ],
+    "version": "abe8ece8"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 4407.0,
+        "N_PHASES": 7.0,
+        "area": 39892.0,
+        "benchmark": "adder_no_T1",
+        "committed_FA": 0,
+        "delay": 19.0,
+        "found_FA": 0,
+        "time": 22.828726125
+      }
+    ],
+    "version": "083b3aaa"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 2252.0,
+        "DFF_insertion": 9.168683667,
+        "N_PHASES": 7.0,
+        "area": 45287.0,
+        "benchmark": "s13207.aig_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.277016125,
+        "phase_assgn": 0.857043917,
+        "spl_insertion": 19.362797791,
+        "total": 32.6655415
+      },
+      {
+        "#DFF": 807.0,
+        "DFF_insertion": 2.2955845,
+        "N_PHASES": 7.0,
+        "area": 21754.0,
+        "benchmark": "s5378.aig_CPSAT",
+        "delay": 2.0,
+        "mapping": 2.923135042,
+        "phase_assgn": 0.460665209,
+        "spl_insertion": 1.845583333,
+        "total": 7.524968084000001
+      },
+      {
+        "#DFF": 48.0,
+        "DFF_insertion": 0.043591875,
+        "N_PHASES": 7.0,
+        "area": 2124.0,
+        "benchmark": "s382.aig_CPSAT",
+        "delay": 1.0,
+        "mapping": 2.5786335,
+        "phase_assgn": 0.163808167,
+        "spl_insertion": 0.007781959,
+        "total": 2.793815501
+      },
+      {
+        "#DFF": 578.0,
+        "DFF_insertion": 4.259508208,
+        "N_PHASES": 7.0,
+        "area": 16939.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.00673,
+        "phase_assgn": 0.488715542,
+        "spl_insertion": 0.511545959,
+        "total": 8.266499709
+      },
+      {
+        "#DFF": 99.0,
+        "DFF_insertion": 2.613120458,
+        "N_PHASES": 7.0,
+        "area": 3347.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 2.0,
+        "mapping": 2.775452958,
+        "phase_assgn": 0.245412959,
+        "spl_insertion": 0.0325295,
+        "total": 5.666515875
+      },
+      {
+        "#DFF": 44.0,
+        "DFF_insertion": 0.071216542,
+        "N_PHASES": 7.0,
+        "area": 4501.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 2.0,
+        "mapping": 3.01886875,
+        "phase_assgn": 0.272142334,
+        "spl_insertion": 0.06914425,
+        "total": 3.431371876
+      },
+      {
+        "#DFF": 247.0,
+        "DFF_insertion": 2.522108583,
+        "N_PHASES": 7.0,
+        "area": 6141.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 2.0,
+        "mapping": 2.675627292,
+        "phase_assgn": 0.281117625,
+        "spl_insertion": 0.071982917,
+        "total": 5.550836417
+      },
+      {
+        "#DFF": 342.0,
+        "DFF_insertion": 3.397018583,
+        "N_PHASES": 7.0,
+        "area": 5116.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 3.0,
+        "mapping": 2.618968625,
+        "phase_assgn": 0.243971375,
+        "spl_insertion": 0.028096208,
+        "total": 6.288054791
+      },
+      {
+        "#DFF": 1833.0,
+        "DFF_insertion": 17.084784583,
+        "N_PHASES": 7.0,
+        "area": 160375.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 6.0,
+        "mapping": 11.476592125,
+        "phase_assgn": 5.066316917,
+        "spl_insertion": 971.257952208,
+        "total": 1004.885645833
+      },
+      {
+        "#DFF": 3484.0,
+        "DFF_insertion": 19.822657875,
+        "N_PHASES": 7.0,
+        "area": 46487.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 12.0,
+        "mapping": 2.877991667,
+        "phase_assgn": 4.105443584,
+        "spl_insertion": 3.450882875,
+        "total": 30.256976000999998
+      },
+      {
+        "#DFF": 217.0,
+        "DFF_insertion": 0.666097167,
+        "N_PHASES": 7.0,
+        "area": 5136.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 2.0,
+        "mapping": 2.652529125,
+        "phase_assgn": 0.261277833,
+        "spl_insertion": 0.037778333,
+        "total": 3.617682458
+      }
+    ],
+    "version": "067afda1"
+  },
+  {
+    "entries": [
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 48768.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 156369.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "adder delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 128.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 451.5072021484375
+      },
+      {
+        "#DFF (base)": 2429.0,
+        "#DFF (our)": 4744.0,
+        "#DFF (ratio)": 1.9530671058048579,
+        "area (base)": 48482.0,
+        "area (our)": 31792.0,
+        "area (ratio)": 0.655748525225857,
+        "benchmark": "c7552 delay",
+        "delay (base)": 19.0,
+        "delay (our)": 19.0,
+        "delay (ratio)": 1.0,
+        "time": 1230.100830078125
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 2578.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 38255.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "c6288 delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 31.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 2687.361572265625
+      },
+      {
+        "#DFF (base)": 13666.0,
+        "#DFF (our)": 17627.0,
+        "#DFF (ratio)": 1.2898434069954632,
+        "area (base)": 215318.0,
+        "area (our)": 136606.0,
+        "area (ratio)": 0.6344383655802116,
+        "benchmark": "sin delay",
+        "delay (base)": 182.0,
+        "delay (our)": 92.0,
+        "delay (ratio)": 0.5054945054945055,
+        "time": 5004.076171875
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 8446.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 189622.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "voter delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 41.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 8806.029296875
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 53195.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 413469.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "square delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 126.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 13763.9296875
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 58512.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 513283.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "multiplier delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 129.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 24106.3515625
+      },
+      {
+        "#DFF (base)": 4294967295.0,
+        "#DFF (our)": 89990.0,
+        "#DFF (ratio)": 4294967295.0,
+        "area (base)": 4294967295.0,
+        "area (our)": 716381.0,
+        "area (ratio)": 4294967295.0,
+        "benchmark": "log2 delay",
+        "delay (base)": 4294967295.0,
+        "delay (our)": 163.0,
+        "delay (ratio)": 4294967295.0,
+        "time": 34437.1875
+      }
+    ],
+    "version": "e5405c2e"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 4782.0,
+        "DFF_insertion": 21.503488834,
+        "N_PHASES": 4.0,
+        "area": 62997.0,
+        "benchmark": "s13207.aig_CPSAT",
+        "delay": 5.0,
+        "mapping": 4.099020417,
+        "phase_assgn": 1.401350625,
+        "spl_insertion": 20.218591167,
+        "total": 47.222451043
+      },
+      {
+        "#DFF": 1522.0,
+        "DFF_insertion": 6.967669125,
+        "N_PHASES": 4.0,
+        "area": 26759.0,
+        "benchmark": "s5378.aig_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.796451959,
+        "phase_assgn": 0.62782425,
+        "spl_insertion": 1.990956458,
+        "total": 13.382901792
+      },
+      {
+        "#DFF": 196.0,
+        "DFF_insertion": 1.530684042,
+        "N_PHASES": 4.0,
+        "area": 3160.0,
+        "benchmark": "s382.aig_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.410718083,
+        "phase_assgn": 0.194642,
+        "spl_insertion": 0.008224584,
+        "total": 5.144268709
+      },
+      {
+        "#DFF": 854.0,
+        "DFF_insertion": 5.815387291,
+        "N_PHASES": 4.0,
+        "area": 18871.0,
+        "benchmark": "c3540_CPSAT",
+        "delay": 6.0,
+        "mapping": 3.9488085,
+        "phase_assgn": 0.722135125,
+        "spl_insertion": 0.583861458,
+        "total": 11.070192374000001
+      },
+      {
+        "#DFF": 235.0,
+        "DFF_insertion": 2.315937458,
+        "N_PHASES": 4.0,
+        "area": 4299.0,
+        "benchmark": "c1908_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.658717125,
+        "phase_assgn": 0.253204459,
+        "spl_insertion": 0.036108958,
+        "total": 6.263968
+      },
+      {
+        "#DFF": 128.0,
+        "DFF_insertion": 2.043479209,
+        "N_PHASES": 4.0,
+        "area": 5089.0,
+        "benchmark": "c1355_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.926673541,
+        "phase_assgn": 0.269734042,
+        "spl_insertion": 0.072787458,
+        "total": 6.31267425
+      },
+      {
+        "#DFF": 459.0,
+        "DFF_insertion": 3.08679625,
+        "N_PHASES": 4.0,
+        "area": 7625.0,
+        "benchmark": "c880_CPSAT",
+        "delay": 4.0,
+        "mapping": 3.574223334,
+        "phase_assgn": 0.284141666,
+        "spl_insertion": 0.076601458,
+        "total": 7.021762708
+      },
+      {
+        "#DFF": 444.0,
+        "DFF_insertion": 2.87938925,
+        "N_PHASES": 4.0,
+        "area": 5830.0,
+        "benchmark": "c432_CPSAT",
+        "delay": 5.0,
+        "mapping": 3.474143917,
+        "phase_assgn": 0.246368125,
+        "spl_insertion": 0.030354375,
+        "total": 6.630255667
+      },
+      {
+        "#DFF": 4708.0,
+        "DFF_insertion": 46.91473775,
+        "N_PHASES": 4.0,
+        "area": 180500.0,
+        "benchmark": "voter_CPSAT",
+        "delay": 10.0,
+        "mapping": 13.217035417,
+        "phase_assgn": 7.006299083,
+        "spl_insertion": 1008.720205625,
+        "total": 1075.858277875
+      },
+      {
+        "#DFF": 6235.0,
+        "DFF_insertion": 12.922349459,
+        "N_PHASES": 4.0,
+        "area": 65744.0,
+        "benchmark": "priority_CPSAT",
+        "delay": 21.0,
+        "mapping": 3.793865375,
+        "phase_assgn": 7.296732916,
+        "spl_insertion": 3.783086584,
+        "total": 27.796034333999998
+      },
+      {
+        "#DFF": 278.0,
+        "DFF_insertion": 1.872244042,
+        "N_PHASES": 4.0,
+        "area": 5563.0,
+        "benchmark": "int2float_CPSAT",
+        "delay": 3.0,
+        "mapping": 3.557310292,
+        "phase_assgn": 0.280583708,
+        "spl_insertion": 0.02085425,
+        "total": 5.730992292
+      }
+    ],
+    "version": "0520711"
+  }
+]

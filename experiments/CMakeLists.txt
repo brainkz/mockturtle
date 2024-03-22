@@ -1,4 +1,7 @@
 add_library(experiments INTERFACE)
+
+# find_package(ortools CONFIG REQUIRED)
+
 target_include_directories(experiments INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(experiments INTERFACE fmt json)
 if (ENABLE_MATPLOTLIB)
