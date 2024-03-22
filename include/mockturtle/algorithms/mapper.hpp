@@ -264,8 +264,7 @@ public:
       return res;
 
     /* insert buffers for POs driven by PIs */
-    if ( ps.buffer_pis )
-      insert_buffers();
+    insert_buffers();
 
     /* generate the output network */
     finalize_cover<map_ntk_t>( res, old2new );
@@ -1469,7 +1468,7 @@ private:
       {
         res.create_po( old2new[ntk.node_to_index( ntk.get_node( f ) )][1] );
       }
-      else if ( !ntk.is_constant( ntk.get_node( f ) ) && ntk.is_ci( ntk.get_node( f ) ) && ps.buffer_pis && lib_buf_id != UINT32_MAX )
+      else if ( !ntk.is_constant( ntk.get_node( f ) ) && ntk.is_ci( ntk.get_node( f ) ) && lib_buf_id != UINT32_MAX )
       {
         /* create buffers for POs */
         static uint64_t _buf = 0x2;
@@ -1492,7 +1491,7 @@ private:
         {
           res.create_ri( old2new[ntk.node_to_index( ntk.get_node( f ) )][1] );
         }
-        else if ( !ntk.is_constant( ntk.get_node( f ) ) && ntk.is_ci( ntk.get_node( f ) ) && ps.buffer_pis && lib_buf_id != UINT32_MAX )
+        else if ( !ntk.is_constant( ntk.get_node( f ) ) && ntk.is_ci( ntk.get_node( f ) ) && lib_buf_id != UINT32_MAX )
         {
           /* create buffers for RIs */
           static uint64_t _buf = 0x2;
