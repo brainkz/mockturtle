@@ -99,6 +99,7 @@ std::tuple<mph_klut, mockturtle::map_stats> map_wo_pb
   ps.cut_enumeration_ps.minimize_truth_table = true;
   ps.cut_enumeration_ps.cut_limit = 24;
   ps.cut_enumeration_ps.verbose = true;
+  ps.buffer_pis = false;
   if (area_oriented)
   {
       ps.skip_delay_round = true;

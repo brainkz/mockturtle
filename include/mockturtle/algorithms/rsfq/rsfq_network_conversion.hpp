@@ -66,7 +66,7 @@ binding_view<generic_network> rsfq_generic_network_create_from_mapped( Ntk const
   static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
   static_assert( has_is_complemented_v<Ntk>, "NtkDest does not implement the is_complemented method" );
   static_assert( has_has_binding_v<Ntk>, "Ntk does not implement the has_binding method" );
-  // static_assert( has_set_dff_v<Ntk>, "Ntk does not implement the set_dff method" );
+  static_assert( has_set_dff_v<Ntk>, "Ntk does not implement the set_dff method" );
 
   using signal = typename generic_network::signal;
 

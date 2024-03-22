@@ -110,6 +110,7 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, int, int, bool
   mockturtle::map_params ps;
   ps.cut_enumeration_ps.minimize_truth_table = true;
   ps.cut_enumeration_ps.cut_limit = 24;
+  ps.buffer_pis = false;
   if (area_oriented)
   {
       ps.skip_delay_round = true;
