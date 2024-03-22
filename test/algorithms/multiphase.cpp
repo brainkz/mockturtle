@@ -29,14 +29,6 @@
 
 using namespace mockturtle;
 
-// const std::string test_library =    "GATE zero 0.00 z=CONST0;\n"
-//                                     "GATE one 0.00 z=CONST1;\n"
-//                                     "GATE AND2_SA 3 O=(a&b);           PIN * UNKNOWN 1.0 999.0 1 0.025 1 0.025\n"
-//                                     "GATE OR2_AA 3 O=a|b;         PIN * UNKNOWN 1.0 999.0 1 0.025 1 0.025\n"
-//                                     "GATE XOR2_AS 11 O=(a&!b)|(!a&b);  PIN * UNKNOWN 1.0 999.0 1 0.025 1 0.025\n"
-//                                     "GATE NOT_AS 9 O=!a;               PIN a UNKNOWN 1.0 999.0 1 0.025 1 0.025\n"
-//                                     "GATE buf 7 O=a;                PIN a UNKNOWN 1.0 999.0 1 0.025 1 0.025\n";
-	
 std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV     1 999 0.9 0.3 0.9 0.3\n"
                                  "GATE   inv2    2 O=!a;            PIN * INV     2 999 1.0 0.1 1.0 0.1\n"
                                  "GATE   nand2   2 O=!(a*b);        PIN * INV     1 999 1.0 0.2 1.0 0.2\n"
@@ -46,11 +38,7 @@ std::string const test_library = "GATE   inv1    1 O=!a;            PIN * INV   
                                  "GATE   zero    0 O=CONST0;\n"
                                  "GATE   one     0 O=CONST1;";
   
-// const phmap::flat_hash_map<std::string, uint8_t> gate_types = { {"AND2_SA", SA_GATE},  {"OR2_AA", AA_GATE},  {"XOR2_AS", AS_GATE},  {"NOT_AS", AS_GATE},  {"DFF_AS", AS_GATE},  {"buf", AS_GATE} };
-
-const phmap::flat_hash_map<std::string, uint8_t> gate_types = { {"AND2_SA", SA_GATE},  {"OR2_AA", AA_GATE},  {"XOR2_AS", AS_GATE},  {"NOT_AS", AS_GATE},  {"DFF_AS", AS_GATE},  {"buf", AS_GATE},
-{"inv1", AS_GATE},  {"inv2", AS_GATE},  {"nand2", AS_GATE},  {"xor2", AS_GATE},  {"maj3", SA_GATE} 
- };
+const phmap::flat_hash_map<std::string, uint8_t> gate_types = { {"AND2_SA", SA_GATE},  {"OR2_AA", AA_GATE},  {"XOR2_AS", AS_GATE},  {"INV_AS", AS_GATE},  {"DFF_AS", AS_GATE},  {"buf", AS_GATE}, {"inv1", AS_GATE},  {"inv2", AS_GATE},  {"nand2", AS_GATE},  {"xor2", AS_GATE},  {"maj3", SA_GATE} };
 
 constexpr uint8_t NUM_VARS = 4u;
 constexpr uint8_t NUM_PHASES = 4u;
@@ -74,7 +62,6 @@ std::tuple<mph_klut, mockturtle::map_stats> map_wo_pb
   ps.cut_enumeration_ps.minimize_truth_table = true;
   ps.cut_enumeration_ps.cut_limit = 24;
   ps.cut_enumeration_ps.verbose = true;
-  ps.buffer_pis = false;
   if (area_oriented)
   {
       ps.skip_delay_round = true;
@@ -88,7 +75,7 @@ std::tuple<mph_klut, mockturtle::map_stats> map_wo_pb
   return std::make_tuple( mph_ntk, st );
 }
 
-TEST_CASE( "testmapping", "[mph_view]" )
+TEST_CASE( "mph_view path balancing", "[mph_view]" )
 {
   std::vector<gate> gates;
 
@@ -151,9 +138,6 @@ TEST_CASE( "testmapping", "[mph_view]" )
         CHECK(node_stage >= mapped_ntk.get_stage(fanin));
       }
     });
-
   });  
-
   st.report();
-
 }
