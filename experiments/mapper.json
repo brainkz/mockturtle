@@ -706,5 +706,50 @@
       }
     ],
     "version": "abe8ece8"
+  },
+  {
+    "entries": [
+      {
+        "#DFF": 8008.0,
+        "N_PHASES": 4.0,
+        "area": 65099.0,
+        "benchmark": "adder_no_T1",
+        "committed_FA": 0,
+        "delay": 33.0,
+        "found_FA": 0,
+        "time": 350.0983782
+      },
+      {
+        "#DFF": 757.0,
+        "N_PHASES": 4.0,
+        "area": 19914.0,
+        "benchmark": "c7552_no_T1",
+        "committed_FA": 0,
+        "delay": 5.0,
+        "found_FA": 0,
+        "time": 858.8315947
+      },
+      {
+        "#DFF": 1417.0,
+        "N_PHASES": 4.0,
+        "area": 38742.0,
+        "benchmark": "c6288_no_T1",
+        "committed_FA": 0,
+        "delay": 8.0,
+        "found_FA": 0,
+        "time": 1519.8812368
+      },
+      {
+        "#DFF": 4673.0,
+        "N_PHASES": 4.0,
+        "area": 103737.0,
+        "benchmark": "sin_no_T1",
+        "committed_FA": 0,
+        "delay": 22.0,
+        "found_FA": 0,
+        "time": 3412.8416434
+      }
+    ],
+    "version": "8747b6d"
   }
 ]

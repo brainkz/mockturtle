@@ -63,7 +63,7 @@ namespace mockturtle
  * \param os Output stream
  */
 template<class Ntk>
-void write_bench( Ntk const& ntk, std::ostream& os )
+void write_bench( Ntk const& ntk, std::ostream& os)
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );

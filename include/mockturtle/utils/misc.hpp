@@ -19,27 +19,73 @@ const std::string NDFF_PATH { "../rsfq_tech_lib/nDFF_2023_06_27_CONNECT_CONSERVA
 const std::string LibEntry_file { "../rsfq_tech_lib/LibEntry_2023_06_27_CONNECT_CONSERVATIVE.csv" };
 
 // Need to provide a valid Python executable
-const std::string PYTHON_EXECUTABLE { "~/anaconda3/bin/python" }; // 
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string PYTHON_EXECUTABLE { "C:\\Users\\rbairamk\\AppData\\Local\\Microsoft\\WindowsApps\\python3.11.exe" };  
+#else
+  const std::string PYTHON_EXECUTABLE { "~/anaconda3/bin/python" }; // 
+#endif
 
 // Python script that runs OR-tools for phase assignment
-// const std::string PYTHON_PHASE_ASSIGNMENT { "../python/multiphase/decomposed_ilp_max.py" };
-const std::string PYTHON_PHASE_ASSIGNMENT { "../python/multiphase/phase_assignment.py" };
-
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string PYTHON_PHASE_ASSIGNMENT { "..\\python\\multiphase\\phase_assignment.py" };
+#else
+  const std::string PYTHON_PHASE_ASSIGNMENT { "../python/multiphase/phase_assignment.py" };
+#endif
 
 // Python script that runs OR-tools for DFF placement
-const std::string PYTHON_DFF_PLACEMENT { "../python/multiphase/config_solver.py" };
-const std::string PYTHON_DFF_PLACEMENT_UNION { "../python/multiphase/config_solver_union.py" };
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string PYTHON_DFF_PLACEMENT { "..\\python\\multiphase\\config_solver.py" };
+  const std::string PYTHON_DFF_PLACEMENT_UNION { "..\\python\\multiphase\\config_solver_union.py" };
+#else
+  const std::string PYTHON_DFF_PLACEMENT { "../python/multiphase/config_solver.py" };
+  const std::string PYTHON_DFF_PLACEMENT_UNION { "../python/multiphase/config_solver_union.py" };
+#endif
 
 // Folder containing OPENCORES benchmarks in BLIF format
-const std::string OPENCORES_FOLDER { "../benchmarks/opencores" };
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string OPENCORES_FOLDER { "..\\benchmarks\\opencores\\" };
+#else
+  const std::string OPENCORES_FOLDER { "../benchmarks/opencores/" };
+#endif
+
+// Folder containing default benchmarks in aig format
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string DEFAULT_FOLDER { "..\\experiments\\benchmarks\\" };
+#else
+  const std::string DEFAULT_FOLDER { "../experiments/benchmarks/" };
+#endif
 
 // Folder containing ISCAS89 benchmarks in AIG format 
-const std::string ISCAS89_FOLDER { "../benchmarks/iscas89" };
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string ISCAS89_FOLDER { "..\\benchmarks\\iscas89\\" };
+#else
+  const std::string ISCAS89_FOLDER { "../benchmarks/iscas89/" };
+#endif
 
 // Path prefix for files containing the specifications of the global nodemap. This nodemap contains the implementations of the compound gates found during enumeration process
-const std::string NODEMAP_PREFIX = "../GNM/x3"; //deprecated
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string NODEMAP_PREFIX = "..\\GNM\\x3"; //deprecated
+#else
+  const std::string NODEMAP_PREFIX = "../GNM/x3"; //deprecated
+#endif
 
-const std::string NODEMAP_BINARY_PREFIX = "../GNM/GNM_global";
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string NODEMAP_BINARY_PREFIX = "..\\GNM\\GNM_global";
+#else
+  const std::string NODEMAP_BINARY_PREFIX = "../GNM/GNM_global";
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string LAUNCH_CMD = "code";
+#else
+  const std::string LAUNCH_CMD = "open";
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+  const std::string ABC_EXECUTABLE = "..\\abc10216.exe";
+#else
+  const std::string ABC_EXECUTABLE = "../abc10216.exe";
+#endif
 
 
 std::string repeatString(const std::string& str, int count) 
@@ -139,3 +185,23 @@ struct ArrayHash
 
 //     return std::make_tuple(statusCode, gates);
 // }
+
+unsigned int last_power_of_2(unsigned int n) {
+    if (n == 0) return 0;  // Edge case: if n is 0, there's no power of 2 below it
+    n |= (n >> 1);
+    n |= (n >> 2);
+    n |= (n >> 4);
+    n |= (n >> 8);
+    n |= (n >> 16);
+    return n - (n >> 1);
+}
+
+template <typename uint>
+uint8_t last_exp_of_2(uint n) {
+    if (n == 0) return 0;  // Edge case: undefined for 0
+    uint8_t exponent = 0;
+    while (n >>= 1) {  // Right shift until n becomes 0, counting the shifts
+        ++exponent;
+    }
+    return exponent;
+}

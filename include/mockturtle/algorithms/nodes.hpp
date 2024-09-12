@@ -47,6 +47,22 @@ constexpr US fPI  = 11;
 constexpr US fT1  = 12;
 constexpr US fNOFUNC= 99;
 
+phmap::flat_hash_map<US, std::string> F2STR { 
+  {fDFF   , "DFF"},
+  {fNOT   , "NOT"},
+  {fMERGE , "MRG"},
+  {fOR    , "OR "},
+  {fAND   , "AND"},
+  {fXOR   , "XOR"},
+  {fOR3   , "OR3"},
+  {fAND3  , "AND3"},
+  {fMAJ3  , "MAJ3"},
+  {fCB    , "CB "},
+  {fSPL   , "SPL"},
+  {fPI    , "PI "},
+  {fNOFUNC, "N/A"}
+  }; 
+
 // constexpr std::array<int,12> COSTS_CONNECT = {6, 10, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
 // constexpr std::array<int,12> COSTS_CONNECT_UPD = {5, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
 // constexpr std::array<int,12> COSTS_CONNECT_CONSERVATIVE = {6, 9, 7, 3, 3, 11, 999, 999, 999, 7, 3, 0};
@@ -74,21 +90,7 @@ constexpr float GENLIB_FALL_FANOUT_DELAY  = 0.025;
 constexpr std::array<UI,12> COSTS = {7, 9, 8, 8, 8, 7, 11, 11, 11, 8, 7, 0}; // ORIGINAL COSTS
 // constexpr std::array<UI,12> COSTS = {5,  9, 7, 3, 3, 11, 999, 999, 999, 8, 7, 0};
                   // {6, 10, 7, 7, 7, 11, 999, 999, 999, 7, 3, 0};
-phmap::flat_hash_map<US, std::string> F2STR { 
-  {fDFF   , "DFF"},
-  {fNOT   , "NOT"},
-  {fMERGE , "MRG"},
-  {fOR    , "OR "},
-  {fAND   , "AND"},
-  {fXOR   , "XOR"},
-  {fOR3   , "OR3"},
-  {fAND3  , "AND3"},
-  {fMAJ3  , "MAJ3"},
-  {fCB    , "CB "},
-  {fSPL   , "SPL"},
-  {fPI    , "PI "},
-  {fNOFUNC, "N/A"}
-  }; 
+
 
 std::array<uint16_t, NUM_VARS> PI_WORDS = {{0x5555, 0x3333, 0x0F0F, 0x00FF}};
 

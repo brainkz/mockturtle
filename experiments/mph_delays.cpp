@@ -161,7 +161,7 @@ std::tuple<mockturtle::binding_view<klut>, mockturtle::map_stats, double, double
     } 
   );
 
-  /* RSFQ splitter insertion */
+  /* RSFQ splitter count */
   uint32_t num_splitters = 0;
   retime_res.foreach_node( [&]( auto const& n ) {
     if ( !retime_res.is_constant( n ) )
@@ -1404,90 +1404,6 @@ void update_representative( klut const& ntk, klut::signal const& new_signal, klu
   representatives.emplace( new_signal, repr );
 }
 
-void update_network( klut& ntk, array_map<3, T1_OUTPUTS> const& t1_candidates, 
-                     phmap::flat_hash_map<klut::node, klut::node>& representatives, 
-                     phmap::flat_hash_map<klut::node, klut::node>& symbol2real, 
-                     phmap::flat_hash_map<klut::node, std::array<bool, 3>>& input_phases,
-                     const bool verbose = false )
-{
-  for ( auto const& t1_candidate : t1_candidates )
-  {
-    auto const& leaves = std::get<0>( t1_candidate );
-    auto const& t1_outputs = std::get<1>( t1_candidate );
-    klut::node repr = ntk.get_constant( false );
-
-    if ( t1_outputs.has_sum )
-    {
-      const auto new_signal = ntk.create_xor3( leaves[0], leaves[1], leaves[2] );
-      DEBUG_PRINT( "[i] Created SUM: {} = XOR3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
-      update_representative( ntk, new_signal, repr, representatives );
-      symbol2real.emplace( t1_outputs.sum_to, new_signal );
-    }
-    if ( t1_outputs.has_carry )
-    {
-      const auto new_signal = ntk.create_maj( leaves[0], leaves[1], leaves[2], 0 );
-      DEBUG_PRINT( "[i] Created CARRY: {} = MAJ3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
-      update_representative( ntk, new_signal, repr, representatives  );
-      symbol2real.emplace( t1_outputs.carry_to, new_signal );
-    }
-    if ( t1_outputs.has_carry_inverted )
-    {
-      const auto new_signal = ntk.create_maj( leaves[0], leaves[1], leaves[2], 1 );
-      DEBUG_PRINT( "[i] Created CARRY_INV: {} = MAJ3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
-      update_representative( ntk, new_signal, repr, representatives );
-      symbol2real.emplace( t1_outputs.inv_carry_to, new_signal );
-    }
-    if ( t1_outputs.has_cbar )
-    {
-      const auto new_signal = ntk.create_or3( leaves[0], leaves[1], leaves[2], 0 );
-      DEBUG_PRINT( "[i] Created CBAR: {} = OR3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
-      update_representative( ntk, new_signal, repr, representatives );
-      symbol2real.emplace( t1_outputs.cbar_to, new_signal );
-    }
-    if ( t1_outputs.has_cbar_inverted )
-    {
-      const auto new_signal = ntk.create_or3( leaves[0], leaves[1], leaves[2], 1 );
-      DEBUG_PRINT( "[i] Created CBAR_INV: {} = OR3( {}, {}, {} )\n", new_signal, leaves[0], leaves[1], leaves[2] );
-      update_representative( ntk, new_signal, repr, representatives );
-      symbol2real.emplace( t1_outputs.inv_cbar_to, new_signal );
-    }
-
-    auto input_phase = t1_outputs.in_phase;
-    std::array<bool, 3> input_phase_bool{ { static_cast<bool>( input_phase >> 0 & 1 ), static_cast<bool>( input_phase >> 1 & 1 ), static_cast<bool>( input_phase >> 2 & 1 ) } };
-    input_phases.emplace( repr, input_phase_bool );
-  }
-
-  /* since the enumeration of all T1 cells are performed in an unordered manner, */
-  /* the nodes creation and substitution have to be handled seperately           */
-  for ( auto const& t1_candidate : t1_candidates )
-  {
-    T1_OUTPUTS const& t1_outputs = std::get<1>( t1_candidate );
-
-    if ( t1_outputs.has_sum )
-    {
-      substitute_node( ntk, t1_outputs.sum_to, symbol2real.at( t1_outputs.sum_to ) );
-    }
-    if ( t1_outputs.has_carry )
-    {
-      substitute_node( ntk, t1_outputs.carry_to, symbol2real.at( t1_outputs.carry_to ) );
-    }
-    if ( t1_outputs.has_carry_inverted )
-    {
-      substitute_node( ntk, t1_outputs.inv_carry_to, symbol2real.at( t1_outputs.inv_carry_to ) );
-    }
-    if ( t1_outputs.has_cbar )
-    {
-      substitute_node( ntk, t1_outputs.cbar_to, symbol2real.at( t1_outputs.cbar_to ) );
-    }
-    if ( t1_outputs.has_cbar_inverted )
-    {
-      substitute_node( ntk, t1_outputs.inv_cbar_to, symbol2real.at( t1_outputs.inv_cbar_to ) );
-    }
-  }
-
-  //ntk = mockturtle::cleanup_dangling( ntk );
-}
-
 /* this function is merely for debugging and can be removed */
 std::string get_gate_type( const uint32_t gate_type )
 {
@@ -1602,7 +1518,8 @@ void write_klut_specs_supporting_t1_new( klut const& ntk, array_map<3, T1_OUTPUT
   std::ofstream spec_file( filename );
 
   spec_file << "PI";
-  ntk.foreach_pi( [&]( const auto & node ){
+  ntk.foreach_pi( [&]( const auto & node )
+  {
     spec_file << "," << node;
   } );
   spec_file << "\n";
@@ -1663,622 +1580,330 @@ void write_klut_specs_supporting_t1_new( klut const& ntk, array_map<3, T1_OUTPUT
   }
 }
 
-int main(int argc, char* argv[])  //
-{
-  using namespace experiments;
-  using namespace mockturtle;
+#if false
 
-  TT3 XOR3, MAJ3, OR3;
-  XOR3._bits = 0x96;
-  MAJ3._bits = 0xe8;
-  OR3._bits  = 0xfe;
-
-  std::vector<TT3> xor3_tts;
-  std::vector<TT3> maj3_tts;
-  std::vector<TT3>  or3_tts;
-  auto add_xor3 = [&xor3_tts](const TT3 & tt){xor3_tts.push_back(tt);};
-  auto add_maj3 = [&maj3_tts](const TT3 & tt){maj3_tts.push_back(tt);};
-  auto add_or3  =  [&or3_tts](const TT3 & tt){ or3_tts.push_back(tt);};
-  kitty::exact_npn_canonization(XOR3, add_xor3);
-  kitty::exact_npn_canonization(MAJ3, add_maj3);
-  kitty::exact_npn_canonization( OR3, add_or3 );
-
-  // fmt::print("Compatible TTs:\n");
-  // for (auto i = 0u; i < xor3_tts.size(); ++i)
-  // {
-  //   fmt::print("\t[{}]:\n", i);
-  //   fmt::print("\t\tXOR3: {0:08b}={0:02x}={0:d}\n", xor3_tts[i]._bits);
-  //   fmt::print("\t\tMAJ3: {0:08b}={0:02x}={0:d}\n", maj3_tts[i]._bits);
-  //   fmt::print("\t\t OR3: {0:08b}={0:02x}={0:d}\n",  or3_tts[i]._bits);
-  // }
-  // return 0;
-
-  experiment<std::string, double, double, double, double, int, int, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay", "found_FA", "committed_FA", "time");
-
-  // uint8_t MIN_N_PHASES = std::stoi(argv[1]);
-  // uint8_t MAX_N_PHASES = std::stoi(argv[2]);
-
-  std::vector<uint8_t> PHASES;
-  PHASES.push_back( std::stoi(argv[1]) );
-  const bool search_FA = ( std::stoi(argv[2]) != 0 );
-
-  std::ofstream outputFile( fmt::format("{}_{}_hyp.txt", fmt::join(PHASES, ""), search_FA) );
-
-  // for (auto i = 1; i < argc; ++i)
-  // {
-  //   PHASES.push_back(std::stoi(argv[i]));
-  // }
-  // if ( PHASES.empty() )
-  // {
-  //   PHASES.push_back( 7 );
-  // }
-  fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
-  fmt::print("Searching FA: [{}]\n", search_FA);
-
-  fmt::print( "[i] processing technology library\n" );
-
-  // library to map to technology
-  std::vector<gate> gates;
-  std::ifstream inputFile( DATABASE_PATH );
-  if ( lorina::read_genlib( inputFile, genlib_reader( gates ) ) != lorina::return_code::success )
+  int main(int argc, char* argv[])  //
   {
-    return 1;
-  }
+    using namespace experiments;
+    using namespace mockturtle;
 
-  // std::unordered_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
-  std::unordered_map<std::string, int> nDFF_global;
+    TT3 XOR3, MAJ3, OR3;
+    XOR3._bits = 0x96;
+    MAJ3._bits = 0xe8;
+    OR3._bits  = 0xfe;
 
-  mockturtle::tech_library_params tps; // tps.verbose = true;
-  tech_library<NUM_VARS, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
+    std::vector<TT3> xor3_tts;
+    std::vector<TT3> maj3_tts;
+    std::vector<TT3>  or3_tts;
+    auto add_xor3 = [&xor3_tts](const TT3 & tt){xor3_tts.push_back(tt);};
+    auto add_maj3 = [&maj3_tts](const TT3 & tt){maj3_tts.push_back(tt);};
+    auto add_or3  =  [&or3_tts](const TT3 & tt){ or3_tts.push_back(tt);};
+    kitty::exact_npn_canonization(XOR3, add_xor3);
+    kitty::exact_npn_canonization(MAJ3, add_maj3);
+    kitty::exact_npn_canonization( OR3, add_or3 );
 
-  #pragma region benchmark_parsing
-    // *** BENCHMARKS OF INTEREST ***
-    // experiments::adder | experiments::div  | 
-    // auto benchmarks1 = epfl_benchmarks( experiments::square | experiments::iscas );//  | 
-    // auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::bar  );// | experiments::max  | experiments::multiplier );
-    // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
-    // auto benchmarks2 = epfl_benchmarks( experiments::iscas );
-    // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
-    // auto benchmarks1 = all_benchmarks( 
-    //   experiments::leon2 - 1 |
-    //   // experiments::int2float | 
-    //   // experiments::priority |
-    //   // experiments::voter  |
-    //   // experiments::c432 |
-    //   // experiments::c880 |
-    //   // experiments::c1908  |
-    //   // experiments::c3540  |
-    //   // experiments::c1355 |
-    //   0
-    // );
-    // std::reverse(benchmarks1.begin(), benchmarks1.end());
+    // fmt::print("Compatible TTs:\n");
+    // for (auto i = 0u; i < xor3_tts.size(); ++i)
+    // {
+    //   fmt::print("\t[{}]:\n", i);
+    //   fmt::print("\t\tXOR3: {0:08b}={0:02x}={0:d}\n", xor3_tts[i]._bits);
+    //   fmt::print("\t\tMAJ3: {0:08b}={0:02x}={0:d}\n", maj3_tts[i]._bits);
+    //   fmt::print("\t\t OR3: {0:08b}={0:02x}={0:d}\n",  or3_tts[i]._bits);
+    // }
+    // return 0;
 
-    const std::vector<std::string> benchmarks1 = { "adder","c7552","c6288","sin","voter","square","multiplier","log2" };
-    // const std::vector<std::string> benchmarks1 = { "hyp" };
-    // const std::vector<std::string> benchmarks1 = { "adder" };//,"c7552","c6288","sin","voter","square","multiplier","log2","hyp" };
+    experiment<std::string, double, double, double, double, int, int, double> exp( "mapper", "benchmark", "N_PHASES", "#DFF", "area", "delay", "found_FA", "committed_FA", "time");
 
-    // *** OPENCORES BENCHMARKS ***
-    const std::vector<std::string> BEEREL_BENCHMARKS 
+    // uint8_t MIN_N_PHASES = std::stoi(argv[1]);
+    // uint8_t MAX_N_PHASES = std::stoi(argv[2]);
+
+    std::vector<uint8_t> PHASES;
+    PHASES.push_back( std::stoi(argv[1]) );
+    const bool search_FA = ( std::stoi(argv[2]) != 0 );
+
+    std::ofstream outputFile( fmt::format("{}_{}_hyp.txt", fmt::join(PHASES, ""), search_FA) );
+
+    // for (auto i = 1; i < argc; ++i)
+    // {
+    //   PHASES.push_back(std::stoi(argv[i]));
+    // }
+    // if ( PHASES.empty() )
+    // {
+    //   PHASES.push_back( 7 );
+    // }
+    fmt::print("Phases to analyze: [{}]\n", fmt::join(PHASES, ", "));
+    fmt::print("Searching FA: [{}]\n", search_FA);
+
+    fmt::print( "[i] processing technology library\n" );
+
+    // library to map to technology
+    std::vector<gate> gates;
+    std::ifstream inputFile( DATABASE_PATH );
+    if ( lorina::read_genlib( inputFile, genlib_reader( gates ) ) != lorina::return_code::success )
     {
-      "simple_spi-gates",
-      "des_area-gates",
-      "pci_bridge32-gates",
-      "spi-gates",
-      "mem_ctrl-gates"
-    };
-
-    // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
-    const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
-
-    // benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
-    // std::reverse(benchmarks1.begin(), benchmarks1.end());
-
-    // *** LIST ALL CONSIDERED BENCHMARKS ***
-    fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
-
-    // *** READ COMPOUND GATE LIBRARY ***
-    phmap::flat_hash_map<ULL, Node> GNM_global;
-    bool load_status = LoadFromFile(GNM_global, NODEMAP_BINARY_PREFIX);
-    assert(load_status);
-
-    phmap::flat_hash_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
-
-  #pragma endregion benchmark_parsing
-
-  // *** START PROCESSING BECNHMARKS ***
-  for ( auto const& benchmark : benchmarks1 )
-  {
-    fmt::print( "[i] processing {}\n", benchmark );
-
-    #pragma region load network
-    // *** LOAD NETWORK INTO MIG ***
-    mig ntk_original;
-    if (benchmark.find("-gates") != std::string::npos) 
-    {
-      fmt::print("USING THE BLIF READER\n");
-
-      std::string abc_command = fmt::format("abc -c \"read_blif {}{}.blif\" -c strash -c \"write_aiger temp.aig\" ", OPENCORES_FOLDER, benchmark);
-
-      std::system(abc_command.c_str());
-
-      klut temp_klut;
-      if ( lorina::read_aiger( "temp.aig", aiger_reader( ntk_original ) ) != lorina::return_code::success )
-      {
-        fmt::print("Failed to read {}\n", benchmark);
-        continue;
-      }
-    }
-    else if ( benchmark.find(".aig") != std::string::npos ) // ISCAS89 benchmark
-    {
-      fmt::print("USING THE BENCH READER\n");
-      std::string path = fmt::format("{}{}", ISCAS89_FOLDER, benchmark);
-      if ( lorina::read_aiger( path, aiger_reader( ntk_original ) ) != lorina::return_code::success )
-      {
-        fmt::print("Failed to read {}\n", benchmark);
-        continue;
-      }
-      // convert_klut_to_graph<mig>(ntk_original, temp_klut);
-    }
-    else // regular benchmark
-    {
-      fmt::print( "USING THE AIGER READER\n" );
-      if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( ntk_original ) ) != lorina::return_code::success )
-      {
-        fmt::print("Failed to read {}\n", benchmark);
-        continue;
-      }
-      // convert_klut_to_graph<mig>(ntk_original, temp_klut);
-    }
-    #pragma endregion
-
-    #pragma region mapping with compound gates 
-    // *** MAP, NO NEED FOR RETIMING/PATH BALANCING ***
-    fmt::print("Started mapping {}\n", benchmark);
-    auto [res_wo_pb, st_wo_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
-    fmt::print("Finished mapping {}\n", benchmark);
-    #pragma endregion
-
-    #pragma region decomposition of the mapped network into a klut
-    // *** DECOMPOSE COMPOUND GATES INTO PRIMITIVES, REMOVE DFFS, REPLACE OR GATES WITH CB WHERE POSSIBLE ***
-    auto _result = decompose_to_klut(res_wo_pb, GNM_global, entries, COSTS_MAP);
-    auto klut_decomposed = std::get<0>(_result);
-    auto raw_area = std::get<1>(_result);
-    fmt::print("Decomposition complete\n");
-    #pragma endregion
-
-    std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
-
-    #pragma region cut enumeration to find TTs that could be shared with a T1 cell
-    // *** ENUMERATE 3-CUTS ***
-    cut_enumeration_params ce_params; 
-    ce_params.cut_size = 3u;
-    const auto cuts = mockturtle::cut_enumeration<klut, true>( klut_decomposed, ce_params );
-
-    /* print enumerated cuts */
-    // klut_decomposed.foreach_node( [&]( auto node ) {
-    //   auto idx = klut_decomposed.node_to_index( node );
-    //   auto & node_cuts = cuts.cuts( idx );
-    //   std::cout << node_cuts << "\n";
-    // } );
-
-    // *** FIND THOSE CUTS MATCHING THE XOR3/MAJ3/OR3 FUNCTIONS ***
-    const auto xor3_cuts = match_cuts( xor3_tts, klut_decomposed, cuts);
-    const auto maj3_cuts = match_cuts( maj3_tts, klut_decomposed, cuts);
-    const auto  or3_cuts = match_cuts(  or3_tts, klut_decomposed, cuts);
-
-    /* TODO: adopt the assumption that, it is a good deal if an implementation can make use of more than 2 out of the 3 outputs of T1,  */
-    /* then we would need four rounds of matching: (1) 3 leaves using all 3 outputs; (2) ...using XOR and MAJ; (3) ...using MAJ and OR; */
-    /* (4) ...using XOR and OR. For each 3 leaves found, check validity by deciding which of the 8 T1s to choose                        */
-
-    array_map<3, T1_OUTPUTS> t1_candidates;
-    if (search_FA)
-    {
-      t1_candidates = find_t1_candidates(klut_decomposed, xor3_cuts, maj3_cuts, or3_cuts);
-    }
-    // array_map<3, T1_OUTPUTS> t1_candidates = find_t1_candidates(klut_decomposed, xor3_cuts, maj3_cuts, or3_cuts);
-    #pragma endregion
-
-    #pragma region leave only those cuts reducing area
-    /* estimate the gain of implementing parts of the circuits using T1s instead */
-    auto updated_area{ raw_area };
-    // uint32_t num_t1_use_more_than_3{ 0u };
-    // uint32_t num_t1_cells{ 0u };
-
-    auto total_possible { 0u };
-    auto total_committed { 0u };
-    /* Rewrote this using iterator output */
-    for ( auto it_t1_cands{ t1_candidates.begin() }; it_t1_cands != t1_candidates.end(); )
-    {
-      const bool committed = t1_usage_sanity_check( klut_decomposed, *it_t1_cands, updated_area );
-      if ( !committed )
-      {
-        // update iterator after erasing
-        it_t1_cands = t1_candidates.erase( it_t1_cands );
-      }
-      else
-      {
-        ++it_t1_cands;
-      }
-      total_possible++;
-      total_committed += committed;
+      return 1;
     }
 
-    fmt::print("[{}] Size {}\n", benchmark, klut_decomposed.size());
-    fmt::print("[{}] Found {}\tCommitted: {}\n", benchmark, total_possible, total_committed);
+    // std::unordered_map<std::string, int> nDFF_global = readCSV( NDFF_PATH );
+    std::unordered_map<std::string, int> nDFF_global;
 
-    phmap::flat_hash_map<klut::signal, klut::signal> representatives;
-    phmap::flat_hash_map<klut::signal, klut::signal> symbol2real;
-    phmap::flat_hash_map<klut::node, std::array<bool, 3>> input_phases;
-    update_network( klut_decomposed, t1_candidates, representatives, symbol2real, input_phases );
+    mockturtle::tech_library_params tps; // tps.verbose = true;
+    tech_library<NUM_VARS, mockturtle::classification_type::p_configurations> tech_lib( gates, tps );
 
-    #pragma endregion
+    #pragma region benchmark_parsing
+      // *** BENCHMARKS OF INTEREST ***
+      // experiments::adder | experiments::div  | 
+      // auto benchmarks1 = epfl_benchmarks( experiments::square | experiments::iscas );//  | 
+      // auto benchmarks1 = epfl_benchmarks( experiments::adder | experiments::bar  );// | experiments::max  | experiments::multiplier );
+      // auto benchmarks1 = epfl_benchmarks( experiments::int2float | experiments::priority | experiments::voter);
+      // auto benchmarks2 = epfl_benchmarks( experiments::iscas );
+      // benchmarks1.insert(benchmarks1.end(), benchmarks2.begin(), benchmarks2.end());
+      // auto benchmarks1 = all_benchmarks( 
+      //   experiments::leon2 - 1 |
+      //   // experiments::int2float | 
+      //   // experiments::priority |
+      //   // experiments::voter  |
+      //   // experiments::c432 |
+      //   // experiments::c880 |
+      //   // experiments::c1908  |
+      //   // experiments::c3540  |
+      //   // experiments::c1355 |
+      //   0
+      // );
+      // std::reverse(benchmarks1.begin(), benchmarks1.end());
 
-    // start processing each possible number of phases
-    for (const auto n_phases : PHASES)
+      const std::vector<std::string> benchmarks1 = { "adder","c7552","c6288","sin","voter","square","multiplier","log2" };
+      // const std::vector<std::string> benchmarks1 = { "hyp" };
+      // const std::vector<std::string> benchmarks1 = { "adder" };//,"c7552","c6288","sin","voter","square","multiplier","log2","hyp" };
+
+      // *** OPENCORES BENCHMARKS (DO NOT LOOK GOOD) ***
+      const std::vector<std::string> BEEREL_BENCHMARKS 
+      {
+        "simple_spi-gates",
+        "des_area-gates",
+        "pci_bridge32-gates",
+        "spi-gates",
+        "mem_ctrl-gates"
+      };
+
+      // *** ISCAS89 SEQUENTIAL BENCHMARKS (DO NOT LOOK GOOD) ***
+      const std::vector<std::string> ISCAS89_BENCHMARKS {"s382.aig", "s5378.aig", "s13207.aig"};
+
+      // benchmarks1.insert(benchmarks1.end(), ISCAS89_BENCHMARKS.begin(), ISCAS89_BENCHMARKS.end());
+      // std::reverse(benchmarks1.begin(), benchmarks1.end());
+
+      // *** LIST ALL CONSIDERED BENCHMARKS ***
+      fmt::print("Benchmarks:\n\t{}\n", fmt::join(benchmarks1, "\n\t"));
+
+      // *** READ COMPOUND GATE LIBRARY ***
+      phmap::flat_hash_map<ULL, Node> GNM_global;
+      bool load_status = LoadFromFile(GNM_global, NODEMAP_BINARY_PREFIX);
+      assert(load_status);
+
+      phmap::flat_hash_map<std::string, LibEntry> entries = read_LibEntry_map(LibEntry_file);
+
+    #pragma endregion benchmark_parsing
+
+    // *** START PROCESSING BECNHMARKS ***
+    for ( auto const& benchmark : benchmarks1 )
     {
-      fmt::print("[i] Mapping with {} phases\n", n_phases);
-      // *** IF i = 0, we assign phases with the CP-SAT
-      klut network { klut_decomposed.clone() };
+      fmt::print( "[i] processing {}\n", benchmark );
 
-      phmap::flat_hash_map<unsigned int, unsigned int> assignment;
-
-      // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
-      // *** IF i = 1, "assignment" is empty
-      const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
-      fmt::print("\tWriting config {}\n", ilp_cfg_filename);
-      // write_klut_specs(network, ilp_cfg_filename);
-      // write_klut_specs_supporting_t1( network, t1_candidates, ilp_cfg_filename );
-      write_klut_specs_supporting_t1_new( network, t1_candidates, ilp_cfg_filename, symbol2real );
-
-      //continue;
-
-      fmt::print("\tCalling OR-Tools\n");
-      auto [obj_val, assignment_local, cpsat_ph_status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
-
-      if (cpsat_ph_status == "SUCCESS") // (true) // 
+      #pragma region load network
+      // *** LOAD NETWORK INTO MIG ***
+      mig ntk_original;
+      if (benchmark.find("-gates") != std::string::npos) 
       {
-        assignment.insert(std::make_move_iterator(assignment_local.begin()), std::make_move_iterator(assignment_local.end()));
-        fmt::print("[i] CP-SAT PHASE ASSIGNMENT: SUCCESS\n");
+        fmt::print("USING THE BLIF READER\n");
+
+        std::string abc_command = fmt::format("abc -c \"read_blif {}{}.blif\" -c strash -c \"write_aiger temp.aig\" ", OPENCORES_FOLDER, benchmark);
+
+        std::system(abc_command.c_str());
+
+        klut temp_klut;
+        if ( lorina::read_aiger( "temp.aig", aiger_reader( ntk_original ) ) != lorina::return_code::success )
+        {
+          fmt::print("Failed to read {}\n", benchmark);
+          continue;
+        }
       }
-      else
+      else if ( benchmark.find(".aig") != std::string::npos ) // ISCAS89 benchmark
       {
-        fmt::print("[i] CP-SAT PHASE ASSIGNMENT: FAIL\n");
-        continue;
+        fmt::print("USING THE BENCH READER\n");
+        std::string path = fmt::format("{}{}", ISCAS89_FOLDER, benchmark);
+        if ( lorina::read_aiger( path, aiger_reader( ntk_original ) ) != lorina::return_code::success )
+        {
+          fmt::print("Failed to read {}\n", benchmark);
+          continue;
+        }
+        // convert_klut_to_graph<mig>(ntk_original, temp_klut);
       }
-      
-      // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
-      // *** IF i = 1, "assignment" is empty
-      assign_sigma(network, assignment, true );
-
-      // *** Greedily insert splitters
-      splitter_ntk_insertion_t1( network, representatives, false );
-
-      // network.foreach_node([&] ( const klut::signal & node ) {if ( network.fanout_size( node ) > 1 ){assert( network.node_function( node ) == 0x2 );};});
-
-      fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
-
-      fmt::print("[i] EXTRACTING PATHS\n");
-
-      std::vector<Path> paths = extract_paths_t1( network, representatives, false );
-
-      auto total_num_dff = 0u;
-
-      auto cfg_file_ctr = 0u;
-      for (const Path & path : paths)
+      else // regular benchmark
       {
-        // path.print_bfs(network);
-
-        auto [gate_vars, sa_dff, stage_constraints, buffer_constraints, inverted_t1_input, merger_t1_input, truncated_t1_paths] = dff_from_threads(network, path, n_phases, input_phases, false);
-
-        std::string cfg_file = fmt::format("{}_paths_{}.csv", benchmark, cfg_file_ctr);
-
-        write_dff_cfg(network, cfg_file, gate_vars, sa_dff, stage_constraints, buffer_constraints, inverted_t1_input,  merger_t1_input, truncated_t1_paths, false );
-
-        auto num_dff = cpsat_ortools_union(cfg_file, n_phases);
-        fmt::print("OR Tools optimized to {} DFF\n", num_dff);
-        total_num_dff += num_dff;
-        fmt::print("[i] total CPSAT #DFF = {}\n", total_num_dff);
-
-        cfg_file_ctr++;
+        fmt::print( "USING THE AIGER READER\n" );
+        if ( lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( ntk_original ) ) != lorina::return_code::success )
+        {
+          fmt::print("Failed to read {}\n", benchmark);
+          continue;
+        }
+        // convert_klut_to_graph<mig>(ntk_original, temp_klut);
       }
-      // continue;
+      #pragma endregion
 
-      // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
+      #pragma region mapping with compound gates 
+      // *** MAP, NO NEED FOR RETIMING/PATH BALANCING ***
+      fmt::print("Started mapping {}\n", benchmark);
+      auto [res_wo_pb, st_wo_pb] = map_wo_pb(ntk_original, tech_lib, false); //benchmark, true, nDFF_global, total_ndff_w_pb, total_area_w_pb, cec_w_pb 
+      fmt::print("Finished mapping {}\n", benchmark);
+      #pragma endregion
 
-      // auto total_num_dff = 0u;
-      #if false
-        auto file_ctr = 0u;
-        auto path_ctr = 0u;
+      #pragma region decomposition of the mapped network into a klut
+      // *** DECOMPOSE COMPOUND GATES INTO PRIMITIVES, REMOVE DFFS, REPLACE OR GATES WITH CB WHERE POSSIBLE ***
+      auto _result = decompose_to_klut(res_wo_pb, GNM_global, entries, COSTS_MAP);
+      auto klut_decomposed = std::get<0>(_result);
+      auto raw_area = std::get<1>(_result);
+      fmt::print("Decomposition complete\n");
+      #pragma endregion
+
+      std::chrono::high_resolution_clock::time_point start_time = std::chrono::high_resolution_clock::now();
+
+      // start processing each possible number of phases
+      for (const auto n_phases : PHASES)
+      {
+
+        fmt::print("[i] Mapping with {} phases\n", n_phases);
+        // *** IF i = 0, we assign phases with the CP-SAT
+
+        klut network { klut_decomposed.clone() };
+
+        // Insert balanced splitter trees
+        balanced_splitter_ntk_insertion(network);
+        // assign sigma greedily
+        greedy_ntk_assign(network, n_phases, phmap::flat_hash_map<unsigned int, unsigned int>{});
+
+        // Here, we start with extracting the paths
+        std::vector<Path> paths = extract_paths( network );
+
+        // need to write the specs
+
+
+
+
+
+
+        phmap::flat_hash_map<unsigned int, unsigned int> assignment;
+
+        // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
+        // *** IF i = 1, "assignment" is empty
+        const std::string ilp_cfg_filename = fmt::format("ilp_configs/{}.csv", benchmark);
+        fmt::print("\tWriting config {}\n", ilp_cfg_filename);
+        // write_klut_specs(network, ilp_cfg_filename);
+        // write_klut_specs_supporting_t1( network, t1_candidates, ilp_cfg_filename );
+
+        write_klut_specs_supporting_t1_new( network, t1_candidates, ilp_cfg_filename, symbol2real );
+
+        //continue;
+
+        fmt::print("\tCalling OR-Tools\n");
+        auto [obj_val, assignment_local, cpsat_ph_status] = cpsat_macro_opt(ilp_cfg_filename, n_phases);
+
+        if (cpsat_ph_status == "SUCCESS") // (true) // 
+        {
+          assignment.insert(std::make_move_iterator(assignment_local.begin()), std::make_move_iterator(assignment_local.end()));
+          fmt::print("[i] CP-SAT PHASE ASSIGNMENT: SUCCESS\n");
+        }
+        else
+        {
+          fmt::print("[i] CP-SAT PHASE ASSIGNMENT: FAIL\n");
+          continue;
+        }
+        
+        // *** IF i = 0, "assignment" has stages assigned by the CP-SAT
+        // *** IF i = 1, "assignment" is empty
+        assign_sigma(network, assignment, true );
+
+        // *** Greedily insert splitters
+        splitter_ntk_insertion_t1( network, representatives, false );
+
+        // network.foreach_node([&] ( const klut::signal & node ) {if ( network.fanout_size( node ) > 1 ){assert( network.node_function( node ) == 0x2 );};});
+
+        fmt::print("[i] FINISHED PHASE ASSIGNMENT\n");
+
+        fmt::print("[i] EXTRACTING PATHS\n");
+
+        std::vector<Path> paths = extract_paths_t1( network, representatives, false );
+
+        auto total_num_dff = 0u;
+
+        auto cfg_file_ctr = 0u;
         for (const Path & path : paths)
         {
-          fmt::print("\tAnalyzing the path {} out of {}\n", ++path_ctr, paths.size());
-          // *** Create binary variables
-          phmap::flat_hash_map<klut::node, std::array<uint64_t, 3>> DFF_closest_to_t1s;
-          auto [DFF_REG, precalc_ndff, required_SA_DFFs] = dff_vars_single_paths_t1( path, network, n_phases, DFF_closest_to_t1s );
-          total_num_dff += precalc_ndff;
-          fmt::print("\t\t\t\t[i]: Precalculated {} DFFs, total #DFF = {}\n", precalc_ndff, total_num_dff);
-          
-          // *** Generate constraints
-          auto const& [snakes, t1_input_constraint, helpers] = sectional_snake_t1( path, network, DFF_closest_to_t1s, DFF_REG, n_phases, true );
-          /* If the target gate is a T1 gate, extra constraints shall be added */
+          // path.print_bfs(network);
 
-          fmt::print("\tCreated {} snakes\n", snakes.size());
-          // *** If there's anything that needs optimization
-          if (!snakes.empty())
-          {
-            std::string cfg_file = fmt::format("ilp_configs/{}_cfgNR_{}.csv", benchmark, file_ctr++);
-            write_snakes_t1( snakes, t1_input_constraint, input_phases, helpers, DFF_REG, required_SA_DFFs, cfg_file, n_phases, true );
-            
-            continue;
+          auto [gate_vars, sa_dff, stage_constraints, buffer_constraints, inverted_t1_input, merger_t1_input, truncated_t1_paths] = dff_from_threads(network, path, n_phases, input_phases, false);
 
-            auto num_dff = cpsat_ortools(cfg_file);
-            // fmt::print("OR Tools optimized to {} DFF\n", num_dff);
-            total_num_dff += num_dff;
-            fmt::print("\t\t\t\t[i] total CPSAT #DFF = {}\n", total_num_dff);
-          }
+          std::string cfg_file = fmt::format("{}_paths_{}.csv", benchmark, cfg_file_ctr);
+
+          write_dff_cfg(network, cfg_file, gate_vars, sa_dff, stage_constraints, buffer_constraints, inverted_t1_input,  merger_t1_input, truncated_t1_paths, false );
+
+          auto num_dff = cpsat_ortools_union(cfg_file, n_phases);
+          fmt::print("OR Tools optimized to {} DFF\n", num_dff);
+          total_num_dff += num_dff;
+          fmt::print("[i] total CPSAT #DFF = {}\n", total_num_dff);
+
+          cfg_file_ctr++;
         }
-      #endif
-      // *** Record maximum phase
-      uint64_t max_phase = 0u;
-      // *** Record number of splitters and total number of DFFs (not only path balancing DFFs)
-      uint64_t total_num_spl = 0;
-      network.foreach_gate([&](const klut::signal & node)
-      {
-        NodeData node_data { network.value(node) };
-        fmt::print("[Node {}] old max_phase = {}\tnode_data = {}\t", node, max_phase, static_cast<int>(node_data.sigma));
-        max_phase = generic_max(max_phase, node_data.sigma);
-        fmt::print("new max_phase = {}\n", max_phase);
+        // continue;
 
-        auto fo_size = network.fanout_size(node);
-        if (fo_size > 1)
+        // auto [DFF_REG, precalc_ndff] = dff_vars(NR, paths, N_PHASES);
+
+        // *** Record maximum phase
+        uint64_t max_phase = 0u;
+        // *** Record number of splitters and total number of DFFs (not only path balancing DFFs)
+        uint64_t total_num_spl = 0;
+        network.foreach_gate([&](const klut::signal & node)
         {
-          total_num_spl += fo_size - 1;
-        }
-      });
+          NodeData node_data { network.value(node) };
+          fmt::print("[Node {}] old max_phase = {}\tnode_data = {}\t", node, max_phase, static_cast<int>(node_data.sigma));
+          max_phase = generic_max(max_phase, node_data.sigma);
+          fmt::print("new max_phase = {}\n", max_phase);
 
-      network.foreach_po([&](const klut::signal & node)
-      {
-        NodeData node_data { network.value(node) };
-        fmt::print("[PO {}] max_phase = {}, sigma = {}, node #DFF = {}\n", node, max_phase, static_cast<int>(node_data.sigma), ( (max_phase - node_data.sigma) / n_phases ) );
-        total_num_dff += (max_phase - node_data.sigma) / n_phases;
-        fmt::print("[i] total #DFF = {}\n", total_num_dff);
-      });
+          auto fo_size = network.fanout_size(node);
+          if (fo_size > 1)
+          {
+            total_num_spl += fo_size - 1;
+          }
+        });
 
-      fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
-      int total_area = raw_area + total_num_dff * COSTS_MAP[fDFF] + total_num_spl * COSTS_MAP[fSPL];
-      fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
-      fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_phase);
+        network.foreach_po([&](const klut::signal & node)
+        {
+          NodeData node_data { network.value(node) };
+          fmt::print("[PO {}] max_phase = {}, sigma = {}, node #DFF = {}\n", node, max_phase, static_cast<int>(node_data.sigma), ( (max_phase - node_data.sigma) / n_phases ) );
+          total_num_dff += (max_phase - node_data.sigma) / n_phases;
+          fmt::print("[i] total #DFF = {}\n", total_num_dff);
+        });
 
-      // Stop the timer
-      std::chrono::high_resolution_clock::time_point end_time = std::chrono::high_resolution_clock::now();
+        fmt::print("{} PHASES: #DFF   for {} is {}\n", n_phases, benchmark, total_num_dff);
+        int total_area = raw_area + total_num_dff * COSTS_MAP[fDFF] + total_num_spl * COSTS_MAP[fSPL];
+        fmt::print("{} PHASES: #AREA  for {} is {}\n", n_phases, benchmark, total_area);
+        fmt::print("{} PHASES: #MAX GLOB PHASE for {} is {}\n", n_phases, benchmark, max_phase);
 
-      // Calculate elapsed time
-      std::chrono::duration<double> elapsed_seconds = end_time - start_time;
+        // Stop the timer
+        std::chrono::high_resolution_clock::time_point end_time = std::chrono::high_resolution_clock::now();
 
-      // Print the elapsed time
-      std::cout << "Elapsed time: " << elapsed_seconds.count() << " seconds" << std::endl;
+        // Calculate elapsed time
+        std::chrono::duration<double> elapsed_seconds = end_time - start_time;
 
-      exp(fmt::format("{}_{}", benchmark, (search_FA)?"with_T1":"no_T1"), n_phases, total_num_dff, total_area, ( (max_phase - 1) / n_phases + 1 ), total_possible, total_committed, elapsed_seconds.count());
-      exp.save();
-      exp.table();
-      exp.table({}, outputFile);
+        // Print the elapsed time
+        std::cout << "Elapsed time: " << elapsed_seconds.count() << " seconds" << std::endl;
+
+        exp(fmt::format("{}_{}", benchmark, (search_FA)?"with_T1":"no_T1"), n_phases, total_num_dff, total_area, ( (max_phase - 1) / n_phases + 1 ), total_possible, total_committed, elapsed_seconds.count());
+        exp.save();
+        exp.table();
+        exp.table({}, outputFile);
+      }
     }
-  }
-  // TODO : now, count #DFFs in extracted paths. Perhaps, the function can be written within the Path object.
-  return 0;
-}
-
-#if false
-  int main() 
-  {
-    /*
-    // *** READ COMPOUND GATE LIBRARY ***
-    const std::vector<std::vector<UI>> sets_of_levels { { {0,0,0,0}, {0,0,0,1}, {0,0,0,2}, {0,0,1,1}, {0,0,1,2}, {0,1,1,1}, {0,1,1,2}, {0,1,2,2}, {0,1,2,3} } }; //  {0,1,1,3},
-
-    auto start_time_csv = std::chrono::high_resolution_clock::now();
-
-    phmap::flat_hash_map<ULL, Node> GNM_global = read_global_gnm( sets_of_levels, NODEMAP_PREFIX );
-
-    auto end_time_csv = std::chrono::high_resolution_clock::now();
-
-    // Calculate the duration in milliseconds
-    auto ms_csv = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_csv - start_time_csv);
-    fmt::print("CSV Runtime: {}ms\n", ms_csv.count());
-
-    const auto cost_it = std::max_element(GNM_global.begin(), GNM_global.end(), [&](const auto & pair1, const auto & pair2) { return pair1.second.cost < pair2.second.cost; });
-    const auto & [hash_cost, node_cost] = *cost_it;
-    fmt::print("The most expensive node: {} {}\n{}\n", hash_cost, node_cost.to_str(), node_cost.to_stack(GNM_global));
-
-    const auto depth_it = std::max_element(GNM_global.begin(), GNM_global.end(), [&](const auto & pair1, const auto & pair2) 
-    {
-      return pair1.second.depth < pair2.second.depth; 
-    });
-    const auto & [hash_depth, node_depth] = *depth_it;
-    fmt::print("The deepest node: {} {}\n{}\n", hash_depth, node_depth.to_str(), node_depth.to_stack(GNM_global));
-    */
-    const std::string DATABASE_PREFIX { "../GNM/GNM_global" };
-
-    // // Dump the map to a binary file
-    // SaveToFile(GNM_global, DATABASE_PREFIX);
-    // fmt::print("Saved to {}\n", DATABASE_PREFIX);
-    auto start_time_dat = std::chrono::high_resolution_clock::now();
-
-    // Load the map from the binary file
-    phmap::flat_hash_map<uint64_t, Node> loadedMap;
-    bool status = LoadFromFile(loadedMap, DATABASE_PREFIX);
-    if (!status)
-    {
-      fmt::print("READING FAILED");
-      return 1;
-    };
-
-    auto end_time_dat = std::chrono::high_resolution_clock::now();
-
-    auto ms_dat = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_dat - start_time_dat);
-
-    fmt::print("DAT Runtime: {}ms\n", ms_dat.count());
-    /*
-
-    for (const auto& [hash, old_node] : GNM_global) 
-    {
-      if (loadedMap.find(hash) == loadedMap.end())
-      {
-        fmt::print("Entry at {} is not found\n", hash);
-        continue;
-      };
-      const Node & new_node = loadedMap.at(hash);
-      if (old_node != new_node)
-      {
-        fmt::print("Entries at {} are not equivalent\n", hash);
-        fmt::print("\tOld: {}\n", old_node.to_str());
-        fmt::print("\tNew: {}\n", new_node.to_str());
-        continue;
-      };
-    }
-
-    */
-   
-    auto start_time_par = std::chrono::high_resolution_clock::now();
-
-    // Load the map from the binary file
-    phmap::flat_hash_map<uint64_t, Node> loadedMapPar = ParallelLoadFromFiles(DATABASE_PREFIX);
-
-    auto end_time_par = std::chrono::high_resolution_clock::now();
-
-    auto ms_par = std::chrono::duration_cast<std::chrono::milliseconds>(end_time_par - start_time_par);
-
-    fmt::print("PAR Runtime: {}ms\n", ms_par.count());
-
-    for (const auto& [hash, old_node] : loadedMap) 
-    {
-      if (loadedMapPar.find(hash) == loadedMapPar.end())
-      {
-        fmt::print("Entry at {} is not found\n", hash);
-        continue;
-      };
-      const Node & new_node = loadedMapPar.at(hash);
-      if (old_node != new_node)
-      {
-        fmt::print("Entries at {} are not equivalent\n", hash);
-        fmt::print("\tOld: {}\n", old_node.to_str());
-        fmt::print("\tNew: {}\n", new_node.to_str());
-        continue;
-      };
-    }
-
-    
-
+    // TODO : now, count #DFFs in extracted paths. Perhaps, the function can be written within the Path object.
     return 0;
   }
-
 #endif
-
-/*
-|   bar_CPSAT |     7.00 | 1515.00 | 57120.00 |  1.00 |
-|   benchmark | N_PHASES |    #DFF |     area | delay | found_FA | committed_FA |
-|   benchmark | N_PHASES |    #DFF |     area | delay |
-| adder_FA    |     7.00 | 3283.00 | 31262.00 | 19.00 |
-
-|   benchmark | N_PHASES |    #DFF |     area | delay | found_FA | committed_FA |
-| adder_FA    |     7.00 | 3176.00 | 29370.00 | 19.00 |      127 |          127 |
-| adder_no_FA |     7.00 | 4414.00 | 39941.00 | 19.00 |        0 |            0 |
-
-
-|    benchmark | N_PHASES |     #DFF |      area | delay |
-| square_CPSAT |     3.00 | 10200.00 | 272559.00 | 43.00 |
-
-
-|   benchmark | N_PHASES |   #DFF |     area | delay | found_FA | committed_FA |
-| c3540_CPSAT |     4.00 | 575.00 | 16918.00 |  6.00 |        0 |            0 |
-| c1908_CPSAT |     4.00 | 132.00 |  3578.00 |  3.00 |        0 |            0 |
-| c1355_CPSAT |     4.00 | 175.00 |  5418.00 |  3.00 |        0 |            0 |
-|  c880_CPSAT |     4.00 | 304.00 |  6528.00 |  4.00 |        2 |            1 |
-|  c880_CPSAT |     4.00 | 293.00 |  6463.00 |  4.00 |        0 |            0 |
-|  c432_CPSAT |     4.00 | 125.00 |  3597.00 |  5.00 |        0 |            0 |
-
-|       benchmark | N_PHASES |    #DFF |      area | delay | found_FA | committed_FA |
-|     c3540_CPSAT |     4.00 |  575.00 |  16918.00 |  6.00 |        0 |            0 |
-|     c1908_CPSAT |     4.00 |  132.00 |   3578.00 |  3.00 |        0 |            0 |
-|     c1355_CPSAT |     4.00 |  175.00 |   5418.00 |  3.00 |        0 |            0 |
-|      c880_CPSAT |     4.00 |  304.00 |   6528.00 |  4.00 |        2 |            1 |
-|      c432_CPSAT |     4.00 |  125.00 |   3597.00 |  5.00 |        0 |            0 |
-|     voter_CPSAT |     4.00 | 5425.00 | 181859.00 | 11.00 |      252 |          252 |
-|  priority_CPSAT |     4.00 | 3453.00 |  46270.00 | 21.00 |        0 |            0 |
-| int2float_CPSAT |     4.00 |   80.00 |   4177.00 |  3.00 |        0 |            0 |
-
-
-|       benchmark | N_PHASES |    #DFF |      area | delay | found_FA | committed_FA |
-|      c880_CPSAT |     4.00 |  293.00 |   6463.00 |  4.00 |        0 |            0 |
-|     voter_CPSAT |     4.00 | 5779.00 | 187997.00 | 10.00 |        0 |            0 |
-|  priority_CPSAT |     4.00 | 3399.00 |  45892.00 | 21.00 |        0 |            0 |
-| int2float_CPSAT |     4.00 |   80.00 |   4177.00 |  3.00 |        0 |            0 |
-
-[voter]       Size 13763  Found 252	  Committed: 252
-[mem_ctrl]    Size 52874  Found 2	    Committed: 2
-[square]      Size 17506  Found 861	  Committed: 806
-[sin]         Size 5937   Found 81	  Committed: 77
-[multiplier]  Size 22819  Found 824	  Committed: 769
-[log2]        Size 29861  Found 644	  Committed: 593
-[hyp]         Size 189914 Found 6306  Committed: 6233
-[div]         Size 72320  Found 1	    Committed: 1
-[adder]       Size 1022   Found 127	  Committed: 127
-[DSP]         Size 56103  Found 77	  Committed: 70
-[DMA]         Size 33325  Found 1	    Committed: 1
-[des_perf]    Size 112015 Found 69	  Committed: 54
-[des_area]    Size 7017   Found 2	    Committed: 2
-[aes_core]    Size 24876  Found 5	    Committed: 4
-
-[c7552]         Size 1501   Found 17	Committed: 9
-[c6288]         Size 2369   Found 142	Committed: 142
-[c880]          Size 437    Found 2	  Committed: 1
-[usb_funct]     Size 20522  Found 8	  Committed: 4
-[tv80]          Size 10689  Found 3	  Committed: 3
-[systemcdes]    Size 4217   Found 1	  Committed: 1
-[spi]           Size 4878   Found 1	  Committed: 1
-[RISC]          Size 95797  Found 197	Committed: 164
-[pci_bridge32]  Size 29526  Found 2	  Committed: 1
-
-
-
-[voter] Size 13763
-[voter] Found 252	Committed: 252
-[router] Size 395
-[router] Found 0	Committed: 0
-[priority] Size 2046
-[priority] Found 0	Committed: 0
-[mem_ctrl] Size 52874
-[mem_ctrl] Found 2	Committed: 2
-[int2float] Size 318
-[int2float] Found 0	Committed: 0
-[i2c] Size 1730
-[i2c] Found 0	Committed: 0
-[dec] Size 326
-[dec] Found 0	Committed: 0
-[ctrl] Size 192
-[ctrl] Found 0	Committed: 0
-[cavlc] Size 833
-[cavlc] Found 0	Committed: 0
-[arbiter] Size 12460
-[arbiter] Found 0	Committed: 0
-[square] Size 17506
-[square] Found 861	Committed: 806
-[sqrt] Size 29003
-[sqrt] Found 0	Committed: 0
-[sin] Size 5937
-[sin] Found 81	Committed: 77
-[multiplier] Size 22819
-[multiplier] Found 824	Committed: 769
-[max] Size 4370
-[max] Found 0	Committed: 0
-[log2] Size 29861
-[log2] Found 644	Committed: 593
-[hyp] Size 189914
-[hyp] Found 6306	Committed: 6233
-[div] Size 72320
-[div] Found 1	Committed: 1
-[bar] Size 3737
-[bar] Found 0	Committed: 0
-[adder] Size 1022
-[adder] Found 127	Committed: 127
-
-*/

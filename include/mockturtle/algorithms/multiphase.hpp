@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include <fmt/format.h>
+
 #include <mockturtle/io/auxiliary_genlib.hpp>
 #include <mockturtle/algorithms/nodes.hpp>
 #include <mockturtle/utils/misc.hpp>
@@ -93,6 +95,13 @@ struct Path
     return;
   }
 
+  /**
+   * Returns the predecessors of a given signal in the network.
+   *
+   * @param sig The signal for which to find the predecessors.
+   * @param ntk The network in which to search for predecessors.
+   * @return A vector of signals representing the predecessors of the given signal.
+   */
   std::vector<klut::signal> preds(const klut::signal & sig, const klut & ntk) const
   {
     if ( sources.count(sig) != 0)
@@ -141,10 +150,8 @@ struct Path
     { 
       return "Source";  
     }
-    else 
-    {
-      throw;
-    }
+
+    throw std::runtime_error(fmt::format("Signal {} is not found in the Path", node));
   }
 
   /// @brief Find paths of signals in Path object from target signals to their sources.
@@ -218,6 +225,7 @@ struct Path
 
 std::tuple<klut, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, phmap::flat_hash_map<ULL, Node> nodemap, phmap::flat_hash_map<std::string, LibEntry> entries, const std::array<int, 12> COSTS_MAP, bool verbose = false)
 {
+  // phmap::flat_hash_map<klut::signal, uint8_t> & node_attrs, 
   phmap::flat_hash_map<klut::signal, klut::signal> src2tgt;
   int64_t area = 0;
   
@@ -285,6 +293,7 @@ std::tuple<klut, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, 
     } );
 
     phmap::flat_hash_map<ULL, klut::signal> node2tgt;
+
 
     for (ULL hash : topo_order)
     {
@@ -402,8 +411,8 @@ std::tuple<klut, int64_t> decompose_to_klut(mockturtle::binding_view<klut> src, 
 template <typename Ntk>
 glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & node, const uint8_t n_phases, const uint8_t type, const bool verbose = false)
 {
-  bool valid = false;
-  uint32_t phase = 0u;
+  bool valid { false };
+  uint32_t phase { 0u };
   ntk.foreach_fanin(node, [&] ( const typename Ntk::signal & parent )
   {
     if ( ntk.is_constant( parent ) )
@@ -440,7 +449,7 @@ glob_phase_t latest_fanin_phase(const Ntk & ntk, const typename Ntk::signal & no
 /// @param n_phases 
 /// @param phase_assignment 
 /// @param verbose 
-void assign_sigma(const klut & ntk, const phmap::flat_hash_map<unsigned int, unsigned int> & phase_assignment, const bool verbose = false)
+void assign_sigma(const klut  & ntk, const phmap::flat_hash_map<unsigned int, unsigned int> & phase_assignment, const bool verbose = false)
 {
   mockturtle::topo_view<klut> ntk_topo ( ntk );
 
@@ -471,7 +480,6 @@ void assign_sigma(const klut & ntk, const phmap::flat_hash_map<unsigned int, uns
     }
   });
 }
-
 
 /// @brief Assigns stages to nodes based on stage assignment. If the assignment is not found, assigns a stage greedily
 /// @param ntk 
@@ -560,14 +568,14 @@ bool phase_ntk_comparison(const klut::signal & a, const klut::signal & b, const 
   {
     return false;
   }
-  NodeData a_data = ntk.value(a);
-  NodeData b_data = ntk.value(b);
+  const NodeData & a_data = ntk.value(a);
+  const NodeData & b_data = ntk.value(b);
 
   return a_data.sigma < b_data.sigma;
 }
 
 
-// Function to insert splitter nodes in a KLUT network.
+// Insert splitter nodes in a KLUT network using chain structure.
 void splitter_ntk_insertion(klut & ntk, const bool verbose = false)
 {
   // Lambda function for comparing the phases of two signals in the network.
@@ -1029,6 +1037,136 @@ void splitter_ntk_insertion_t1( klut& ntk, phmap::flat_hash_map<klut::signal, kl
     // Ensure that the current node's fan-out count is now 1 (since all other fanouts have been replaced by splitters).
     assert( ntk._storage->nodes[node].data[0].h1 == 1 );
   } );
+}
+
+
+auto replace_fanin(const klut & ntk, const klut::signal & node, const klut::signal & old_fanin, const klut::signal & new_fanin)
+{
+  for (auto pred_it = ntk._storage->nodes[node].children.begin();
+            pred_it < ntk._storage->nodes[node].children.end(); pred_it++ )
+  {
+    if (pred_it->data == old_fanin)
+    {
+      pred_it->data = new_fanin;
+      ntk.incr_fanout_size(new_fanin);
+      ntk.decr_fanout_size(old_fanin);
+      return pred_it;
+    }
+  }
+  throw std::runtime_error(fmt::format("Node {} does not contain fanin {}", node, old_fanin));
+}
+
+// Insert splitter nodes in a KLUT network using chain structure.
+void balanced_splitter_ntk_insertion(klut & ntk, const bool verbose = false)
+{
+  // Lambda function for comparing the phases of two signals in the network.
+  auto phase_comp = [&](const klut::signal & a, const klut::signal & b)
+  {
+    return phase_ntk_comparison(a, b, ntk);
+  };
+
+  // Create a view of the network that provides access to fanout information.
+  auto ntk_fo = mockturtle::fanout_view<klut>(ntk);
+
+  // For each node in the fanout view:
+  ntk_fo.foreach_node([&](const klut::signal & node)
+  {
+    if ( ntk_fo.is_dangling( node ) )
+    {
+      return;
+    }
+
+    // Get the number of fanouts for the current node.
+    uint32_t fo_size{ 0u };
+    ntk_fo.foreach_fanout( node, [&]( auto const& no ) {
+      if ( !ntk_fo.is_dangling( no ) )
+      {
+        ++fo_size;
+      }
+    } );
+    ntk._storage->nodes[node].data[0].h1 = fo_size;
+
+    DEBUG_PRINT("\t[NODE {}] FANOUT SIZE = {}\n", node, fo_size);
+    // If the current node is a constant or it has fanout ≤ 1, skip to the next node.
+    if (ntk_fo.is_constant(node) || fo_size <= 1)
+    {
+      return;
+    }
+
+    // Populate the fanouts vector.
+    std::vector<klut::signal> fanouts;
+    fanouts.reserve(fo_size);
+    ntk_fo.foreach_fanout(node, [&](const klut::signal & fo_node)
+    {
+      if ( ntk_fo.is_dangling( fo_node ) )
+      {
+        return;
+      }
+
+      fanouts.push_back(fo_node);
+      DEBUG_PRINT("\t\t[NODE {}] ADDING FANOUT\n", node, fo_node);
+    });
+
+    // Fix the fanout count (bugged fanouts_size()?)
+    if ( fanouts.size() != fo_size )
+    {
+      ntk._storage->nodes[node].data[0].h1 = fanouts.size();
+    }
+
+    // Sort the fanouts using the phase comparison function.
+    std::sort(fanouts.begin(), fanouts.end(), phase_comp);
+    DEBUG_PRINT("\t[NODE {}] SORTED FANOUTS:\n", node);
+    printVector(fanouts, 2);
+
+    uint8_t n_complete_levels = last_exp_of_2(fanouts.size());
+    uint32_t n_remaining_spl = fanouts.size() - (1 << n_complete_levels);
+
+    // std::vector<klut::node> frontier { node };
+
+    // The same data should be imposed for all splitters
+    NodeData spl_data { ntk.value(node) };
+    spl_data.type = AA_GATE;
+    
+
+    // Create the first 
+    DEBUG_PRINT("\t\t[NODE {}] CREATING SPL FOR {}\n", node, node);
+    DEBUG_PRINT("\t\t[NODE {}] LAST_SPL {} FANOUT BEFORE: {}\n", node, node, ntk.fanout_size(node));
+    const klut::signal root_spl = ntk._create_node({node}, 2, ntk.size());
+    ntk.set_value(root_spl, spl_data.value);
+
+    std::deque<klut::signal> spl_queue { root_spl };
+    uint32_t spl_count = 1u;
+    
+    while (spl_count < fanouts.size()-1)
+    {
+      auto & spl_fi = spl_queue.back();
+      
+      const klut::signal spl = ntk._create_node({spl_fi}, 2, ntk.size());
+      ntk.set_value(spl, spl_data.value);
+      spl_queue.push_front(spl);
+      ++spl_count;
+      if (ntk.fanout_size(spl_fi) == 2)
+      {
+        spl_queue.pop_back();
+      }
+    }
+
+    // At this point, spl_queue should contain only splitters that can be connected to fanouts
+    // The earliest fanins are processed first
+    for (const auto & fanout : fanouts)
+    {
+      auto & spl = spl_queue.back();
+      auto pred_it = replace_fanin(ntk, fanout, node, spl);
+      if (ntk.fanout_size(spl) == 2)
+      {
+        spl_queue.pop_back();
+      }
+    }
+    // Ensure that all splitters have been used
+    assert(spl_queue.empty());
+    // Ensure that the fanout of the node is empty
+    assert(ntk.fanout_size(node) == 1u);
+  });
 }
 
 /// @brief Structure representing the potential DFF location uniquely defined by fanin, fanout and stage
